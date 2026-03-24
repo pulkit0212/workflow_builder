@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CreditCard, LayoutDashboard, Settings, Sparkles, History, type LucideIcon } from "lucide-react";
+import { CalendarDays, CreditCard, LayoutDashboard, Settings, Sparkles, History, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoMark } from "@/components/layout/logo-mark";
 
@@ -15,11 +15,20 @@ type DashboardNavItem = {
 
 const navigation: DashboardNavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/meetings", label: "Meetings", icon: CalendarDays },
   { href: "/dashboard/tools", label: "Tools", icon: Sparkles },
   { href: "/dashboard/history", label: "History", icon: History },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
   { href: "/dashboard/settings", label: "Settings", icon: Settings }
 ];
+
+function isActiveRoute(pathname: string, href: Route) {
+  if (href === "/dashboard") {
+    return pathname === href;
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export function DashboardSidebar() {
   const pathname = usePathname();
@@ -30,14 +39,14 @@ export function DashboardSidebar() {
       <nav className="mt-10 space-y-2">
         {navigation.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = isActiveRoute(pathname, item.href);
 
           return (
             <Link
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-600 transition hover:bg-white hover:text-slate-950",
+                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950",
                 isActive && "bg-slate-950 text-white hover:bg-slate-950 hover:text-white"
               )}
             >

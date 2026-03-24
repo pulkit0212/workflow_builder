@@ -59,6 +59,93 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "meeting_sessions" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "ai_run_id" uuid REFERENCES "ai_runs"("id") ON DELETE SET NULL,
+      "external_calendar_event_id" varchar(255),
+      "claim_token" varchar(255),
+      "provider" varchar(50) NOT NULL DEFAULT 'google_meet',
+      "title" varchar(255) NOT NULL,
+      "meeting_link" text NOT NULL,
+      "scheduled_start_time" timestamptz,
+      "scheduled_end_time" timestamptz,
+      "notes" text,
+      "transcript" text,
+      "summary" text,
+      "follow_up_email" text,
+      "key_points" jsonb,
+      "action_items" jsonb,
+      "email_sent" boolean NOT NULL DEFAULT false,
+      "email_sent_at" timestamptz,
+      "status" varchar(50) NOT NULL DEFAULT 'draft',
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "external_calendar_event_id" varchar(255)
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "claim_token" varchar(255)
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "scheduled_start_time" timestamptz
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "scheduled_end_time" timestamptz
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "follow_up_email" text
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "email_sent" boolean NOT NULL DEFAULT false
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "email_sent_at" timestamptz
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "user_integrations" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "provider" varchar(50) NOT NULL,
+      "email" varchar(255),
+      "scopes" text,
+      "access_token" text,
+      "refresh_token" text,
+      "expiry" timestamptz,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now(),
+      UNIQUE ("user_id", "provider")
+    )
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "user_integrations"
+    ADD COLUMN IF NOT EXISTS "email" varchar(255)
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "user_integrations"
+    ADD COLUMN IF NOT EXISTS "scopes" text
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS "uploaded_files" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,

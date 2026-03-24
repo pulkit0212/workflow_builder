@@ -35,6 +35,20 @@ export async function getUserByClerkUserId(clerkUserId: string) {
   return user ?? null;
 }
 
+export async function getUserByEmail(email: string) {
+  const database = getDbOrThrow();
+  console.info(`${usersLogPrefix} selecting user by email`, { email });
+
+  const [user] = await database.select().from(users).where(eq(users.email, email)).limit(1);
+
+  console.info(`${usersLogPrefix} email select complete`, {
+    email,
+    found: Boolean(user)
+  });
+
+  return user ?? null;
+}
+
 export async function upsertUserByClerkIdentity({
   clerkUserId,
   email,
@@ -48,6 +62,58 @@ export async function upsertUserByClerkIdentity({
     email
   });
 
+  const existingByClerkUserId = await getUserByClerkUserId(clerkUserId);
+
+  if (existingByClerkUserId) {
+    const [updatedUser] = await database
+      .update(users)
+      .set({
+        email,
+        fullName,
+        updatedAt: now
+      })
+      .where(eq(users.id, existingByClerkUserId.id))
+      .returning();
+
+    if (!updatedUser) {
+      throw new Error("Failed to update authenticated user record.");
+    }
+
+    console.info(`${usersLogPrefix} updated existing user by Clerk ID`, {
+      clerkUserId,
+      appUserId: updatedUser.id
+    });
+
+    return updatedUser;
+  }
+
+  const existingByEmail = await getUserByEmail(email);
+
+  if (existingByEmail) {
+    const [updatedUser] = await database
+      .update(users)
+      .set({
+        clerkUserId,
+        email,
+        fullName,
+        updatedAt: now
+      })
+      .where(eq(users.id, existingByEmail.id))
+      .returning();
+
+    if (!updatedUser) {
+      throw new Error("Failed to reattach authenticated user record.");
+    }
+
+    console.info(`${usersLogPrefix} reattached existing user by email`, {
+      clerkUserId,
+      email,
+      appUserId: updatedUser.id
+    });
+
+    return updatedUser;
+  }
+
   const [user] = await database
     .insert(users)
     .values({
@@ -56,14 +122,6 @@ export async function upsertUserByClerkIdentity({
       fullName,
       plan,
       updatedAt: now
-    })
-    .onConflictDoUpdate({
-      target: users.clerkUserId,
-      set: {
-        email,
-        fullName,
-        updatedAt: now
-      }
     })
     .returning();
 

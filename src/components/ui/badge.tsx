@@ -9,7 +9,10 @@ const badgeVariants = cva(
       variant: {
         available: "bg-emerald-100 text-emerald-700",
         pending: "bg-amber-100 text-amber-700",
-        neutral: "bg-slate-100 text-slate-700"
+        neutral: "bg-slate-100 text-slate-700",
+        info: "bg-sky-100 text-sky-700",
+        accent: "bg-violet-100 text-violet-700",
+        danger: "bg-rose-100 text-rose-700"
       }
     },
     defaultVariants: {

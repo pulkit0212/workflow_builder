@@ -1,0 +1,17 @@
+{
+  "sessionId": "0131defa-5800-48d5-9459-28e5c848fc04",
+  "userId": "user_3AnUFN6JLSzpEaAgVMrAMxrCVbf",
+  "platform": "google_meet",
+  "meetingUrl": "https://meet.google.com/rge-repq-ehi",
+  "meetingTitle": "Meet – rge-repq-ehi",
+  "startedAt": "2026-03-20T15:08:36.422Z",
+  "endedAt": "2026-03-20T15:09:29.064Z",
+  "mimeType": "audio/webm;codecs=opus",
+  "status": "ready",
+  "chunkCount": 13,
+  "totalBytes": 11881,
+  "createdAt": "2026-03-20T15:08:38.764Z",
+  "updatedAt": "2026-03-20T15:09:29.794Z",
+  "manifestPath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3AnUFN6JLSzpEaAgVMrAMxrCVbf/0131defa-5800-48d5-9459-28e5c848fc04/chunks.json",
+  "chunksDirectory": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3AnUFN6JLSzpEaAgVMrAMxrCVbf/0131defa-5800-48d5-9459-28e5c848fc04/chunks"
+}

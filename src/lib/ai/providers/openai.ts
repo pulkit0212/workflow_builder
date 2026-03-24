@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { buildMeetingSummarizerPrompt } from "@/features/tools/meeting-summarizer/prompts/build-prompt";
 import { meetingSummarizerOutputSchema } from "@/features/tools/meeting-summarizer/schema";
+import { normalizeMeetingSummarizerOutput } from "@/features/tools/meeting-summarizer/post-process";
 import { getOpenAIClient } from "@/lib/ai/openai";
 import { parseJsonResponse } from "@/lib/ai/response-parser";
 import { MeetingProviderError, type MeetingSummaryProvider, type MeetingSummaryProviderResult } from "@/lib/ai/providers/types";
@@ -80,12 +81,25 @@ export const openAiMeetingSummaryProvider: MeetingSummaryProvider = {
         model: process.env.OPENAI_MODEL || defaultOpenAIModel,
         input: buildMeetingSummarizerPrompt({ provider: "openai", transcript })
       });
+      const parsedOutput = parseJsonResponse(getOutputText(response), meetingSummarizerOutputSchema);
+      const output = normalizeMeetingSummarizerOutput(
+        {
+          summary: parsedOutput.summary,
+          key_points: parsedOutput.key_points,
+          action_items: parsedOutput.action_items.map((item) => ({
+            task: item.task,
+            owner: item.owner ?? "",
+            deadline: item.deadline ?? "",
+            completed: item.completed ?? false
+          }))
+        }
+      );
 
       return {
         provider: "openai",
         model: response.model || process.env.OPENAI_MODEL || defaultOpenAIModel,
         tokensUsed: getUsageTokens(response),
-        output: parseJsonResponse(getOutputText(response), meetingSummarizerOutputSchema)
+        output
       };
     } catch (error) {
       if (error instanceof MeetingProviderError) {

@@ -1,0 +1,20 @@
+{
+  "sessionId": "65eb801d-5e5b-4da9-ad75-3cb184761317",
+  "userId": "user_3Al2RlgJZvLXDVZABW1wo2gIgsT",
+  "platform": "google_meet",
+  "meetingUrl": "https://meet.google.com/ymk-wqpd-pwh",
+  "meetingTitle": "Meet - test meeting",
+  "meetingSessionId": "1c6e3d6c-ad74-42cb-840e-0d1885c58152",
+  "aiRunId": null,
+  "startedAt": "2026-03-21T13:07:16.254Z",
+  "endedAt": null,
+  "mimeType": "audio/webm;codecs=opus",
+  "status": "capturing",
+  "error": null,
+  "chunkCount": 42,
+  "totalBytes": 51376,
+  "createdAt": "2026-03-21T13:07:18.168Z",
+  "updatedAt": "2026-03-21T13:10:07.060Z",
+  "manifestPath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/65eb801d-5e5b-4da9-ad75-3cb184761317/chunks.json",
+  "chunksDirectory": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/65eb801d-5e5b-4da9-ad75-3cb184761317/chunks"
+}

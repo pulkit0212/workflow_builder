@@ -1,0 +1,62 @@
+[
+  {
+    "sessionId": "bb619a22-ce78-4022-836c-adb780ed717e",
+    "sequence": 1,
+    "fileName": "000001.webm",
+    "filePath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/bb619a22-ce78-4022-836c-adb780ed717e/chunks/000001.webm",
+    "mimeType": "audio/webm;codecs=opus",
+    "size": 1086,
+    "platform": "google_meet",
+    "meetingUrl": "https://meet.google.com/jrx-ynbu-ifd",
+    "receivedAt": "2026-03-21T19:37:35.068Z",
+    "chunkStartedAt": "2026-03-21T19:37:34.333Z"
+  },
+  {
+    "sessionId": "bb619a22-ce78-4022-836c-adb780ed717e",
+    "sequence": 2,
+    "fileName": "000002.webm",
+    "filePath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/bb619a22-ce78-4022-836c-adb780ed717e/chunks/000002.webm",
+    "mimeType": "audio/webm;codecs=opus",
+    "size": 938,
+    "platform": "google_meet",
+    "meetingUrl": "https://meet.google.com/jrx-ynbu-ifd",
+    "receivedAt": "2026-03-21T19:37:38.393Z",
+    "chunkStartedAt": "2026-03-21T19:37:38.356Z"
+  },
+  {
+    "sessionId": "bb619a22-ce78-4022-836c-adb780ed717e",
+    "sequence": 3,
+    "fileName": "000003.webm",
+    "filePath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/bb619a22-ce78-4022-836c-adb780ed717e/chunks/000003.webm",
+    "mimeType": "audio/webm;codecs=opus",
+    "size": 938,
+    "platform": "google_meet",
+    "meetingUrl": "https://meet.google.com/jrx-ynbu-ifd",
+    "receivedAt": "2026-03-21T19:37:42.443Z",
+    "chunkStartedAt": "2026-03-21T19:37:42.372Z"
+  },
+  {
+    "sessionId": "bb619a22-ce78-4022-836c-adb780ed717e",
+    "sequence": 4,
+    "fileName": "000004.webm",
+    "filePath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/bb619a22-ce78-4022-836c-adb780ed717e/chunks/000004.webm",
+    "mimeType": "audio/webm;codecs=opus",
+    "size": 12682,
+    "platform": "google_meet",
+    "meetingUrl": "https://meet.google.com/jrx-ynbu-ifd",
+    "receivedAt": "2026-03-21T19:37:46.457Z",
+    "chunkStartedAt": "2026-03-21T19:37:46.396Z"
+  },
+  {
+    "sessionId": "bb619a22-ce78-4022-836c-adb780ed717e",
+    "sequence": 5,
+    "fileName": "000005.webm",
+    "filePath": "/home/lenovo/Documents/workflow-automation/.tmp/agent-audio/user_3Al2RlgJZvLXDVZABW1wo2gIgsT/bb619a22-ce78-4022-836c-adb780ed717e/chunks/000005.webm",
+    "mimeType": "audio/webm;codecs=opus",
+    "size": 938,
+    "platform": "google_meet",
+    "meetingUrl": "https://meet.google.com/jrx-ynbu-ifd",
+    "receivedAt": "2026-03-21T19:37:50.457Z",
+    "chunkStartedAt": "2026-03-21T19:37:50.410Z"
+  }
+]

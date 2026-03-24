@@ -4,11 +4,18 @@ import { SectionHeader } from "@/components/shared/section-header";
 import { ToolCard } from "@/components/tools/tool-card";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DashboardNextMeetingBanner } from "@/features/upcoming-meetings/components/dashboard-next-meeting-banner";
+import { UpcomingMeetingsPanel } from "@/features/upcoming-meetings/components/upcoming-meetings-panel";
+import { getUpcomingGoogleCalendarMeetingsForUser } from "@/features/upcoming-meetings/server";
 import { allTools } from "@/lib/ai/tool-registry";
 import { getCurrentAuthenticatedProfile } from "@/lib/auth/profile";
 
 export default async function DashboardPage() {
   const appUser = await getCurrentAuthenticatedProfile({ sync: true });
+  const upcomingMeetings =
+    appUser?.source === "database"
+      ? await getUpcomingGoogleCalendarMeetingsForUser(appUser.id).catch(() => [])
+      : [];
 
   return (
     <div className="space-y-8">
@@ -29,6 +36,8 @@ export default async function DashboardPage() {
           </Button>
         }
       />
+
+      <DashboardNextMeetingBanner meetings={upcomingMeetings} />
 
       <div className="grid gap-5 md:grid-cols-3">
         {[
@@ -65,6 +74,14 @@ export default async function DashboardPage() {
           </Card>
         ))}
       </div>
+
+      <UpcomingMeetingsPanel
+        meetings={upcomingMeetings}
+        title="Upcoming Google Meet sessions"
+        description="Detect upcoming calendar meetings and launch the assistant with the meeting context already filled in."
+        emptyTitle="No upcoming Google Meet sessions"
+        emptyDescription="You do not have any Google Calendar meetings coming up right now. You can still start the assistant manually for an ad hoc call."
+      />
 
       <section className="space-y-4">
         <SectionHeader

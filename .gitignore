@@ -24,6 +24,8 @@ Thumbs.db
 coverage/
 
 tmp/
+/tmp/
+/tmp/audio
 temp/
 
 *.sqlite

@@ -19,8 +19,9 @@ export const meetingSummarizerInputSchema = z.object({
 
 export const meetingActionItemSchema = z.object({
   task: z.string().trim().min(1, "Task is required."),
-  owner: z.string().trim(),
-  deadline: z.string().trim()
+  owner: z.string().trim().default(""),
+  deadline: z.string().trim().default(""),
+  completed: z.boolean().default(false)
 });
 
 export const meetingSummarizerOutputSchema = z.object({

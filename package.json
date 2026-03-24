@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "setup:bot": "npx playwright install chromium && (pip3 install openai-whisper ffmpeg-python || pip3 install --break-system-packages openai-whisper ffmpeg-python)"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.15.1",
@@ -24,7 +25,9 @@
     "framer-motion": "^12.6.3",
     "lucide-react": "^0.511.0",
     "next": "^15.5.12",
+    "next-auth": "^5.0.0-beta.25",
     "openai": "^4.104.0",
+    "playwright": "latest",
     "pg": "^8.14.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
