@@ -43,7 +43,7 @@ export function DashboardMobileNav() {
             key={item.href}
             href={item.href}
             className={cn(
-              "inline-flex shrink-0 items-center gap-2 rounded-full border border-white/70 bg-white/70 px-4 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950",
+              "inline-flex shrink-0 items-center gap-2 rounded-full border border-white/80 bg-white/90 px-4 py-2 text-sm font-medium text-slate-500 shadow-[0_10px_24px_rgba(15,23,42,0.05)] transition-colors hover:bg-slate-100 hover:text-slate-950",
               isActive && "border-slate-950 bg-slate-950 text-white"
             )}
           >

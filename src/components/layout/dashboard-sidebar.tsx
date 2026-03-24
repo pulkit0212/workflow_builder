@@ -36,7 +36,9 @@ export function DashboardSidebar() {
   return (
     <aside className="glass-panel hidden w-80 flex-col border-r border-white/70 px-6 py-8 lg:flex">
       <LogoMark />
-      <nav className="mt-10 space-y-2">
+      <div className="mt-10 rounded-[2rem] border border-white/70 bg-white/70 p-3 shadow-[0_20px_48px_rgba(15,23,42,0.06)]">
+        <p className="px-3 pb-3 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Workspace</p>
+        <nav className="space-y-2">
         {navigation.map((item) => {
           const Icon = item.icon;
           const isActive = isActiveRoute(pathname, item.href);
@@ -46,8 +48,8 @@ export function DashboardSidebar() {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950",
-                isActive && "bg-slate-950 text-white hover:bg-slate-950 hover:text-white"
+                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-950",
+                isActive && "bg-slate-950 text-white shadow-[0_16px_30px_rgba(15,23,42,0.2)] hover:bg-slate-950 hover:text-white"
               )}
             >
               <Icon className="h-4 w-4" />
@@ -55,11 +57,13 @@ export function DashboardSidebar() {
             </Link>
           );
         })}
-      </nav>
-      <div className="mt-auto rounded-3xl border border-sky-100 bg-gradient-to-br from-sky-50 to-orange-50 p-5">
-        <p className="text-sm font-semibold text-slate-950">Phase 1 foundation</p>
+        </nav>
+      </div>
+      <div className="mt-auto rounded-[2rem] border border-indigo-100 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(238,242,255,0.96))] p-5 shadow-[0_18px_40px_rgba(99,102,241,0.08)]">
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-600">Meeting intelligence</p>
+        <p className="mt-3 text-lg font-semibold tracking-tight text-slate-950">One workspace for notes, summaries, and follow-through.</p>
         <p className="mt-2 text-sm leading-6 text-slate-600">
-          Tool registry, run history model, and reusable shells are ready for Phase 2 execution wiring.
+          Capture meetings, generate polished outputs, and keep action items moving without switching contexts.
         </p>
       </div>
     </aside>

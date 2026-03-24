@@ -71,6 +71,19 @@ function getStatusMessage(status: MeetingDetailRecord["status"]) {
   }
 }
 
+function getHelpfulBotErrorMessage(message: string | null) {
+  if (!message) {
+    return null;
+  }
+
+  const normalized = message.toLowerCase();
+  if (normalized.includes("meet_access_denied") || normalized.includes("setup:bot-profile")) {
+    return "Bot could not join the meeting. Please run: npm run setup:bot-profile to log in to Google, then try again.";
+  }
+
+  return message;
+}
+
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [meeting, setMeeting] = useState<MeetingDetailRecord | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -157,7 +170,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         const started = await startMeetingCapture(meeting.id, meeting.meetingLink);
         setMeeting(started.meeting);
       } catch (startError) {
-        setActionError(startError instanceof Error ? startError.message : "Failed to start AI Notetaker.");
+        setActionError(
+          getHelpfulBotErrorMessage(
+            startError instanceof Error ? startError.message : "Failed to start AI Notetaker."
+          )
+        );
       }
     });
   }
@@ -170,7 +187,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         const stoppedMeeting = await stopMeetingCapture(targetMeetingId);
         setMeeting(stoppedMeeting);
       } catch (stopError) {
-        setActionError(stopError instanceof Error ? stopError.message : "Failed to stop recording.");
+        setActionError(
+          getHelpfulBotErrorMessage(
+            stopError instanceof Error ? stopError.message : "Failed to stop recording."
+          )
+        );
       }
     });
   }
@@ -251,7 +272,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       />
 
       <Card className="overflow-hidden">
-        <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 via-white to-orange-50 px-6 py-5">
+        <div className="border-b border-indigo-100 bg-[linear-gradient(90deg,rgba(239,246,255,0.95),rgba(255,255,255,0.96),rgba(238,242,255,0.95))] px-6 py-5">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2">
@@ -395,7 +416,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       ) : null}
 
       {meeting.status === "failed" && !hasProcessedMeetingContent(meeting) ? (
-        <ResultState icon="error" title="AI Notetaker failed" description={getStatusMessage(meeting.status)} />
+        <ResultState
+          icon="error"
+          title="AI Notetaker failed"
+          description={getHelpfulBotErrorMessage(actionError) || getStatusMessage(meeting.status)}
+        />
       ) : null}
 
       {showProcessedResults ? (

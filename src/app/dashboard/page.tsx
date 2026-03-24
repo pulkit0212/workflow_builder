@@ -21,11 +21,11 @@ export default async function DashboardPage() {
     <div className="space-y-8">
       <SectionHeader
         eyebrow="Overview"
-        title={appUser?.fullName ? `Welcome back, ${appUser.fullName.split(" ")[0]}` : "AI productivity workspace"}
+        title={appUser?.fullName ? `Welcome back, ${appUser.fullName.split(" ")[0]}` : "Artiva workspace"}
         description={
           appUser
-            ? `${appUser.email} is synced to your ${appUser.plan} plan workspace and ready for shared AI workflow history.`
-            : "A shared SaaS foundation for running and scaling multiple AI workflows without rebuilding auth, billing, or history per feature."
+            ? `${appUser.email} is synced to your ${appUser.plan} plan workspace and ready for transcripts, summaries, and follow-through.`
+            : "A unified workspace for meeting capture, transcript review, and action-ready summaries."
         }
         action={
           <Button asChild>
@@ -42,22 +42,22 @@ export default async function DashboardPage() {
       <div className="grid gap-5 md:grid-cols-3">
         {[
           {
-            title: "Tool registry",
-            value: "4 modules",
+            title: "Meeting coverage",
+            value: "Today-first",
             icon: Layers3,
-            description: "Centralized definitions for routes, status, metadata, and expansion."
+            description: "See what's next, what's joined, and what needs attention without leaving the dashboard."
           },
           {
-            title: "Execution model",
-            value: "ai_runs",
+            title: "Structured output",
+            value: "Transcript + summary",
             icon: Zap,
-            description: "Shared storage contract for inputs, outputs, models, and token accounting."
+            description: "Summaries, key points, and action items stay organized in the same product language."
           },
           {
-            title: "Monetization",
-            value: "3 plans",
+            title: "Workspace polish",
+            value: "Unified light theme",
             icon: BarChart3,
-            description: "Billing structure is in place for Free, Pro, and Business growth."
+            description: "Landing, shell, and meeting pages now share one consistent premium SaaS feel."
           }
         ].map((item) => (
           <Card key={item.title} className="p-6">
@@ -78,7 +78,7 @@ export default async function DashboardPage() {
       <UpcomingMeetingsPanel
         meetings={upcomingMeetings}
         title="Upcoming Google Meet sessions"
-        description="Detect upcoming calendar meetings and launch the assistant with the meeting context already filled in."
+        description="See the next meetings on your calendar and launch the assistant with context already in place."
         emptyTitle="No upcoming Google Meet sessions"
         emptyDescription="You do not have any Google Calendar meetings coming up right now. You can still start the assistant manually for an ad hoc call."
       />
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
       <section className="space-y-4">
         <SectionHeader
           title="Workflow tools"
-          description="Each tool plugs into the same dashboard shell, route shape, and future API contract."
+          description="Each tool lives inside the same bright workspace so the product feels consistent from first click to final summary."
         />
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
           {allTools.map((tool) => (

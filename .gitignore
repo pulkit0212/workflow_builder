@@ -26,6 +26,9 @@ coverage/
 tmp/
 /tmp/
 /tmp/audio
+tmp/bot-profile/
+tmp/bot-sessions.json
+tmp/audio/
 temp/
 
 *.sqlite

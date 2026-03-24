@@ -17,7 +17,7 @@ export function ToolCard({ tool }: ToolCardProps) {
     <Card className="flex h-full flex-col justify-between p-6">
       <div className="space-y-5">
         <div className="flex items-start justify-between gap-4">
-          <div className="rounded-2xl bg-slate-950 p-3 text-white">
+          <div className="rounded-2xl bg-[linear-gradient(145deg,#eef2ff,#dbeafe)] p-3 text-indigo-700">
             <Icon className="h-6 w-6" />
           </div>
           <Badge variant={isAvailable ? "available" : "pending"}>{isAvailable ? "Available" : "Coming Soon"}</Badge>

@@ -3,21 +3,21 @@
 @tailwind utilities;
 
 :root {
-  --background: 210 40% 98%;
+  --background: 220 33% 98%;
   --foreground: 222 47% 11%;
   --card: 0 0% 100%;
   --card-foreground: 222 47% 11%;
-  --primary: 200 98% 39%;
+  --primary: 226 71% 55%;
   --primary-foreground: 210 40% 98%;
-  --secondary: 199 89% 92%;
+  --secondary: 220 43% 96%;
   --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
+  --muted: 220 23% 95%;
   --muted-foreground: 215 16% 47%;
-  --accent: 39 92% 90%;
+  --accent: 217 92% 95%;
   --accent-foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 200 98% 39%;
+  --border: 220 21% 89%;
+  --input: 220 21% 89%;
+  --ring: 226 71% 55%;
 }
 
 * {
@@ -31,15 +31,15 @@ html {
 body {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.12), transparent 26%),
-    radial-gradient(circle at top right, rgba(249, 115, 22, 0.12), transparent 24%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(248, 250, 252, 1));
+    radial-gradient(circle at top left, rgba(99, 102, 241, 0.12), transparent 26%),
+    radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 22%),
+    linear-gradient(180deg, #fdfdff 0%, #f6f8fc 46%, #f4f7fb 100%);
   color: hsl(var(--foreground));
 }
 
 .glass-panel {
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px);
 }
 
 .no-scrollbar::-webkit-scrollbar {

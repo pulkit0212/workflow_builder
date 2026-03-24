@@ -11,7 +11,8 @@
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "setup:bot": "npx playwright install chromium && (pip3 install openai-whisper ffmpeg-python || pip3 install --break-system-packages openai-whisper ffmpeg-python)"
+    "setup:bot": "npx playwright install chromium && (pip3 install openai-whisper ffmpeg-python || pip3 install --break-system-packages openai-whisper ffmpeg-python)",
+    "setup:bot-profile": "node bot/setupProfile.js"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.15.1",

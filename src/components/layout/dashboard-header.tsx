@@ -21,8 +21,8 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
           <LogoMark />
         </div>
         <div className="hidden items-center gap-3 lg:flex">
-          <div className="rounded-full border border-sky-100 bg-white/80 px-4 py-2 text-sm text-slate-600">
-            Shared workflow foundation for all AI tools
+          <div className="rounded-full border border-indigo-100 bg-white px-4 py-2 text-sm text-slate-600 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+            Bright, unified workspace for meeting intelligence
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -35,7 +35,7 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
           {hasClerkPublishableKey ? (
             <DashboardAccount initialProfile={profile} />
           ) : (
-            <div className="rounded-full border border-slate-200 bg-white/80 px-3 py-2 text-xs text-slate-500">
+            <div className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
               Auth disabled
             </div>
           )}

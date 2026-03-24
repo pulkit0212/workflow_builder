@@ -14,8 +14,8 @@ const display = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "AI Workflow Builder",
-  description: "Production-ready SaaS foundation for multi-tool AI workflows."
+  title: "Artiva - From meetings to meaningful work",
+  description: "Artiva captures meetings, generates summaries, and turns conversations into actionable tasks."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

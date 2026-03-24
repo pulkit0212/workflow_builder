@@ -19,7 +19,9 @@ function startRecording(meetingId) {
   let ffmpegArgs;
 
   if (isMac) {
+    console.log("[Audio] Starting macOS capture using BlackHole 2ch");
     ffmpegArgs = [
+      "-y",
       "-f",
       "avfoundation",
       "-i",
@@ -33,11 +35,15 @@ function startRecording(meetingId) {
       outputPath,
     ];
   } else if (isLinux) {
+    const audioSource = process.env.MEETING_AUDIO_SOURCE || "default";
+    console.log("[Audio] Using audio source:", audioSource);
+    console.log(`[Audio] Starting Linux PulseAudio capture using source: ${audioSource}`);
     ffmpegArgs = [
+      "-y",
       "-f",
       "pulse",
       "-i",
-      "default",
+      audioSource,
       "-acodec",
       "pcm_s16le",
       "-ar",
@@ -47,21 +53,79 @@ function startRecording(meetingId) {
       outputPath,
     ];
   } else {
-    throw new Error("Unsupported OS for audio capture");
+    return {
+      success: false,
+      error: "Unsupported OS for audio capture",
+    };
   }
 
-  const ffmpeg = spawn("ffmpeg", ffmpegArgs);
+  try {
+    const ffmpeg = spawn("ffmpeg", ffmpegArgs, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
 
-  ffmpeg.stderr.on("data", () => {
-    // ffmpeg logs to stderr during normal operation.
-  });
+    let startupError = null;
 
-  ffmpeg.on("error", (error) => {
-    console.error("[Audio] ffmpeg error:", error);
-  });
+    ffmpeg.stderr.on("data", (chunk) => {
+      const message = chunk.toString();
 
-  console.log(`[Audio] Recording started: ${outputPath}`);
-  return { ffmpeg, outputPath };
+      if (
+        /no such file|not found|invalid argument|unknown input format|cannot open audio device|input\/output error/i.test(
+          message
+        )
+      ) {
+        startupError = message.trim();
+      }
+    });
+
+    ffmpeg.on("error", (error) => {
+      startupError = error.message;
+      console.error("[Audio] ffmpeg error:", error);
+    });
+
+    return new Promise((resolve) => {
+      const startupTimeout = setTimeout(() => {
+        if (startupError) {
+          try {
+            ffmpeg.kill("SIGINT");
+          } catch {
+            // ignore cleanup errors
+          }
+
+          resolve({
+            success: false,
+            error: `ffmpeg failed to start recording: ${startupError}`,
+          });
+          return;
+        }
+
+        console.log(`[Audio] Recording started: ${outputPath}`);
+        resolve({ success: true, ffmpeg, outputPath });
+      }, 1_500);
+
+      ffmpeg.once("exit", (code, signal) => {
+        clearTimeout(startupTimeout);
+
+        if (startupError) {
+          resolve({
+            success: false,
+            error: `ffmpeg exited during startup: ${startupError}`,
+          });
+          return;
+        }
+
+        resolve({
+          success: false,
+          error: `ffmpeg exited before recording stabilized (code: ${code}, signal: ${signal})`,
+        });
+      });
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown ffmpeg startup error",
+    };
+  }
 }
 
 function stopRecording(ffmpegProcess) {

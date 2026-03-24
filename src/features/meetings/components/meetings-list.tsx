@@ -108,15 +108,15 @@ type SectionCardProps = {
 function SectionCard({ eyebrow, title, description, count, tone, children }: SectionCardProps) {
   const headerClassName =
     tone === "upcoming"
-      ? "border-sky-100 bg-gradient-to-r from-sky-50 via-cyan-50 to-white"
-      : "border-slate-200 bg-gradient-to-r from-slate-50 via-white to-slate-100";
+      ? "border-blue-100 bg-[linear-gradient(90deg,rgba(239,246,255,0.95),rgba(255,255,255,0.96),rgba(238,242,255,0.95))]"
+      : "border-slate-200 bg-[linear-gradient(90deg,rgba(248,250,252,0.95),rgba(255,255,255,0.96),rgba(241,245,249,0.95))]";
 
   return (
-    <Card className="overflow-hidden border-slate-200 bg-white">
+    <Card className="overflow-hidden border-white/80 bg-white/92">
       <div className={`border-b px-6 py-5 ${headerClassName}`}>
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{eyebrow}</p>
+            <p className={tone === "upcoming" ? "text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600" : "text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"}>{eyebrow}</p>
             <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
             <p className="text-sm text-slate-600">{description}</p>
           </div>
@@ -177,10 +177,10 @@ function ConnectGoogleCalendarCard({
   onConnect: () => void;
 }) {
   return (
-    <Card className="overflow-hidden border-sky-200">
-      <div className="border-b border-sky-100 bg-gradient-to-r from-sky-50 via-white to-cyan-50 px-6 py-5">
+    <Card className="overflow-hidden border-blue-100">
+      <div className="border-b border-blue-100 bg-[linear-gradient(90deg,rgba(239,246,255,0.95),rgba(255,255,255,0.96),rgba(238,242,255,0.95))] px-6 py-5">
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Google Calendar</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">Google Calendar</p>
           <h2 className="text-xl font-semibold text-slate-950">Connect Google Calendar</h2>
           <p className="text-sm text-slate-600">
             Allow access to your calendar to show today&apos;s scheduled meetings.
@@ -208,7 +208,7 @@ function TodayMeetingRow({ meeting }: { meeting: UpcomingMeeting }) {
     .replace("Ongoing", "Live");
 
   return (
-    <div className="group rounded-[2rem] border border-sky-100 bg-white p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:shadow-lg">
+    <div className="group rounded-[2rem] border border-blue-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.72))] p-6 shadow-[0_18px_44px_rgba(37,99,235,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_60px_rgba(37,99,235,0.12)]">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -216,17 +216,17 @@ function TodayMeetingRow({ meeting }: { meeting: UpcomingMeeting }) {
             <Badge variant={getUpcomingStatusBadgeVariant(meeting)}>{statusLabel}</Badge>
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-semibold text-slate-950 transition-colors group-hover:text-sky-700">
+            <h3 className="text-xl font-semibold text-slate-950 transition-colors group-hover:text-indigo-700">
               {meeting.title}
             </h3>
             <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-              <span className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1.5 text-slate-700">
-                <Clock3 className="h-4 w-4 text-sky-600" />
+              <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50/80 px-3 py-1.5 text-slate-700">
+                <Clock3 className="h-4 w-4 text-indigo-600" />
                 {formatMeetingTimeRange(meeting)}
               </span>
               {meeting.meetLink ? (
                 <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-700">
-                  <Link2 className="h-4 w-4 text-sky-600" />
+                  <Link2 className="h-4 w-4 text-indigo-600" />
                   Google Meet link available
                 </span>
               ) : (
@@ -265,7 +265,7 @@ function JoinedMeetingRow({ meeting }: { meeting: MeetingSessionRecord }) {
   return (
     <Link
       href={`/dashboard/meetings/${meeting.id}`}
-      className="group block rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm transition-all duration-200 hover:scale-[1.01] hover:shadow-lg"
+      className="group block rounded-[2rem] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9))] p-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(15,23,42,0.1)]"
     >
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-4">
@@ -276,7 +276,7 @@ function JoinedMeetingRow({ meeting }: { meeting: MeetingSessionRecord }) {
             </Badge>
           </div>
           <div className="space-y-2">
-            <h3 className="text-xl font-semibold text-slate-950 transition-colors group-hover:text-sky-700">
+            <h3 className="text-xl font-semibold text-slate-950 transition-colors group-hover:text-slate-800">
               {meeting.title}
             </h3>
             <p className="max-w-3xl text-sm leading-6 text-slate-600">
@@ -394,7 +394,7 @@ export function MeetingsList() {
     <div className="space-y-8">
       <SectionHeader
         title="Meetings"
-        description="Manage upcoming meetings and review captured meeting summaries."
+          description="Review upcoming calendar sessions and captured meeting records in one polished workspace."
         action={
           <Button type="button" variant="secondary" onClick={handleSyncCalendar} disabled={isSyncing}>
             {isSyncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarSync className="h-4 w-4" />}

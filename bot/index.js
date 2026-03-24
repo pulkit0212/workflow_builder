@@ -53,22 +53,65 @@ function getSession(meetingId) {
   return readSessions()[meetingId] || null;
 }
 
+async function cleanupJoinArtifacts(meetingId, browser) {
+  if (browser) {
+    try {
+      await leaveMeeting(browser);
+    } catch {
+      // ignore cleanup errors
+    }
+  }
+
+  activeBrowsers.delete(meetingId);
+  deleteSession(meetingId);
+}
+
 async function startBot(meetingId, meetingUrl, onStatusUpdate) {
   try {
     await onStatusUpdate(meetingId, "waiting_for_join");
 
-    const { browser } = await joinMeeting(meetingUrl, meetingId);
-    const { ffmpeg, outputPath } = startRecording(meetingId);
+    const { browser, page, status } = await joinMeeting(meetingUrl, meetingId);
+
+    if (status === "failed") {
+      await cleanupJoinArtifacts(meetingId, browser);
+      await onStatusUpdate(meetingId, "failed");
+      return {
+        success: false,
+        error: "Google Meet rejected the bot. Run npm run setup:bot-profile first, then try again.",
+      };
+    }
+
+    if (status === "waiting_for_admission") {
+      console.log("[Bot] Bot is in waiting room. Recording will start after admission.");
+      await onStatusUpdate(meetingId, "waiting_for_join");
+    }
+
+    if (status === "joined") {
+      console.log("[Bot] Bot confirmed in meeting. Starting recording.");
+    }
+
+    const recording = await startRecording(meetingId);
+
+    if (!recording.success) {
+      console.error(`[Bot] Recording failed to start for ${meetingId}: ${recording.error}`);
+      await cleanupJoinArtifacts(meetingId, browser);
+      await onStatusUpdate(meetingId, "failed");
+      return {
+        success: false,
+        error: recording.error || "Failed to start recording",
+      };
+    }
 
     writeSession(meetingId, {
-      ffmpegPid: ffmpeg.pid,
-      outputPath,
+      ffmpegPid: recording.ffmpeg.pid,
+      outputPath: recording.outputPath,
+      joinStatus: status,
     });
     activeBrowsers.set(meetingId, browser);
     await onStatusUpdate(meetingId, "capturing");
 
-    console.log(`[Bot] Meeting ${meetingId} is being recorded`);
-    return { success: true, outputPath };
+    console.log(`[Bot] Meeting ${meetingId} joined and recording started`);
+    return { success: true, outputPath: recording.outputPath };
   } catch (error) {
     console.error("[Bot] Failed to start:", error);
     await onStatusUpdate(meetingId, "failed");
@@ -88,7 +131,7 @@ async function stopBot(meetingId, onStatusUpdate) {
 
     try {
       process.kill(session.ffmpegPid, "SIGINT");
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
     } catch (error) {
       console.log("[Bot] ffmpeg already stopped or PID not found");
     }
@@ -103,7 +146,7 @@ async function stopBot(meetingId, onStatusUpdate) {
 
     const transcribeScript = path.join(BOT_DIR, "transcribe.py");
     const result = execSync(`python3 ${transcribeScript} ${session.outputPath}`, {
-      timeout: 300000,
+      timeout: 300_000,
     });
 
     const { transcript, error } = JSON.parse(result.toString());

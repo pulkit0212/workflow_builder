@@ -16,9 +16,9 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   }
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="min-h-screen bg-[linear-gradient(180deg,rgba(255,255,255,0.68),rgba(246,248,252,0.9))] lg:grid lg:grid-cols-[320px_minmax(0,1fr)]">
       <DashboardSidebar />
-      <div className="min-w-0">
+      <div className="min-w-0 bg-transparent">
         <DashboardHeader
           profile={{
             id: profile.id,
