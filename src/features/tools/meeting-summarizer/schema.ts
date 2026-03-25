@@ -21,6 +21,8 @@ export const meetingActionItemSchema = z.object({
   task: z.string().trim().min(1, "Task is required."),
   owner: z.string().trim().default(""),
   deadline: z.string().trim().default(""),
+  dueDate: z.string().trim().default(""),
+  priority: z.enum(["High", "Medium", "Low"]).default("Medium"),
   completed: z.boolean().default(false)
 });
 

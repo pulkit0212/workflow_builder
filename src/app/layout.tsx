@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
-import { Manrope, Space_Grotesk } from "next/font/google";
+import { Inter } from "next/font/google";
 import "@/app/globals.css";
 import { OptionalClerkProvider } from "@/components/auth/optional-clerk-provider";
 
-const sans = Manrope({
+const sans = Inter({
   subsets: ["latin"],
   variable: "--font-sans"
-});
-
-const display = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display"
 });
 
 export const metadata: Metadata = {
@@ -21,7 +16,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${sans.variable} ${display.variable} font-sans antialiased`}>
+      <body className={`${sans.variable} font-sans antialiased`}>
         <OptionalClerkProvider>{children}</OptionalClerkProvider>
       </body>
     </html>

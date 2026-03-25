@@ -1,170 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { Route } from "next";
-import Link from "next/link";
 import { signIn } from "next-auth/react";
-import {
-  CalendarSync,
-  CalendarDays,
-  ChevronRight,
-  Clock3,
-  ExternalLink,
-  Link2,
-  LoaderCircle,
-  Radio,
-  Video
-} from "lucide-react";
+import { CalendarDays, CalendarSync, LoaderCircle } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
-import { SectionHeader } from "@/components/shared/section-header";
 import { Button } from "@/components/ui/button";
-import { ResultState } from "@/components/tools/result-state";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import {
-  getMeetingSessionProviderLabel,
-  getMeetingSessionStatusLabel
-} from "@/features/meeting-assistant/helpers";
-import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
-import type { UpcomingMeeting } from "@/features/upcoming-meetings/types";
-import {
-  getUpcomingMeetingStatus,
-  getUpcomingMeetingStatusLabel
-} from "@/features/upcoming-meetings/helpers";
-import {
-  fetchJoinedMeetings,
-  fetchTodayMeetings
-} from "@/features/meetings/api";
-import { encodeCalendarMeetingId } from "@/features/meetings/ids";
-import { formatMeetingDateTime, getMeetingSummaryPreview } from "@/features/meetings/helpers";
+import { fetchTodayMeetings, fetchUpcomingMeetings } from "@/features/meetings/api";
+import { CalendarMeetingRow } from "@/features/meetings/components/calendar-meeting-row";
+import type { GoogleCalendarMeeting } from "@/lib/google/types";
 
-function formatTodayHeading(now = new Date()) {
-  return now.toLocaleDateString("en-US", {
-    weekday: "long",
+function formatDateHeading(value: Date, prefix: string) {
+  return `${prefix} — ${value.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric"
-  });
+  }).toUpperCase()}`;
 }
 
-function formatClockTime(value: string) {
-  const date = new Date(value);
+function formatUpcomingLabel(date: Date) {
+  const now = new Date();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
 
-  if (Number.isNaN(date.getTime())) {
-    return "Time unavailable";
+  const target = new Date(date);
+  target.setHours(0, 0, 0, 0);
+
+  if (target.getTime() === tomorrow.getTime()) {
+    return formatDateHeading(date, "TOMORROW");
   }
 
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  });
+  return `${date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} — ${date
+    .toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric"
+    })
+    .toUpperCase()}`;
 }
 
-function formatMeetingTimeRange(meeting: Pick<UpcomingMeeting, "startTime" | "endTime">) {
-  return `${formatClockTime(meeting.startTime)} - ${formatClockTime(meeting.endTime)}`;
-}
+function groupMeetingsByDate(meetings: GoogleCalendarMeeting[]) {
+  const groups = new Map<string, { date: Date; meetings: GoogleCalendarMeeting[] }>();
 
-function MeetingsListSkeleton() {
-  return (
-    <div className="space-y-8">
-      {[0, 1].map((section) => (
-        <Card key={section} className="overflow-hidden">
-          <div className="border-b border-slate-100 px-6 py-5">
-            <div className="animate-pulse space-y-3">
-              <div className="h-4 w-32 rounded-full bg-slate-100" />
-              <div className="h-7 w-56 rounded-full bg-slate-200" />
-              <div className="h-5 w-80 rounded-full bg-slate-100" />
-            </div>
-          </div>
-          <div className="space-y-4 p-6">
-            {[0, 1, 2].map((row) => (
-              <div key={row} className="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-5">
-                <div className="animate-pulse space-y-4">
-                  <div className="flex gap-2">
-                    <div className="h-6 w-24 rounded-full bg-slate-100" />
-                    <div className="h-6 w-28 rounded-full bg-slate-100" />
-                  </div>
-                  <div className="h-6 w-72 rounded-full bg-slate-200" />
-                  <div className="h-5 w-64 rounded-full bg-slate-100" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-}
+  for (const meeting of meetings) {
+    const date = new Date(meeting.startTime);
+    const key = date.toDateString();
+    const existing = groups.get(key);
 
-type SectionCardProps = {
-  eyebrow: string;
-  title: string;
-  description: string;
-  count: number;
-  tone: "upcoming" | "joined";
-  children: React.ReactNode;
-};
-
-function SectionCard({ eyebrow, title, description, count, tone, children }: SectionCardProps) {
-  const headerClassName =
-    tone === "upcoming"
-      ? "border-blue-100 bg-[linear-gradient(90deg,rgba(239,246,255,0.95),rgba(255,255,255,0.96),rgba(238,242,255,0.95))]"
-      : "border-slate-200 bg-[linear-gradient(90deg,rgba(248,250,252,0.95),rgba(255,255,255,0.96),rgba(241,245,249,0.95))]";
-
-  return (
-    <Card className="overflow-hidden border-white/80 bg-white/92">
-      <div className={`border-b px-6 py-5 ${headerClassName}`}>
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-1">
-            <p className={tone === "upcoming" ? "text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600" : "text-xs font-semibold uppercase tracking-[0.2em] text-slate-500"}>{eyebrow}</p>
-            <h2 className="text-xl font-semibold text-slate-950">{title}</h2>
-            <p className="text-sm text-slate-600">{description}</p>
-          </div>
-          <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm">
-            <Radio className="h-4 w-4 text-slate-500" />
-            {count} {count === 1 ? "meeting" : "meetings"}
-          </div>
-        </div>
-      </div>
-      <div className="p-6">{children}</div>
-    </Card>
-  );
-}
-
-function getUpcomingStatusBadgeVariant(meeting: UpcomingMeeting) {
-  const status = getUpcomingMeetingStatus(meeting);
-
-  switch (status) {
-    case "ongoing":
-      return "accent" as const;
-    case "starting_soon":
-      return "info" as const;
-    default:
-      return "neutral" as const;
+    if (existing) {
+      existing.meetings.push(meeting);
+    } else {
+      groups.set(key, { date, meetings: [meeting] });
+    }
   }
-}
 
-function getJoinedStatusBadgeVariant(status: MeetingSessionRecord["status"]) {
-  switch (status) {
-    case "completed":
-      return "available" as const;
-    case "joining":
-    case "waiting_for_join":
-      return "info" as const;
-    case "capturing":
-    case "recording":
-    case "recorded":
-      return "accent" as const;
-    case "processing":
-    case "processing_transcript":
-    case "processing_summary":
-    case "transcribed":
-      return "info" as const;
-    case "failed":
-      return "danger" as const;
-    default:
-      return "neutral" as const;
-  }
+  return Array.from(groups.values()).sort((left, right) => left.date.getTime() - right.date.getTime());
 }
 
 function ConnectGoogleCalendarCard({
@@ -177,132 +67,25 @@ function ConnectGoogleCalendarCard({
   onConnect: () => void;
 }) {
   return (
-    <Card className="overflow-hidden border-blue-100">
-      <div className="border-b border-blue-100 bg-[linear-gradient(90deg,rgba(239,246,255,0.95),rgba(255,255,255,0.96),rgba(238,242,255,0.95))] px-6 py-5">
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-600">Google Calendar</p>
-          <h2 className="text-xl font-semibold text-slate-950">Connect Google Calendar</h2>
-          <p className="text-sm text-slate-600">
-            Allow access to your calendar to show today&apos;s scheduled meetings.
-          </p>
-        </div>
-      </div>
-      <div className="space-y-4 p-6">
+    <Card className="p-6">
+      <div className="space-y-3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#6c63ff]">Google Calendar</p>
+        <h2>Connect your calendar</h2>
+        <p>Your upcoming Google Calendar sessions will appear here automatically once Google Calendar is connected.</p>
         <Button type="button" onClick={onConnect} disabled={isConnecting}>
           {isConnecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
           Continue with Google
         </Button>
-        {actionError ? (
-          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {actionError}
-          </div>
-        ) : null}
+        {actionError ? <div className="rounded-xl border border-[#fecaca] bg-[#fef2f2] p-3 text-sm text-[#991b1b]">{actionError}</div> : null}
       </div>
     </Card>
   );
 }
 
-function TodayMeetingRow({ meeting }: { meeting: UpcomingMeeting }) {
-  const detailHref = `/dashboard/meetings/${encodeCalendarMeetingId(meeting.id)}` as Route;
-  const statusLabel = getUpcomingMeetingStatusLabel(getUpcomingMeetingStatus(meeting))
-    .replace("Ongoing", "Live");
-
-  return (
-    <div className="group rounded-[2rem] border border-blue-100 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(239,246,255,0.72))] p-6 shadow-[0_18px_44px_rgba(37,99,235,0.08)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_60px_rgba(37,99,235,0.12)]">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="info">Google Meet</Badge>
-            <Badge variant={getUpcomingStatusBadgeVariant(meeting)}>{statusLabel}</Badge>
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-semibold text-slate-950 transition-colors group-hover:text-indigo-700">
-              {meeting.title}
-            </h3>
-            <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600">
-              <span className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50/80 px-3 py-1.5 text-slate-700">
-                <Clock3 className="h-4 w-4 text-indigo-600" />
-                {formatMeetingTimeRange(meeting)}
-              </span>
-              {meeting.meetLink ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-slate-700">
-                  <Link2 className="h-4 w-4 text-indigo-600" />
-                  Google Meet link available
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-slate-500">
-                  <Video className="h-4 w-4 text-slate-400" />
-                  No Meet link
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {meeting.meetLink ? (
-            <Button asChild>
-              <a href={meeting.meetLink} target="_blank" rel="noreferrer">
-                Join Meeting
-                <ExternalLink className="h-4 w-4" />
-              </a>
-            </Button>
-          ) : null}
-          <Button asChild variant="secondary">
-            <Link href={detailHref}>
-              View Details
-              <ChevronRight className="h-4 w-4" />
-            </Link>
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function JoinedMeetingRow({ meeting }: { meeting: MeetingSessionRecord }) {
-  const displayDateTime = meeting.scheduledStartTime ?? meeting.createdAt;
-
-  return (
-    <Link
-      href={`/dashboard/meetings/${meeting.id}`}
-      className="group block rounded-[2rem] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.9))] p-6 shadow-[0_16px_40px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_24px_56px_rgba(15,23,42,0.1)]"
-    >
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="neutral">{getMeetingSessionProviderLabel(meeting.provider)}</Badge>
-            <Badge variant={getJoinedStatusBadgeVariant(meeting.status)}>
-              {getMeetingSessionStatusLabel(meeting.status)}
-            </Badge>
-          </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-semibold text-slate-950 transition-colors group-hover:text-slate-800">
-              {meeting.title}
-            </h3>
-            <p className="max-w-3xl text-sm leading-6 text-slate-600">
-              {getMeetingSummaryPreview(meeting)}
-            </p>
-          </div>
-        </div>
-        <div className="space-y-3 text-sm text-slate-600 lg:text-right">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-slate-700">
-            <CalendarDays className="h-4 w-4 text-slate-500" />
-            {formatMeetingDateTime(displayDateTime)}
-          </div>
-          <div className="inline-flex items-center gap-2 self-start rounded-full border border-transparent px-3 py-2 font-medium text-slate-500 transition-colors group-hover:border-slate-200 group-hover:bg-slate-100 group-hover:text-slate-900 lg:self-end">
-            View
-            <ChevronRight className="h-4 w-4" />
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 export function MeetingsList() {
   const searchParams = useSearchParams();
-  const [todayMeetings, setTodayMeetings] = useState<UpcomingMeeting[]>([]);
-  const [joinedMeetings, setJoinedMeetings] = useState<MeetingSessionRecord[]>([]);
+  const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
+  const [upcomingMeetings, setUpcomingMeetings] = useState<GoogleCalendarMeeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -318,14 +101,16 @@ export function MeetingsList() {
     setError(null);
 
     try {
-      const [nextTodayMeetings, nextJoinedMeetings] = await Promise.all([
-        fetchTodayMeetings(),
-        fetchJoinedMeetings()
-      ]);
+      const todayResult = await fetchTodayMeetings();
+      setNeedsGoogleConnection(todayResult.status === "not_connected");
+      setTodayMeetings(todayResult.meetings);
 
-      setNeedsGoogleConnection(nextTodayMeetings.status === "not_connected");
-      setTodayMeetings(nextTodayMeetings.meetings);
-      setJoinedMeetings(nextJoinedMeetings);
+      if (todayResult.status === "connected") {
+        const upcoming = await fetchUpcomingMeetings();
+        setUpcomingMeetings(upcoming);
+      } else {
+        setUpcomingMeetings([]);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load meetings.");
     } finally {
@@ -373,90 +158,101 @@ export function MeetingsList() {
     setActionError(null);
     void signIn("google", {
       callbackUrl: "/dashboard/meetings"
-    }).catch((error) => {
+    }).catch((connectError) => {
       setIsConnectingGoogle(false);
-      setActionError(error instanceof Error ? error.message : "Failed to start Google sign-in.");
+      setActionError(connectError instanceof Error ? connectError.message : "Failed to start Google sign-in.");
     });
   }
 
   function handleSyncCalendar() {
     setIsSyncing(true);
-    void loadMeetings({ silent: true }).finally(() => {
-      setIsSyncing(false);
-    });
+    void loadMeetings({ silent: true }).finally(() => setIsSyncing(false));
   }
 
+  const groupedUpcoming = useMemo(() => groupMeetingsByDate(upcomingMeetings), [upcomingMeetings]);
+
   if (isLoading) {
-    return <MeetingsListSkeleton />;
+    return (
+      <div className="space-y-6">
+        {[0, 1, 2].map((index) => (
+          <Card key={index} className="p-6">
+            <div className="space-y-3">
+              <div className="shimmer h-4 w-40 rounded-full" />
+              <div className="shimmer h-20 rounded-xl" />
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-8">
-      <SectionHeader
-        title="Meetings"
-          description="Review upcoming calendar sessions and captured meeting records in one polished workspace."
-        action={
-          <Button type="button" variant="secondary" onClick={handleSyncCalendar} disabled={isSyncing}>
-            {isSyncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarSync className="h-4 w-4" />}
-            Sync Calendar
-          </Button>
-        }
-      />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1>Meetings</h1>
+          <p className="mt-1">Your upcoming Google Calendar sessions</p>
+        </div>
+        <Button type="button" variant="secondary" onClick={handleSyncCalendar} disabled={isSyncing}>
+          {isSyncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarSync className="h-4 w-4" />}
+          Sync Calendar
+        </Button>
+      </div>
 
-      {error ? (
-        <ResultState icon="error" title="Unable to load meetings" description={error} />
+      {needsGoogleConnection ? (
+        <ConnectGoogleCalendarCard
+          isConnecting={isConnectingGoogle}
+          actionError={actionError}
+          onConnect={handleConnectGoogle}
+        />
+      ) : error ? (
+        <Card className="border-[#fecaca] p-6">
+          <h2>Unable to load meetings</h2>
+          <p className="mt-2">{error}</p>
+        </Card>
       ) : (
-        <div className="space-y-8">
-          <SectionCard
-            eyebrow={formatTodayHeading()}
-            title="Upcoming Today"
-            description="Scheduled meetings from Google Calendar, prioritized for what needs attention next."
-            count={todayMeetings.length}
-            tone="upcoming"
-          >
-            {needsGoogleConnection ? (
-              <ConnectGoogleCalendarCard
-                isConnecting={isConnectingGoogle}
-                actionError={actionError}
-                onConnect={handleConnectGoogle}
-              />
-            ) : todayMeetings.length === 0 ? (
+        <>
+          <section className="space-y-4">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#6c63ff]">
+              TODAY — {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase()}
+            </p>
+            {todayMeetings.length > 0 ? (
+              <div className="space-y-3">
+                {todayMeetings.map((meeting) => (
+                  <CalendarMeetingRow key={meeting.id} meeting={meeting} />
+                ))}
+              </div>
+            ) : (
               <EmptyState
                 icon={CalendarDays}
-                title="No upcoming meetings today"
-                description="Your calendar is clear for now. When meetings are scheduled for today, they will appear here."
+                title="No meetings scheduled today"
+                description="Your Google Calendar meetings will appear here automatically."
               />
-            ) : (
-              <div className="space-y-5">
-                {todayMeetings.map((meeting) => (
-                  <TodayMeetingRow key={meeting.id} meeting={meeting} />
-                ))}
-              </div>
             )}
-          </SectionCard>
+          </section>
 
-          <SectionCard
-            eyebrow="Joined"
-            title="Joined Meetings"
-            description="Captured meetings saved in the app, with transcript, summary, and action items when available."
-            count={joinedMeetings.length}
-            tone="joined"
-          >
-            {joinedMeetings.length === 0 ? (
-              <EmptyState
-                icon={Video}
-                title="No joined meetings yet"
-                description="Completed or in-progress captured meetings will appear here once you join and process them."
-              />
-            ) : (
-              <div className="space-y-5">
-                {joinedMeetings.map((meeting) => (
-                  <JoinedMeetingRow key={meeting.id} meeting={meeting} />
+          <section className="space-y-4">
+            <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#6c63ff]">UPCOMING</p>
+            {groupedUpcoming.length > 0 ? (
+              <div className="space-y-6">
+                {groupedUpcoming.map((group) => (
+                  <div key={group.date.toISOString()} className="space-y-3">
+                    <p className="text-sm font-semibold text-[#6b7280]">{formatUpcomingLabel(group.date)}</p>
+                    {group.meetings.map((meeting) => (
+                      <CalendarMeetingRow key={meeting.id} meeting={meeting} />
+                    ))}
+                  </div>
                 ))}
               </div>
+            ) : (
+              <EmptyState
+                icon={CalendarDays}
+                title="No upcoming meetings"
+                description="Future Google Calendar meetings will appear here once they are scheduled."
+              />
             )}
-          </SectionCard>
-        </div>
+          </section>
+        </>
       )}
     </div>
   );

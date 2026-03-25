@@ -164,7 +164,7 @@ export async function POST(request: Request, context: RouteContext) {
       const meetingUrl = body?.meetingUrl?.trim() || calendarMeeting.meetLink;
 
       if (!canTransitionMeetingSessionStatus(previousStatus, "waiting_for_join")) {
-        return apiError("Meeting session is not ready to start the AI Notetaker.", 409);
+        return apiError("Meeting session is not ready to start Artiva.", 409);
       }
 
       const session = existingSession
@@ -193,9 +193,14 @@ export async function POST(request: Request, context: RouteContext) {
         to: normalizeMeetingSessionStatus(session.status),
         sessionId: session.id
       });
-      void startBot(session.id, meetingUrl, async (meetingSessionId, status) => {
+      void startBot(session.id, meetingUrl, async (meetingSessionId, status, payload) => {
         await updateMeetingSession(meetingSessionId, user.id, {
-          status
+          status,
+          errorCode: payload?.errorCode ?? null,
+          failureReason: payload?.failureReason ?? null,
+          recordingFilePath: payload?.recordingFilePath,
+          recordingStartedAt: payload?.recordingStartedAt,
+          recordingEndedAt: payload?.recordingEndedAt
         });
       }).catch((error) => {
         console.error("[start-route] bot start failed", error);
@@ -209,7 +214,7 @@ export async function POST(request: Request, context: RouteContext) {
           calendarMeeting
         }),
         status: "bot_starting",
-        message: "AI Notetaker is joining the meeting."
+        message: "Artiva is joining the meeting."
       });
       console.info("[start-route] response sent", {
         sessionId: session.id,
@@ -233,7 +238,7 @@ export async function POST(request: Request, context: RouteContext) {
     const meetingUrl = body?.meetingUrl?.trim() || meeting.meetingLink;
 
     if (!canTransitionMeetingSessionStatus(previousStatus, "waiting_for_join")) {
-      return apiError("Meeting session is not ready to start the AI Notetaker.", 409);
+      return apiError("Meeting session is not ready to start Artiva.", 409);
     }
 
     const session = await updateMeetingSession(meeting.id, user.id, {
@@ -246,9 +251,14 @@ export async function POST(request: Request, context: RouteContext) {
       to: normalizeMeetingSessionStatus(session.status),
       sessionId: session.id
     });
-    void startBot(session.id, meetingUrl, async (meetingSessionId, status) => {
+    void startBot(session.id, meetingUrl, async (meetingSessionId, status, payload) => {
       await updateMeetingSession(meetingSessionId, user.id, {
-        status
+        status,
+        errorCode: payload?.errorCode ?? null,
+        failureReason: payload?.failureReason ?? null,
+        recordingFilePath: payload?.recordingFilePath,
+        recordingStartedAt: payload?.recordingStartedAt,
+        recordingEndedAt: payload?.recordingEndedAt
       });
     }).catch((error) => {
       console.error("[start-route] bot start failed", error);
@@ -260,7 +270,7 @@ export async function POST(request: Request, context: RouteContext) {
         session
       }),
       status: "bot_starting",
-      message: "AI Notetaker is joining the meeting."
+      message: "Artiva is joining the meeting."
     });
     console.info("[start-route] response sent", {
       sessionId: session.id,

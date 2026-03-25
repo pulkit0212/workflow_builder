@@ -1,8 +1,12 @@
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { once } = require("node:events");
 
 const AUDIO_DIR = path.join(process.cwd(), "tmp", "audio");
+const MIN_AUDIO_BYTES = 32 * 1024;
+const STARTUP_WAIT_MS = 2_500;
+const STDERR_TAIL_LIMIT = 20;
 
 function ensureAudioDir() {
   if (!fs.existsSync(AUDIO_DIR)) {
@@ -36,7 +40,12 @@ function startRecording(meetingId) {
     ];
   } else if (isLinux) {
     const audioSource = process.env.MEETING_AUDIO_SOURCE || "default";
-    console.log("[Audio] Using audio source:", audioSource);
+    console.log("[Audio] ─────────────────────────────────");
+    console.log("[Audio] Recording started");
+    console.log("[Audio] Source:", audioSource);
+    console.log("[Audio] Output:", outputPath);
+    console.log("[Audio] Sample rate: 16000 Hz");
+    console.log("[Audio] ─────────────────────────────────");
     console.log(`[Audio] Starting Linux PulseAudio capture using source: ${audioSource}`);
     ffmpegArgs = [
       "-y",
@@ -65,9 +74,14 @@ function startRecording(meetingId) {
     });
 
     let startupError = null;
+    const stderrTail = [];
 
     ffmpeg.stderr.on("data", (chunk) => {
       const message = chunk.toString();
+      stderrTail.push(message.trim());
+      if (stderrTail.length > STDERR_TAIL_LIMIT) {
+        stderrTail.shift();
+      }
 
       if (
         /no such file|not found|invalid argument|unknown input format|cannot open audio device|input\/output error/i.test(
@@ -100,8 +114,14 @@ function startRecording(meetingId) {
         }
 
         console.log(`[Audio] Recording started: ${outputPath}`);
-        resolve({ success: true, ffmpeg, outputPath });
-      }, 1_500);
+        resolve({
+          success: true,
+          ffmpeg,
+          outputPath,
+          audioSource: isLinux ? process.env.MEETING_AUDIO_SOURCE || "default" : "BlackHole 2ch",
+          startupLog: stderrTail.join("\n"),
+        });
+      }, STARTUP_WAIT_MS);
 
       ffmpeg.once("exit", (code, signal) => {
         clearTimeout(startupTimeout);
@@ -128,14 +148,67 @@ function startRecording(meetingId) {
   }
 }
 
-function stopRecording(ffmpegProcess) {
-  return new Promise((resolve) => {
-    ffmpegProcess.on("close", () => {
-      console.log("[Audio] Recording stopped");
-      resolve();
-    });
-    ffmpegProcess.kill("SIGINT");
-  });
+async function stopRecording(ffmpegProcess) {
+  ffmpegProcess.kill("SIGINT");
+  await once(ffmpegProcess, "close");
+  console.log("[Audio] Recording stopped");
 }
 
-module.exports = { startRecording, stopRecording };
+function getAudioFileInfo(outputPath) {
+  try {
+    const stats = fs.statSync(outputPath);
+    return {
+      exists: true,
+      size: stats.size,
+      modifiedAt: stats.mtimeMs,
+    };
+  } catch {
+    return {
+      exists: false,
+      size: 0,
+      modifiedAt: 0,
+    };
+  }
+}
+
+async function waitForRecordingToFlush(outputPath, options = {}) {
+  const minimumBytes = options.minimumBytes ?? MIN_AUDIO_BYTES;
+  const timeoutMs = options.timeoutMs ?? 12_000;
+  const pollMs = options.pollMs ?? 500;
+  const startedAt = Date.now();
+  let previousSize = -1;
+  let stableSamples = 0;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const info = getAudioFileInfo(outputPath);
+
+    if (info.exists && info.size >= minimumBytes) {
+      if (info.size === previousSize) {
+        stableSamples += 1;
+      } else {
+        stableSamples = 0;
+        previousSize = info.size;
+      }
+
+      if (stableSamples >= 2) {
+        return {
+          success: true,
+          size: info.size,
+        };
+      }
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+
+  const finalInfo = getAudioFileInfo(outputPath);
+  return {
+    success: false,
+    size: finalInfo.size,
+    error: finalInfo.exists
+      ? `Recording file did not reach a usable size. Captured ${finalInfo.size} bytes.`
+      : "Recording file was never written to disk.",
+  };
+}
+
+module.exports = { startRecording, stopRecording, waitForRecordingToFlush, getAudioFileInfo };

@@ -90,6 +90,8 @@ export const openAiMeetingSummaryProvider: MeetingSummaryProvider = {
             task: item.task,
             owner: item.owner ?? "",
             deadline: item.deadline ?? "",
+            dueDate: item.dueDate ?? item.deadline ?? "",
+            priority: item.priority ?? "Medium",
             completed: item.completed ?? false
           }))
         }

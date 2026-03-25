@@ -3,23 +3,36 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CreditCard, LayoutDashboard, Settings, Sparkles, History, type LucideIcon } from "lucide-react";
+import {
+  CalendarDays,
+  CheckSquare,
+  Clock3,
+  CreditCard,
+  FileText,
+  Grid2x2,
+  Settings,
+  Wrench,
+  type LucideIcon
+} from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LogoMark } from "@/components/layout/logo-mark";
+import type { DashboardProfile } from "@/components/layout/dashboard-account";
 
 type DashboardNavItem = {
   href: Route;
   label: string;
   icon: LucideIcon;
+  section: "primary" | "secondary";
 };
 
 const navigation: DashboardNavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/meetings", label: "Meetings", icon: CalendarDays },
-  { href: "/dashboard/tools", label: "Tools", icon: Sparkles },
-  { href: "/dashboard/history", label: "History", icon: History },
-  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings }
+  { href: "/dashboard", label: "Dashboard", icon: Grid2x2, section: "primary" },
+  { href: "/dashboard/meetings", label: "Meetings", icon: CalendarDays, section: "primary" },
+  { href: "/dashboard/reports", label: "Reports", icon: FileText, section: "primary" },
+  { href: "/dashboard/action-items", label: "Action Items", icon: CheckSquare, section: "primary" },
+  { href: "/dashboard/history", label: "History", icon: Clock3, section: "primary" },
+  { href: "/dashboard/tools", label: "Tools", icon: Wrench, section: "secondary" },
+  { href: "/dashboard/settings", label: "Settings", icon: Settings, section: "secondary" },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard, section: "secondary" }
 ];
 
 function isActiveRoute(pathname: string, href: Route) {
@@ -30,26 +43,46 @@ function isActiveRoute(pathname: string, href: Route) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function DashboardSidebar() {
+type DashboardSidebarProps = {
+  profile: DashboardProfile;
+};
+
+function getInitials(value: string | null, email: string) {
+  const source = value?.trim() || email;
+  return source
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
+}
+
+export function DashboardSidebar({ profile }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const primaryItems = navigation.filter((item) => item.section === "primary");
+  const secondaryItems = navigation.filter((item) => item.section === "secondary");
 
   return (
-    <aside className="glass-panel hidden w-80 flex-col border-r border-white/70 px-6 py-8 lg:flex">
-      <LogoMark />
-      <div className="mt-10 rounded-[2rem] border border-white/70 bg-white/70 p-3 shadow-[0_20px_48px_rgba(15,23,42,0.06)]">
-        <p className="px-3 pb-3 text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Workspace</p>
-        <nav className="space-y-2">
-        {navigation.map((item) => {
+    <aside className="hidden w-[240px] flex-col bg-[#1a1a2e] px-4 py-6 text-[#e2e8f0] lg:flex">
+      <Link href="/" className="flex items-center gap-3 rounded-xl px-3 py-2">
+        <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#6c63ff] text-base font-bold text-white">A</span>
+        <span className="flex flex-col">
+          <span className="text-base font-bold text-white">Artiva</span>
+          <span className="text-xs text-slate-400">Meeting Intelligence</span>
+        </span>
+      </Link>
+
+      <nav className="mt-8 space-y-1">
+        {primaryItems.map((item) => {
           const Icon = item.icon;
           const isActive = isActiveRoute(pathname, item.href);
 
           return (
             <Link
-              key={item.href}
+              key={item.label}
               href={item.href}
               className={cn(
-                "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-950",
-                isActive && "bg-slate-950 text-white shadow-[0_16px_30px_rgba(15,23,42,0.2)] hover:bg-slate-950 hover:text-white"
+                "flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium text-[#e2e8f0] transition-colors hover:bg-white/10",
+                isActive && "bg-[#6c63ff] text-white hover:bg-[#6c63ff]"
               )}
             >
               <Icon className="h-4 w-4" />
@@ -57,14 +90,50 @@ export function DashboardSidebar() {
             </Link>
           );
         })}
-        </nav>
-      </div>
-      <div className="mt-auto rounded-[2rem] border border-indigo-100 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(238,242,255,0.96))] p-5 shadow-[0_18px_40px_rgba(99,102,241,0.08)]">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-indigo-600">Meeting intelligence</p>
-        <p className="mt-3 text-lg font-semibold tracking-tight text-slate-950">One workspace for notes, summaries, and follow-through.</p>
-        <p className="mt-2 text-sm leading-6 text-slate-600">
-          Capture meetings, generate polished outputs, and keep action items moving without switching contexts.
-        </p>
+      </nav>
+
+      <div className="my-4 h-px bg-white/10" />
+
+      <nav className="space-y-1">
+        {secondaryItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = isActiveRoute(pathname, item.href);
+
+          return (
+            <Link
+              key={item.label}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium text-[#e2e8f0] transition-colors hover:bg-white/10",
+                isActive && "bg-[#6c63ff] text-white hover:bg-[#6c63ff]"
+              )}
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="mt-auto rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-sm font-semibold text-white">
+            {getInitials(profile.fullName, profile.email)}
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">{profile.fullName || "Artiva User"}</p>
+            <p className="truncate text-xs text-slate-400">{profile.email}</p>
+          </div>
+        </div>
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-slate-300">FREE PLAN</span>
+          <Link
+            href="/dashboard/billing"
+            className="inline-flex items-center rounded-lg bg-[#6c63ff] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#5b52ee]"
+          >
+            Upgrade
+          </Link>
+        </div>
       </div>
     </aside>
   );

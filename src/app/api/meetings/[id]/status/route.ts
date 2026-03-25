@@ -48,14 +48,17 @@ export async function GET(_request: Request, context: RouteContext) {
       success: true,
       meetingId: session.id,
       state: normalizeMeetingSessionStatus(session.status),
+      errorCode: session.errorCode ?? null,
+      failureReason: session.failureReason ?? null,
+      recordingFilePath: session.recordingFilePath ?? null,
+      recordingStartedAt: session.recordingStartedAt ? session.recordingStartedAt.toISOString() : null,
+      recordingEndedAt: session.recordingEndedAt ? session.recordingEndedAt.toISOString() : null,
       transcript: session.transcript ?? null,
       summary: session.summary
         ? {
             summary: session.summary,
-            action_items: normalizeMeetingActionItems(session.actionItems).map((item) =>
-              item.owner ? `${item.owner}: ${item.task}` : item.task
-            ),
-            decisions: Array.isArray(session.keyPoints) ? session.keyPoints : [],
+            key_points: Array.isArray(session.keyPoints) ? session.keyPoints : [],
+            action_items: normalizeMeetingActionItems(session.actionItems),
           }
         : null,
       updatedAt: session.updatedAt.toISOString(),

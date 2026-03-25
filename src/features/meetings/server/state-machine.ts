@@ -1,21 +1,22 @@
 export type CanonicalMeetingSessionStatus =
   | "scheduled"
   | "waiting_for_join"
+  | "waiting_for_admission"
   | "capturing"
   | "processing"
+  | "summarizing"
   | "completed"
   | "failed";
 
 export function normalizeMeetingSessionStatus(status: string | null | undefined): CanonicalMeetingSessionStatus {
-  if (status?.startsWith("waiting_for_")) {
-    return "waiting_for_join";
-  }
-
   switch (status) {
     case "waiting_for_join":
-    case "joined":
     case "joining":
       return "waiting_for_join";
+    case "waiting_for_admission":
+      return "waiting_for_admission";
+    case "joined":
+      return "capturing";
     case "capturing":
     case "recording":
     case "recorded":
@@ -25,6 +26,8 @@ export function normalizeMeetingSessionStatus(status: string | null | undefined)
     case "processing_summary":
     case "transcribed":
       return "processing";
+    case "summarizing":
+      return "summarizing";
     case "completed":
       return "completed";
     case "failed":
@@ -58,7 +61,23 @@ export function canTransitionMeetingSessionStatus(
     return true;
   }
 
+  if (from === "waiting_for_join" && to === "waiting_for_admission") {
+    return true;
+  }
+
+  if (from === "waiting_for_admission" && to === "capturing") {
+    return true;
+  }
+
   if (from === "capturing" && to === "processing") {
+    return true;
+  }
+
+  if (from === "processing" && to === "summarizing") {
+    return true;
+  }
+
+  if (from === "summarizing" && to === "completed") {
     return true;
   }
 

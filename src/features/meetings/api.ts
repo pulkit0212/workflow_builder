@@ -10,6 +10,7 @@ import type {
   MeetingStatusResponse,
   MeetingStopResponse
 } from "@/features/meetings/types";
+import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 
 function getMeetingsErrorMessage(payload: MeetingSessionErrorResponse) {
   return payload.message;
@@ -25,6 +26,30 @@ export type TodayMeetingsResult =
       meetings: GoogleCalendarMeeting[];
       message: string;
     };
+
+export type ReportsResponse = {
+  meetings: MeetingSessionRecord[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+};
+
+export async function fetchBotProfileStatus() {
+  const response = await fetch("/api/bot/profile-status", {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to load Artiva bot profile status.");
+  }
+
+  return (await response.json()) as {
+    configured: boolean;
+  };
+}
 
 export async function fetchMeetings() {
   const response = await fetch("/api/meetings", {
@@ -85,6 +110,49 @@ export async function fetchJoinedMeetings() {
   }
 
   return payload.meetings;
+}
+
+export async function fetchUpcomingMeetings() {
+  const response = await fetch("/api/meetings/upcoming", {
+    cache: "no-store"
+  });
+  const payload = (await response.json()) as GoogleCalendarMeeting[] | MeetingSessionErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      payload && typeof payload === "object" && "message" in payload
+        ? getMeetingsErrorMessage(payload)
+        : "Failed to load upcoming meetings."
+    );
+  }
+
+  return Array.isArray(payload) ? payload : [];
+}
+
+export async function fetchMeetingReports(params: {
+  page: number;
+  limit: number;
+  status: "all" | "completed" | "recording" | "failed";
+  date: "all" | "week" | "month";
+  search: string;
+}) {
+  const query = new URLSearchParams({
+    page: String(params.page),
+    limit: String(params.limit),
+    status: params.status,
+    date: params.date,
+    search: params.search
+  });
+  const response = await fetch(`/api/meetings/reports?${query.toString()}`, {
+    cache: "no-store"
+  });
+  const payload = (await response.json()) as ReportsResponse | MeetingSessionErrorResponse;
+
+  if (!response.ok) {
+    throw new Error("message" in payload ? getMeetingsErrorMessage(payload) : "Failed to load meeting reports.");
+  }
+
+  return payload as ReportsResponse;
 }
 
 export async function fetchMeetingById(id: string) {

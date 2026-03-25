@@ -1,52 +1,61 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowLeft,
-  CalendarDays,
+  CheckSquare,
   ExternalLink,
-  FileText,
   Link2,
   LoaderCircle,
+  MessageSquareText,
   Mic,
+  Sparkles,
   Square,
-  TimerReset,
+  TriangleAlert
 } from "lucide-react";
 import { SectionHeader } from "@/components/shared/section-header";
-import { ActionItemsCard } from "@/components/tools/action-items-card";
-import { KeyPointsCard } from "@/components/tools/key-points-card";
 import { ResultState } from "@/components/tools/result-state";
-import { SummaryCard } from "@/components/tools/summary-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getMeetingSessionProviderLabel } from "@/features/meeting-assistant/helpers";
+import { copyTextToClipboard, getMeetingSessionProviderLabel } from "@/features/meeting-assistant/helpers";
 import { fetchMeetingById, startMeetingCapture, stopMeetingCapture } from "@/features/meetings/api";
-import {
-  formatMeetingDate,
-  formatMeetingDateTime,
-  formatMeetingTime,
-  getMeetingDetailStatusBadgeVariant,
-  getMeetingDetailStatusLabel,
-  hasProcessedMeetingContent,
-} from "@/features/meetings/helpers";
+import { formatMeetingDate, formatMeetingDuration, formatMeetingTime, getMeetingDetailStatusBadgeVariant, getMeetingDetailStatusLabel, hasProcessedMeetingContent } from "@/features/meetings/helpers";
 import type { MeetingDetailRecord } from "@/features/meetings/types";
 import { useSessionPolling } from "@/hooks/useSessionPolling";
+import { cn } from "@/lib/utils";
 
 type MeetingDetailProps = {
   meetingId: string;
 };
+
+type DetailTab = "notes" | "transcript" | "insights";
+
+type TranscriptBlock = {
+  speaker: string;
+  text: string;
+  timestamp: string;
+  order: number;
+  wordCount: number;
+};
+
+const tabs: Array<{ id: DetailTab; label: string }> = [
+  { id: "notes", label: "Notes" },
+  { id: "transcript", label: "Transcript" },
+  { id: "insights", label: "Insights" }
+];
 
 function MeetingDetailSkeleton() {
   return (
     <div className="space-y-6">
       {[0, 1, 2].map((index) => (
         <Card key={index} className="p-6">
-          <div className="animate-pulse space-y-4">
-            <div className="h-5 w-36 rounded-full bg-slate-100" />
-            <div className="h-8 w-72 rounded-full bg-slate-200" />
-            <div className="h-24 rounded-[1.5rem] bg-slate-100" />
+          <div className="space-y-4">
+            <div className="shimmer h-4 w-28 rounded-full" />
+            <div className="shimmer h-8 w-64 rounded-xl" />
+            <div className="shimmer h-28 rounded-xl" />
           </div>
         </Card>
       ))}
@@ -57,39 +66,117 @@ function MeetingDetailSkeleton() {
 function getStatusMessage(status: MeetingDetailRecord["status"]) {
   switch (status) {
     case "waiting_for_join":
-      return "AI Notetaker is joining the meeting...";
+      return "Preparing to join Google Meet in a separate browser.";
+    case "waiting_for_admission":
+      return "Waiting for the meeting host to admit the Artiva bot.";
     case "capturing":
-      return "Recording in progress...";
+      return "Recording in progress. Audio is being captured for transcription.";
     case "processing":
-      return "Transcribing and summarizing...";
+      return "Processing the saved recording and preparing the transcript.";
+    case "summarizing":
+      return "Generating the structured Artiva summary and action items.";
     case "failed":
-      return "Something went wrong. Please try again.";
+      return "The last recording run failed before the report finished.";
     case "completed":
-      return "Transcript and summary are ready.";
+      return "Meeting report is ready.";
     default:
-      return "AI Notetaker is ready to join this meeting.";
+      return "Scheduled and ready to start.";
   }
 }
 
-function getHelpfulBotErrorMessage(message: string | null) {
-  if (!message) {
-    return null;
+function getFailureMessage(errorCode: string | null, fallback: string | null) {
+  const errorMessages: Record<string, string> = {
+    meet_access_denied: "Bot profile not set up. Run: npm run setup:bot-profile in your terminal.",
+    invalid_meeting_link: "The meeting link is invalid or the meeting has ended.",
+    no_audio_captured: "No audio was captured. Check MEETING_AUDIO_SOURCE in your .env.local file.",
+    transcription_failed: "Transcription failed. The audio may be too short or corrupted.",
+    summary_failed: "Summary generation failed. The transcript may be empty.",
+    host_admission_required: "Bot is waiting to be admitted by the meeting host.",
+    default: "An unexpected error occurred. Check the server logs."
+  };
+
+  if (errorCode && errorMessages[errorCode]) {
+    return errorMessages[errorCode];
   }
 
-  const normalized = message.toLowerCase();
-  if (normalized.includes("meet_access_denied") || normalized.includes("setup:bot-profile")) {
-    return "Bot could not join the meeting. Please run: npm run setup:bot-profile to log in to Google, then try again.";
+  return fallback || errorMessages.default;
+}
+
+function formatOffset(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainder = Math.floor(seconds % 60);
+  return `${minutes.toString().padStart(2, "0")}:${remainder.toString().padStart(2, "0")}`;
+}
+
+function getInitials(value: string) {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((segment) => segment[0]?.toUpperCase() || "")
+    .join("");
+}
+
+function parseTranscriptBlocks(transcript: string | null, durationSeconds: number | null) {
+  if (!transcript?.trim()) {
+    return [] as TranscriptBlock[];
   }
 
-  return message;
+  const paragraphs = transcript
+    .split(/\n\s*\n/)
+    .map((chunk) => chunk.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const speakerRegex = /^([A-Z][A-Za-z.' -]{1,40}):\s*(.+)$/;
+  const estimatedDuration = durationSeconds && durationSeconds > 0 ? durationSeconds : Math.max(60, paragraphs.length * 45);
+  let fallbackSpeaker = "Speaker 1";
+
+  return paragraphs.map((paragraph, index) => {
+    const match = paragraph.match(speakerRegex);
+    const speaker = match?.[1]?.trim() || fallbackSpeaker;
+    const text = match?.[2]?.trim() || paragraph;
+
+    if (!match && index > 0) {
+      fallbackSpeaker = `Speaker ${Math.min(index + 1, 6)}`;
+    }
+
+    return {
+      speaker,
+      text,
+      order: index,
+      timestamp: formatOffset(Math.round((estimatedDuration / Math.max(paragraphs.length, 1)) * index)),
+      wordCount: text.split(/\s+/).filter(Boolean).length
+    };
+  });
+}
+
+function getPriorityTone(priority: string | null | undefined) {
+  switch ((priority || "Medium").toLowerCase()) {
+    case "high":
+      return "bg-[#fef2f2] text-[#dc2626]";
+    case "low":
+      return "bg-[#f0fdf4] text-[#16a34a]";
+    default:
+      return "bg-[#fefce8] text-[#ca8a04]";
+  }
+}
+
+function renderStatusBadge(status: MeetingDetailRecord["status"]) {
+  return (
+    <Badge variant={getMeetingDetailStatusBadgeVariant(status)}>
+      {status === "capturing" ? <span className="pulse-dot" aria-hidden="true" /> : null}
+      {getMeetingDetailStatusLabel(status)}
+    </Badge>
+  );
 }
 
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [meeting, setMeeting] = useState<MeetingDetailRecord | null>(null);
+  const [activeTab, setActiveTab] = useState<DetailTab>("notes");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const session = useSessionPolling(meeting?.meetingSessionId ?? null);
 
@@ -142,7 +229,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         ? {
             ...currentMeeting,
             status: session.state,
-            transcript: session.transcript ?? currentMeeting.transcript,
+            errorCode: session.errorCode ?? currentMeeting.errorCode,
+            failureReason: session.failureReason ?? currentMeeting.failureReason,
+            captureStartedAt: session.recordingStartedAt ?? currentMeeting.captureStartedAt,
+            captureEndedAt: session.recordingEndedAt ?? currentMeeting.captureEndedAt,
+            transcript: session.transcript ?? currentMeeting.transcript
           }
         : currentMeeting
     );
@@ -152,10 +243,55 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         .then((nextMeeting) => {
           setMeeting(nextMeeting);
           setActionError(null);
+          setCopyFeedback(null);
         })
         .catch(() => null);
     }
   }, [meetingId, session]);
+
+  const transcriptBlocks = useMemo(
+    () => parseTranscriptBlocks(meeting?.transcript ?? null, meeting?.meetingDuration ?? null),
+    [meeting?.meetingDuration, meeting?.transcript]
+  );
+
+  const speakerStats = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    for (const block of transcriptBlocks) {
+      counts.set(block.speaker, (counts.get(block.speaker) || 0) + block.wordCount);
+    }
+
+    const totalWords = Array.from(counts.values()).reduce((sum, value) => sum + value, 0);
+
+    return Array.from(counts.entries())
+      .map(([speaker, words]) => ({
+        speaker,
+        words,
+        percentage: totalWords > 0 ? Math.max(5, Math.round((words / totalWords) * 100)) : 0
+      }))
+      .sort((left, right) => right.words - left.words);
+  }, [transcriptBlocks]);
+
+  const ownerNames = meeting?.actionItems.map((item) => item.owner).filter(Boolean) ?? [];
+  const participantCount = Math.max(speakerStats.length, new Set(ownerNames).size, meeting?.transcript ? 1 : 0);
+  const showProcessedResults =
+    meeting?.status === "completed" ||
+    meeting?.status === "processing" ||
+    hasProcessedMeetingContent(meeting ?? { transcript: null, summary: null, keyPoints: [], actionItems: [] }) ||
+    (!!meeting && meeting.status === "failed" && hasProcessedMeetingContent(meeting));
+  const failureMessage = getFailureMessage(meeting?.errorCode ?? null, meeting?.failureReason || actionError);
+  const canStartBot =
+    meeting?.canJoinAndCapture &&
+    meeting?.status !== "waiting_for_join" &&
+    meeting?.status !== "waiting_for_admission" &&
+    meeting?.status !== "capturing" &&
+    meeting?.status !== "processing" &&
+    meeting?.status !== "summarizing" &&
+    meeting?.status !== "completed";
+  const canStopBot =
+    meeting?.status === "waiting_for_join" ||
+    meeting?.status === "waiting_for_admission" ||
+    meeting?.status === "capturing";
 
   function handleStartBot() {
     if (!meeting?.meetingLink) {
@@ -170,11 +306,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         const started = await startMeetingCapture(meeting.id, meeting.meetingLink);
         setMeeting(started.meeting);
       } catch (startError) {
-        setActionError(
-          getHelpfulBotErrorMessage(
-            startError instanceof Error ? startError.message : "Failed to start AI Notetaker."
-          )
-        );
+        setActionError(startError instanceof Error ? startError.message : "Failed to start recording.");
       }
     });
   }
@@ -187,11 +319,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         const stoppedMeeting = await stopMeetingCapture(targetMeetingId);
         setMeeting(stoppedMeeting);
       } catch (stopError) {
-        setActionError(
-          getHelpfulBotErrorMessage(
-            stopError instanceof Error ? stopError.message : "Failed to stop recording."
-          )
-        );
+        setActionError(stopError instanceof Error ? stopError.message : "Failed to stop recording.");
       }
     });
   }
@@ -211,6 +339,49 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     setActionError(null);
   }
 
+  async function handleCopyActionItemsAsText() {
+    if (!meeting || meeting.actionItems.length === 0) {
+      setCopyFeedback("No action items are available to copy.");
+      return;
+    }
+
+    const text = meeting.actionItems
+      .map(
+        (item, index) =>
+          `${index + 1}. ${item.task} — ${item.owner || "Unassigned"} (Due: ${item.dueDate || item.deadline || "Not specified"})`
+      )
+      .join("\n");
+
+    try {
+      await copyTextToClipboard(text);
+      setCopyFeedback("Action items copied as text.");
+    } catch (copyError) {
+      setCopyFeedback(copyError instanceof Error ? copyError.message : "Failed to copy action items.");
+    }
+  }
+
+  async function handleCopyActionItemsAsMarkdown() {
+    if (!meeting || meeting.actionItems.length === 0) {
+      setCopyFeedback("No action items are available to copy.");
+      return;
+    }
+
+    const markdown = [
+      `## Action Items — ${meeting.title}`,
+      ...meeting.actionItems.map(
+        (item) =>
+          `- [ ] ${item.task} — ${item.owner || "Unassigned"} (Due: ${item.dueDate || item.deadline || "Not specified"})`
+      )
+    ].join("\n");
+
+    try {
+      await copyTextToClipboard(markdown);
+      setCopyFeedback("Action items copied as markdown.");
+    } catch (copyError) {
+      setCopyFeedback(copyError instanceof Error ? copyError.message : "Failed to copy action items.");
+    }
+  }
+
   if (isLoading) {
     return <MeetingDetailSkeleton />;
   }
@@ -219,7 +390,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     return (
       <ResultState
         title="Meeting not found"
-        description="This meeting is unavailable or you no longer have access to it."
+        description="From meetings to meaningful work. This meeting is unavailable or you no longer have access to it."
       >
         <Button asChild variant="secondary">
           <Link href="/dashboard/meetings">Back to meetings</Link>
@@ -233,7 +404,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       <ResultState
         icon="error"
         title="Unable to load meeting"
-        description={error || "An unexpected error occurred while loading this meeting."}
+        description={error || "From meetings to meaningful work. An unexpected error occurred while loading this meeting."}
       >
         <Button asChild variant="secondary">
           <Link href="/dashboard/meetings">Back to meetings</Link>
@@ -242,27 +413,27 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     );
   }
 
-  const showProcessedResults =
-    meeting.status === "completed" ||
-    meeting.status === "processing" ||
-    hasProcessedMeetingContent(meeting) ||
-    (meeting.status === "failed" && hasProcessedMeetingContent(meeting));
-  const canStartBot =
-    meeting.canJoinAndCapture &&
-    meeting.status !== "waiting_for_join" &&
-    meeting.status !== "capturing" &&
-    meeting.status !== "processing" &&
-    meeting.status !== "completed";
-  const canStopBot = meeting.status === "waiting_for_join" || meeting.status === "capturing";
+  const engagementScore = Math.min(
+    96,
+    58 + speakerStats.length * 10 + (meeting.actionItems.length > 0 ? 8 : 0) + (meeting.keyDecisions.length > 0 ? 8 : 0)
+  );
+  const engagementLabel = engagementScore >= 80 ? "Good" : engagementScore >= 65 ? "Fair" : "Poor";
+  const durationLabel = formatMeetingDuration(meeting.meetingDuration);
+  const topicTimeline = meeting.keyTopics.map((topic, index) => ({
+    topic,
+    timestamp: formatOffset(
+      Math.round(((meeting.meetingDuration || Math.max(meeting.keyTopics.length * 60, 60)) / Math.max(meeting.keyTopics.length, 1)) * index)
+    )
+  }));
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <SectionHeader
-        eyebrow="Meeting Detail"
+        eyebrow="Artiva"
         title={meeting.title}
-        description="Review the meeting context and control the self-hosted AI Notetaker for this meeting."
+        description="From meetings to meaningful work."
         action={
-          <Button asChild variant="secondary">
+          <Button asChild variant="ghost">
             <Link href="/dashboard/meetings">
               <ArrowLeft className="h-4 w-4" />
               Back to meetings
@@ -271,202 +442,345 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         }
       />
 
-      <Card className="overflow-hidden">
-        <div className="border-b border-indigo-100 bg-[linear-gradient(90deg,rgba(239,246,255,0.95),rgba(255,255,255,0.96),rgba(238,242,255,0.95))] px-6 py-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="available">{getMeetingSessionProviderLabel(meeting.provider)}</Badge>
-                <Badge variant={getMeetingDetailStatusBadgeVariant(meeting.status)}>
-                  {getMeetingDetailStatusLabel(meeting.status)}
-                </Badge>
-              </div>
-              <h1 className="text-2xl font-semibold tracking-tight text-slate-950">{meeting.title}</h1>
-              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
-                <button
-                  type="button"
-                  onClick={handleOpenMeetingLink}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/90 px-4 py-2 hover:border-sky-200 hover:text-slate-950"
-                >
-                  <Link2 className="h-4 w-4 text-sky-600" />
-                  Open meeting link
-                  <ExternalLink className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-white/85 px-4 py-3 text-sm text-slate-600">
-              <div className="flex items-center gap-2 font-medium text-slate-800">
-                <CalendarDays className="h-4 w-4 text-slate-500" />
-                {meeting.scheduledStartTime
-                  ? formatMeetingDate(meeting.scheduledStartTime)
-                  : meeting.createdAt
-                    ? formatMeetingDate(meeting.createdAt)
-                    : "Date unavailable"}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Scheduled Date</p>
-            <p className="mt-2 text-sm font-semibold text-slate-950">
-              {meeting.scheduledStartTime
-                ? formatMeetingDate(meeting.scheduledStartTime)
-                : meeting.createdAt
-                  ? formatMeetingDate(meeting.createdAt)
-                  : "Unavailable"}
-            </p>
-          </div>
-          <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Start Time</p>
-            <p className="mt-2 text-sm font-semibold text-slate-950">
-              {meeting.scheduledStartTime
-                ? formatMeetingTime(meeting.scheduledStartTime)
-                : meeting.createdAt
-                  ? formatMeetingTime(meeting.createdAt)
-                  : "Unavailable"}
-            </p>
-          </div>
-          <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">End Time</p>
-            <p className="mt-2 text-sm font-semibold text-slate-950">
-              {meeting.scheduledEndTime ? formatMeetingTime(meeting.scheduledEndTime) : "Unavailable"}
-            </p>
-          </div>
-          <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Current Status</p>
-            <p className="mt-2 text-sm font-semibold text-slate-950">{getMeetingDetailStatusLabel(meeting.status)}</p>
-          </div>
-        </div>
-      </Card>
+      <div className="flex flex-wrap gap-2 rounded-xl border border-[#e5e7eb] bg-white p-2">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={cn(
+              "rounded-full px-4 py-2 text-sm font-medium text-[#6b7280] transition-colors hover:bg-[#f9fafb] hover:text-[#111827]",
+              activeTab === tab.id && "bg-[#6c63ff] text-white hover:bg-[#6c63ff] hover:text-white"
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
       <Card className="p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-slate-950">AI Notetaker</h2>
-            <p className="max-w-2xl text-sm leading-6 text-slate-600">{getStatusMessage(meeting.status)}</p>
-          </div>
-          {canStartBot ? (
-            <Button type="button" size="lg" onClick={handleStartBot} disabled={isPending}>
-              {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
-              Start AI Notetaker
-            </Button>
-          ) : canStopBot ? (
-            <Button type="button" size="lg" variant="secondary" onClick={handleStopBot} disabled={isPending}>
-              {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
-              Stop Recording
-            </Button>
-          ) : (
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600">
-              <TimerReset className="h-4 w-4 text-slate-500" />
-              {meeting.status === "completed"
-                ? "This meeting already has completed results."
-                : getStatusMessage(meeting.status)}
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {renderStatusBadge(meeting.status)}
+              <Badge variant="neutral">{getMeetingSessionProviderLabel(meeting.provider)}</Badge>
             </div>
-          )}
-        </div>
-
-        {actionError ? (
-          <div className="mt-4 rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {actionError}
+            <div>
+              <h1>{meeting.title}</h1>
+              <p className="mt-2 text-[14px] leading-6 text-[#4b5563]">
+                {meeting.scheduledStartTime
+                  ? `${formatMeetingDate(meeting.scheduledStartTime)} at ${formatMeetingTime(meeting.scheduledStartTime)}`
+                  : "Schedule unavailable"}
+                {durationLabel ? ` · ${durationLabel}` : ""}
+              </p>
+            </div>
           </div>
-        ) : null}
+          <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px]">
+            <div className="rounded-xl bg-[#f9fafb] p-4">
+              <p className="text-caption">Participants</p>
+              <p className="mt-1 font-semibold text-[#111827]">{participantCount || "Unknown"}</p>
+            </div>
+            <div className="rounded-xl bg-[#f9fafb] p-4">
+              <p className="text-caption">Platform</p>
+              <p className="mt-1 font-semibold text-[#111827]">{getMeetingSessionProviderLabel(meeting.provider)}</p>
+            </div>
+          </div>
+        </div>
       </Card>
 
-      {(meeting.status === "waiting_for_join" || meeting.status === "capturing" || meeting.status === "processing") ? (
-        <Card className="overflow-hidden border-sky-200">
-          <div className="border-b border-sky-100 bg-gradient-to-r from-sky-50 via-white to-cyan-50 px-6 py-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-600">Live Status</p>
-                <h2 className="text-xl font-semibold text-slate-950">{getStatusMessage(meeting.status)}</h2>
-                <p className="text-sm text-slate-600">
-                  {meeting.status === "waiting_for_join"
-                    ? "The bot is launching a browser session and joining Google Meet."
-                    : meeting.status === "capturing"
-                      ? "Meeting audio is being recorded for transcription."
-                      : "The recording has stopped and the transcript is being processed."}
-                </p>
-              </div>
-              <Badge variant={getMeetingDetailStatusBadgeVariant(meeting.status)}>
-                {getMeetingDetailStatusLabel(meeting.status)}
-              </Badge>
-            </div>
-          </div>
-          <div className="grid gap-4 p-6 md:grid-cols-3">
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Meeting Session</p>
-              <p className="mt-2 text-sm font-semibold text-slate-950">{meeting.meetingSessionId ?? "Pending"}</p>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Last Updated</p>
-              <p className="mt-2 text-sm font-semibold text-slate-950">
-                {session?.updatedAt ? formatMeetingDateTime(session.updatedAt) : "Waiting for update"}
-              </p>
-            </div>
-            <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Transcript</p>
-              <p className="mt-2 text-sm font-semibold text-slate-950">
-                {meeting.transcript?.trim() ? "Available" : "Not ready yet"}
-              </p>
-            </div>
-          </div>
-        </Card>
-      ) : null}
-
-      {meeting.status === "failed" && !hasProcessedMeetingContent(meeting) ? (
-        <ResultState
-          icon="error"
-          title="AI Notetaker failed"
-          description={getHelpfulBotErrorMessage(actionError) || getStatusMessage(meeting.status)}
-        />
-      ) : null}
-
-      {showProcessedResults ? (
+      {activeTab === "notes" ? (
         <div className="space-y-6">
           <Card className="p-6">
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-sky-50 p-3 text-sky-700">
-                  <FileText className="h-5 w-5" />
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  {renderStatusBadge(meeting.status)}
+                  <span className="text-caption">AI Notetaker</span>
                 </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Transcript</h2>
-                  <p className="text-sm text-slate-500">Transcript saved for this meeting session.</p>
+                <h2>AI Notetaker control</h2>
+                <p>{getStatusMessage(meeting.status)}</p>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <Button type="button" variant="ghost" onClick={handleOpenMeetingLink}>
+                  <Link2 className="h-4 w-4" />
+                  Open meeting
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+                {canStartBot ? (
+                  <Button type="button" onClick={handleStartBot} disabled={isPending}>
+                    {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
+                    Start AI Notetaker
+                  </Button>
+                ) : canStopBot ? (
+                  <Button type="button" variant="danger" onClick={handleStopBot} disabled={isPending}>
+                    {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
+                    Stop Recording
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+
+            {meeting.status === "failed" ? (
+              <div className="mt-5 flex flex-col gap-3 rounded-xl border border-[#fecaca] bg-[#fef2f2] p-4 text-[#991b1b] sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="mt-0.5 h-5 w-5" />
+                  <div>
+                    <p className="font-semibold text-[#7f1d1d]">Recording Failed</p>
+                    <p className="mt-1 text-[14px] text-[#991b1b]">{failureMessage}</p>
+                  </div>
                 </div>
+                <Button type="button" variant="danger" onClick={handleStartBot} disabled={isPending}>
+                  Try Again
+                </Button>
               </div>
-              <div className="max-h-[420px] overflow-y-auto whitespace-pre-wrap rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 text-sm leading-7 text-slate-700">
-                {meeting.transcript || "No transcript was saved for this meeting."}
-              </div>
+            ) : null}
+
+            {actionError ? (
+              <div className="mt-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] p-4 text-sm text-[#991b1b]">{actionError}</div>
+            ) : null}
+          </Card>
+
+          <Card className="border-l-4 border-l-[#6c63ff] p-6">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-[#6c63ff]" />
+              <h2>Summary</h2>
+            </div>
+            <p className="mt-4 text-[14px] leading-7 text-[#374151]">
+              {meeting.summary || "No summary is available yet for this meeting."}
+            </p>
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex items-center justify-between gap-3">
+              <h2>Key Decisions</h2>
+              <Badge variant="neutral">{meeting.keyDecisions.length}</Badge>
+            </div>
+            <div className="mt-4 space-y-3">
+              {(meeting.keyDecisions.length > 0 ? meeting.keyDecisions : ["No key decisions were captured for this meeting."]).map(
+                (decision, index) => (
+                  <div key={`${decision}-${index}`} className="rounded-xl bg-[#f9fafb] p-4">
+                    <div className="flex items-start gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f3ff] text-sm font-semibold text-[#6c63ff]">
+                        {index + 1}
+                      </span>
+                      <p className="flex-1 text-[14px] leading-6 text-[#374151]">{decision}</p>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           </Card>
 
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div className="space-y-6">
-              {meeting.status === "failed" ? (
-                <ResultState
-                  icon="error"
-                  title="Meeting processing failed"
-                  description="The meeting recording stopped, but summary generation did not finish successfully."
-                />
-              ) : meeting.status === "processing" ? (
-                <ResultState
-                  icon="loading"
-                  title="Processing meeting recording"
-                  description="Transcript and structured meeting results are still being prepared."
-                />
-              ) : (
-                <SummaryCard summary={meeting.summary || "No summary available for this meeting yet."} />
-              )}
-              <KeyPointsCard
-                items={meeting.keyPoints.length > 0 ? meeting.keyPoints : ["No key points were saved for this meeting."]}
-              />
+          <Card className="p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-5 w-5 text-[#6c63ff]" />
+                <h2>Action Items</h2>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" onClick={handleCopyActionItemsAsMarkdown}>
+                  Copy as Markdown
+                </Button>
+                <Button type="button" variant="ghost" onClick={handleCopyActionItemsAsText}>
+                  Copy as Text
+                </Button>
+              </div>
             </div>
-            <aside className="space-y-6">
-              <ActionItemsCard items={meeting.actionItems} />
-            </aside>
+
+            {copyFeedback ? (
+              <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] p-3 text-sm text-[#4b5563]">{copyFeedback}</div>
+            ) : null}
+
+            {meeting.actionItems.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-[#d1d5db] bg-[#f9fafb] p-4 text-sm text-[#6b7280]">
+                No action items were saved for this meeting.
+              </div>
+            ) : (
+              <div className="mt-4 overflow-hidden rounded-xl border border-[#e5e7eb]">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="bg-[#f9fafb]">
+                    <tr>
+                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Task</th>
+                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Owner</th>
+                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Due Date</th>
+                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Priority</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {meeting.actionItems.map((item, index) => (
+                      <tr key={`${item.task}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
+                        <td className="px-4 py-4 text-[#111827]">{item.task}</td>
+                        <td className="px-4 py-4 text-[#4b5563]">{item.owner || "Unassigned"}</td>
+                        <td className="px-4 py-4 text-[#4b5563]">{item.dueDate || item.deadline || "Not specified"}</td>
+                        <td className="px-4 py-4">
+                          <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", getPriorityTone(item.priority))}>
+                            {item.priority || "Medium"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {meeting.risksAndBlockers.length > 0 ? (
+            <Card className="border-l-4 border-l-[#ca8a04] p-6">
+              <div className="flex items-center gap-2">
+                <TriangleAlert className="h-5 w-5 text-[#ca8a04]" />
+                <h2>Risks &amp; Blockers</h2>
+              </div>
+              <div className="mt-4 space-y-3">
+                {meeting.risksAndBlockers.map((item) => (
+                  <div key={item} className="rounded-xl bg-[#fffbea] p-4">
+                    <p className="text-[14px] leading-6 text-[#713f12]">{item}</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
+          {!showProcessedResults && meeting.status !== "failed" ? (
+            <ResultState icon="loading" title="Report not ready yet" description={getStatusMessage(meeting.status)} />
+          ) : null}
+        </div>
+      ) : null}
+
+      {activeTab === "transcript" ? (
+        <div className="space-y-6">
+          <Card className="p-6">
+            <div className="flex flex-wrap items-center gap-2">
+              {meeting.keyTopics.length > 0 ? (
+                meeting.keyTopics.map((topic) => (
+                  <span key={topic} className="rounded-full bg-[#f5f3ff] px-3 py-1 text-[12px] font-medium text-[#6c63ff]">
+                    {topic}
+                  </span>
+                ))
+              ) : (
+                <span className="text-sm text-[#6b7280]">No key topics available yet.</span>
+              )}
+            </div>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            {speakerStats.length > 0 ? (
+              speakerStats.map((speaker) => (
+                <Card key={speaker.speaker} className="p-5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f5f3ff] text-sm font-semibold text-[#6c63ff]">
+                      {getInitials(speaker.speaker)}
+                    </span>
+                    <div>
+                      <p className="font-semibold text-[#111827]">{speaker.speaker}</p>
+                      <p className="text-caption">{speaker.percentage}% talk share</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-[#ede9fe]">
+                    <div className="h-2 rounded-full bg-[#6c63ff]" style={{ width: `${speaker.percentage}%` }} />
+                  </div>
+                </Card>
+              ))
+            ) : (
+              <Card className="p-6 lg:col-span-3">
+                <p>No transcript is available yet.</p>
+              </Card>
+            )}
           </div>
+
+          <Card className="p-6">
+            <div className="space-y-4">
+              {transcriptBlocks.length > 0 ? (
+                transcriptBlocks.map((block, index) => (
+                  <div
+                    key={`${block.speaker}-${index}`}
+                    className={cn("rounded-xl p-5", index % 2 === 0 ? "bg-[#f9fafb]" : "bg-[#f5f3ff]/40")}
+                  >
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="font-semibold text-[#111827]">{block.speaker}</p>
+                      <button type="button" className="text-caption rounded-full bg-white px-2 py-1 hover:text-[#6c63ff]">
+                        {block.timestamp}
+                      </button>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap font-mono text-[13px] leading-7 text-[#374151]">{block.text}</p>
+                  </div>
+                ))
+              ) : (
+                <ResultState
+                  title="Transcript unavailable"
+                  description="Artiva will show transcript paragraphs, speaker groupings, and timestamps when the transcript is ready."
+                />
+              )}
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {activeTab === "insights" ? (
+        <div className="space-y-6">
+          <Card className="p-6">
+            <h2>Participation</h2>
+            <div className="mt-4 space-y-4">
+              {speakerStats.length > 0 ? (
+                speakerStats.map((speaker) => (
+                  <div key={speaker.speaker}>
+                    <div className="mb-2 flex items-center justify-between gap-4">
+                      <p className="font-medium text-[#111827]">{speaker.speaker}</p>
+                      <p className="text-caption">{speaker.percentage}%</p>
+                    </div>
+                    <div className="h-2 rounded-full bg-[#e5e7eb]">
+                      <div className="h-2 rounded-full bg-[#6c63ff]" style={{ width: `${speaker.percentage}%` }} />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p>No speaker participation data yet.</p>
+              )}
+            </div>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="p-6">
+              <p className="text-caption">Engagement Score</p>
+              <p className="mt-3 text-3xl font-bold text-[#111827]">{engagementScore}</p>
+              <p className="mt-1 text-sm text-[#4b5563]">{engagementLabel}</p>
+            </Card>
+            <Card className="p-6">
+              <p className="text-caption">Sentiment</p>
+              <p className="mt-3 text-3xl font-bold text-[#111827]">{meeting.meetingSentiment || "Neutral"}</p>
+              <p className="mt-1 text-sm text-[#4b5563]">Conversation tone estimate</p>
+            </Card>
+            <Card className="p-6">
+              <p className="text-caption">Follow-up needed</p>
+              <p className="mt-3 text-3xl font-bold text-[#111827]">{meeting.followUpNeeded ? "Yes" : "No"}</p>
+              <p className="mt-1 text-sm text-[#4b5563]">Based on summary signals</p>
+            </Card>
+          </div>
+
+          <Card className="p-6">
+            <div className="flex items-center gap-2">
+              <MessageSquareText className="h-5 w-5 text-[#6c63ff]" />
+              <h2>Key Topics Timeline</h2>
+            </div>
+            <div className="mt-4 space-y-4">
+              {topicTimeline.length > 0 ? (
+                topicTimeline.map((item, index) => (
+                  <div key={`${item.topic}-${index}`} className="flex gap-4">
+                    <div className="flex flex-col items-center">
+                      <span className="mt-1 h-3 w-3 rounded-full bg-[#6c63ff]" />
+                      {index < topicTimeline.length - 1 ? <span className="mt-1 h-full w-px bg-[#ddd6fe]" /> : null}
+                    </div>
+                    <div className="pb-4">
+                      <p className="font-medium text-[#111827]">{item.topic}</p>
+                      <p className="text-caption">{item.timestamp}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p>No topic timeline available yet.</p>
+              )}
+            </div>
+          </Card>
         </div>
       ) : null}
     </div>

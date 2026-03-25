@@ -33,19 +33,36 @@ export function formatMeetingDate(value: string) {
 
 export function formatMeetingTime(value: string | null) {
   if (!value) {
-    return "Unavailable";
+    return "";
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Unavailable";
+    return "";
   }
 
   return date.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit"
   });
+}
+
+export function formatMeetingDuration(value: number | null | undefined) {
+  if (!value || value <= 0) {
+    return null;
+  }
+
+  const totalMinutes = Math.round(value / 60);
+
+  if (totalMinutes < 60) {
+    return `${Math.max(totalMinutes, 1)} min`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
 export function getMeetingSummaryPreview(meeting: Pick<MeetingSessionRecord, "summary" | "transcript">) {
@@ -66,16 +83,16 @@ export function getMeetingSummaryPreview(meeting: Pick<MeetingSessionRecord, "su
 
 export function getMeetingDetailStatusLabel(status: MeetingDetailStatus) {
   switch (status) {
-    case "joining":
-      return "Joining";
     case "waiting_for_join":
-      return "Preparing to Join";
-    case "joined":
-      return "Joined";
+      return "Preparing...";
+    case "waiting_for_admission":
+      return "Waiting";
     case "capturing":
-      return "Capturing";
+      return "Recording";
     case "processing":
       return "Processing";
+    case "summarizing":
+      return "Summarizing";
     case "completed":
       return "Completed";
     case "failed":
@@ -89,30 +106,35 @@ export function getMeetingDetailStatusBadgeVariant(status: MeetingDetailStatus) 
   switch (status) {
     case "completed":
       return "available" as const;
-    case "joining":
     case "waiting_for_join":
       return "info" as const;
-    case "joined":
-    case "capturing":
-    case "processing":
+    case "waiting_for_admission":
       return "pending" as const;
+    case "capturing":
+      return "available" as const;
+    case "processing":
+      return "info" as const;
+    case "summarizing":
+      return "accent" as const;
+    case "joining":
+    case "joined":
+      return "neutral" as const;
+    case "failed":
+      return "danger" as const;
     default:
       return "neutral" as const;
   }
 }
 
 export function mapMeetingSessionToDetailStatus(status: MeetingSessionRecord["status"]): MeetingDetailStatus {
-  if (status.startsWith("waiting_for_")) {
-    return "waiting_for_join";
-  }
-
   switch (status) {
-    case "joining":
-      return "joining";
     case "waiting_for_join":
       return "waiting_for_join";
+    case "waiting_for_admission":
+      return "waiting_for_admission";
     case "joined":
-      return "joined";
+    case "joining":
+      return "waiting_for_join";
     case "capturing":
     case "recording":
     case "recorded":
@@ -122,6 +144,8 @@ export function mapMeetingSessionToDetailStatus(status: MeetingSessionRecord["st
     case "processing_summary":
     case "transcribed":
       return "processing";
+    case "summarizing":
+      return "summarizing";
     case "completed":
       return "completed";
     case "failed":

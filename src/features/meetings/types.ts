@@ -5,9 +5,11 @@ export type MeetingDetailStatus =
   | "scheduled"
   | "joining"
   | "waiting_for_join"
+  | "waiting_for_admission"
   | "joined"
   | "capturing"
   | "processing"
+  | "summarizing"
   | "completed"
   | "failed";
 
@@ -27,8 +29,16 @@ export type MeetingDetailRecord = {
   createdAt: string | null;
   updatedAt: string | null;
   status: MeetingDetailStatus;
+  errorCode: string | null;
+  failureReason: string | null;
   transcript: string | null;
   summary: string | null;
+  keyDecisions: string[];
+  risksAndBlockers: string[];
+  keyTopics: string[];
+  meetingSentiment: string | null;
+  followUpNeeded: boolean | null;
+  meetingDuration: number | null;
   keyPoints: string[];
   actionItems: MeetingActionItem[];
   canJoinAndCapture: boolean;
@@ -55,13 +65,18 @@ export type MeetingStatusResponse = {
   success: true;
   meetingId: string;
   state: MeetingDetailStatus;
+  errorCode: string | null;
+  failureReason: string | null;
+  recordingFilePath: string | null;
+  recordingStartedAt: string | null;
+  recordingEndedAt: string | null;
   transcript: string | null;
-  summary:
-    | {
-        summary: string;
-        action_items: string[];
-        decisions: string[];
-      }
-    | null;
+  summary: MeetingStructuredSummary | null;
   updatedAt: string;
+};
+
+export type MeetingStructuredSummary = {
+  summary: string;
+  key_points: string[];
+  action_items: MeetingActionItem[];
 };

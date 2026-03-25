@@ -21,16 +21,28 @@ export function toMeetingSessionRecord(session: DatabaseMeetingSession): Meeting
     scheduledStartTime: session.scheduledStartTime ? session.scheduledStartTime.toISOString() : null,
     scheduledEndTime: session.scheduledEndTime ? session.scheduledEndTime.toISOString() : null,
     notes: session.notes ?? null,
+    errorCode: session.errorCode ?? null,
+    failureReason: session.failureReason ?? null,
     transcript: session.transcript ?? null,
     summary: session.summary ?? null,
+    keyDecisions: Array.isArray(session.keyDecisions) ? session.keyDecisions : [],
+    risksAndBlockers: Array.isArray(session.risksAndBlockers) ? session.risksAndBlockers : [],
+    keyTopics: Array.isArray(session.keyTopics) ? session.keyTopics : [],
+    meetingSentiment: session.meetingSentiment ?? null,
+    followUpNeeded: session.followUpNeeded ?? null,
+    meetingDuration: session.meetingDuration ?? null,
     followUpEmail: session.followUpEmail ?? null,
     keyPoints: Array.isArray(session.keyPoints) ? session.keyPoints : [],
     actionItems: normalizeMeetingActionItems(session.actionItems),
+    recordingFilePath: session.recordingFilePath ?? null,
+    recordingStartedAt: session.recordingStartedAt ? session.recordingStartedAt.toISOString() : null,
+    recordingEndedAt: session.recordingEndedAt ? session.recordingEndedAt.toISOString() : null,
     emailSent: Boolean(session.emailSent),
     emailSentAt: session.emailSentAt ? session.emailSentAt.toISOString() : null,
     status:
       normalizedStatus === "joining" ||
       normalizedStatus === "waiting_for_join" ||
+      normalizedStatus === "waiting_for_admission" ||
       normalizedStatus === "joined" ||
       normalizedStatus === "capturing" ||
       normalizedStatus === "recording" ||
@@ -38,6 +50,7 @@ export function toMeetingSessionRecord(session: DatabaseMeetingSession): Meeting
       normalizedStatus === "processing_transcript" ||
       normalizedStatus === "processing_summary" ||
       normalizedStatus === "processing" ||
+      normalizedStatus === "summarizing" ||
       normalizedStatus === "failed" ||
       normalizedStatus === "transcribed" ||
       normalizedStatus === "completed"

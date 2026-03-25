@@ -35,8 +35,16 @@ type UpdateMeetingSessionInput = {
   scheduledStartTime?: Date | string | null;
   scheduledEndTime?: Date | string | null;
   notes?: string;
+  errorCode?: string | null;
+  failureReason?: string | null;
   transcript?: string;
   summary?: string;
+  keyDecisions?: string[];
+  risksAndBlockers?: string[];
+  keyTopics?: string[];
+  meetingSentiment?: string | null;
+  followUpNeeded?: boolean | null;
+  meetingDuration?: number | null;
   followUpEmail?: string;
   keyPoints?: string[];
   actionItems?: Array<{
@@ -45,6 +53,9 @@ type UpdateMeetingSessionInput = {
     deadline: string;
     completed: boolean;
   }>;
+  recordingFilePath?: string | null;
+  recordingStartedAt?: Date | string | null;
+  recordingEndedAt?: Date | string | null;
   status?: MeetingSessionStatus;
   emailSent?: boolean;
   emailSentAt?: Date | string | null;
@@ -132,12 +143,44 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
     payload.notes = values.notes || null;
   }
 
+  if (values.errorCode !== undefined) {
+    payload.errorCode = values.errorCode || null;
+  }
+
+  if (values.failureReason !== undefined) {
+    payload.failureReason = values.failureReason || null;
+  }
+
   if (values.transcript !== undefined) {
     payload.transcript = values.transcript;
   }
 
   if (values.summary !== undefined) {
     payload.summary = values.summary;
+  }
+
+  if (values.keyDecisions !== undefined) {
+    payload.keyDecisions = values.keyDecisions;
+  }
+
+  if (values.risksAndBlockers !== undefined) {
+    payload.risksAndBlockers = values.risksAndBlockers;
+  }
+
+  if (values.keyTopics !== undefined) {
+    payload.keyTopics = values.keyTopics;
+  }
+
+  if (values.meetingSentiment !== undefined) {
+    payload.meetingSentiment = values.meetingSentiment || null;
+  }
+
+  if (values.followUpNeeded !== undefined) {
+    payload.followUpNeeded = values.followUpNeeded;
+  }
+
+  if (values.meetingDuration !== undefined) {
+    payload.meetingDuration = values.meetingDuration;
   }
 
   if (values.followUpEmail !== undefined) {
@@ -150,6 +193,24 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
 
   if (values.actionItems !== undefined) {
     payload.actionItems = values.actionItems;
+  }
+
+  if (values.recordingFilePath !== undefined) {
+    payload.recordingFilePath = values.recordingFilePath || null;
+  }
+
+  if (values.recordingStartedAt !== undefined) {
+    payload.recordingStartedAt =
+      typeof values.recordingStartedAt === "string"
+        ? new Date(values.recordingStartedAt)
+        : values.recordingStartedAt;
+  }
+
+  if (values.recordingEndedAt !== undefined) {
+    payload.recordingEndedAt =
+      typeof values.recordingEndedAt === "string"
+        ? new Date(values.recordingEndedAt)
+        : values.recordingEndedAt;
   }
 
   if (values.status !== undefined) {

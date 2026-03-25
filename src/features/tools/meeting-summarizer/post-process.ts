@@ -42,6 +42,8 @@ function dedupeActionItems(items: MeetingActionItem[]) {
       task: normalizeTask(item.task),
       owner: normalizeOwner(item.owner),
       deadline: normalizeDeadline(item.deadline),
+      dueDate: normalizeDeadline(item.dueDate || item.deadline),
+      priority: item.priority ?? "Medium",
       completed: item.completed ?? false
     };
 

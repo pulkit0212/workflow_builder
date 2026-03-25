@@ -403,6 +403,28 @@ async function joinMeeting(meetingUrl, meetingId) {
     await page.goto(meetingUrl, { waitUntil: "networkidle", timeout: 30_000 });
     await page.waitForTimeout(4_000);
 
+    const failurePatterns = [
+      "can't join this video call",
+      "cannot join",
+      "invalid meeting",
+      "meeting not found",
+      "This meeting is no longer available",
+      "expired"
+    ];
+
+    const initialBodyText = await page.evaluate(() => document.body?.innerText || "");
+
+    for (const pattern of failurePatterns) {
+      if (initialBodyText.toLowerCase().includes(pattern.toLowerCase())) {
+        return {
+          browser,
+          page,
+          status: "failed",
+          reason: pattern.toLowerCase().includes("join") ? "meet_access_denied" : "invalid_meeting_link"
+        };
+      }
+    }
+
     const pageTitle = await page.title();
     const pageUrl = page.url();
     const bodyText = await page.evaluate(() => document.body?.innerText?.substring(0, 600) || "");
@@ -461,6 +483,18 @@ async function joinMeeting(meetingUrl, meetingId) {
       console.log("[Bot] Visible buttons:", visibleButtons);
     }
 
+    await page.waitForTimeout(6_000);
+    const waitingText = await page.evaluate(() => document.body?.innerText || "");
+
+    if (
+      waitingText.toLowerCase().includes("waiting") ||
+      waitingText.toLowerCase().includes("ask to be let in") ||
+      waitingText.toLowerCase().includes("someone will let you in")
+    ) {
+      console.log("[Bot] Bot is in waiting room — waiting for host admission");
+      return { browser, page, status: "waiting_for_admission", reason: "host_admission_required" };
+    }
+
     await page.waitForTimeout(POST_CLICK_SETTLE_MS);
     const afterJoinText = await page.evaluate(() => document.body?.innerText?.substring(0, 400) || "");
     console.log("[Bot] After join text:", afterJoinText);
@@ -491,7 +525,7 @@ async function joinMeeting(meetingUrl, meetingId) {
     if (status === "joined") {
       const outcome = await waitForJoinOutcome(page, meetingId, DEFAULT_JOIN_TIMEOUT_MS);
       if (outcome.state === "waiting_for_admission") {
-        return { browser, page, status: "waiting_for_admission", reason: outcome.reason };
+        return { browser, page, status: "waiting_for_admission", reason: "host_admission_required" };
       }
 
       if (outcome.state === "failed") {

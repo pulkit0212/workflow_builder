@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
+import { cn } from "@/lib/utils";
 
 export type DashboardProfile = {
   id: string;
@@ -13,6 +14,7 @@ export type DashboardProfile = {
 
 type DashboardAccountProps = {
   initialProfile: DashboardProfile;
+  compact?: boolean;
 };
 
 type ProfileApiResponse = {
@@ -20,7 +22,7 @@ type ProfileApiResponse = {
   profile: DashboardProfile;
 };
 
-export function DashboardAccount({ initialProfile }: DashboardAccountProps) {
+export function DashboardAccount({ initialProfile, compact = false }: DashboardAccountProps) {
   const [profile, setProfile] = useState(initialProfile);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -61,13 +63,20 @@ export function DashboardAccount({ initialProfile }: DashboardAccountProps) {
   }, []);
 
   return (
-    <div className="flex items-center gap-3 rounded-full border border-white/70 bg-white/80 px-2 py-2 shadow-sm">
-      <div className="hidden min-w-0 px-2 sm:block">
-        <p className="truncate text-sm font-semibold text-slate-950">{profile.fullName || profile.email}</p>
-        <p className="truncate text-xs uppercase tracking-[0.2em] text-slate-500">
-          {profile.plan} plan{isRefreshing ? " syncing" : ""}
-        </p>
-      </div>
+    <div
+      className={cn(
+        "flex items-center gap-3 rounded-full border border-[#e5e7eb] bg-white px-2 py-2 shadow-sm",
+        compact && "border-transparent p-0 shadow-none"
+      )}
+    >
+      {!compact ? (
+        <div className="hidden min-w-0 px-2 sm:block">
+          <p className="truncate text-sm font-semibold text-slate-950">{profile.fullName || profile.email}</p>
+          <p className="truncate text-xs uppercase tracking-[0.2em] text-slate-500">
+            {profile.plan} plan{isRefreshing ? " syncing" : ""}
+          </p>
+        </div>
+      ) : null}
       <UserButton afterSignOutUrl="/" />
     </div>
   );

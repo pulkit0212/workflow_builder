@@ -49,7 +49,10 @@ export function ActionItemsCard({ items, actions, onToggleItem, isUpdating = fal
                     Owner: {item.owner || "Unspecified"}
                   </Badge>
                   <Badge variant={item.completed ? "available" : "pending"} className="normal-case tracking-normal">
-                    Due: {item.deadline || "Unspecified"}
+                    Due: {item.dueDate || item.deadline || "Unspecified"}
+                  </Badge>
+                  <Badge variant="neutral" className="normal-case tracking-normal">
+                    Priority: {item.priority || "Medium"}
                   </Badge>
                 </div>
               </div>

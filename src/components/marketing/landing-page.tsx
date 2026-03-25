@@ -48,20 +48,52 @@ const navItems: MarketingNavItem[] = [
 ];
 
 const integrations = [
-  { name: "Google Meet", short: "GM", tint: "from-emerald-50 to-lime-50", text: "text-emerald-700", border: "border-emerald-100" },
-  { name: "Zoom", short: "Z", tint: "from-blue-50 to-indigo-50", text: "text-blue-700", border: "border-blue-100" },
-  { name: "Microsoft Teams", short: "MT", tint: "from-violet-50 to-purple-50", text: "text-violet-700", border: "border-violet-100" },
-  { name: "Slack", short: "S", tint: "from-fuchsia-50 to-rose-50", text: "text-fuchsia-700", border: "border-fuchsia-100" },
-  { name: "Gmail", short: "M", tint: "from-rose-50 to-orange-50", text: "text-rose-700", border: "border-rose-100" },
-  { name: "Google Calendar", short: "GC", tint: "from-sky-50 to-cyan-50", text: "text-sky-700", border: "border-sky-100" },
-  { name: "Notion", short: "N", tint: "from-slate-50 to-gray-100", text: "text-slate-700", border: "border-slate-200" },
-  { name: "HubSpot", short: "HS", tint: "from-amber-50 to-orange-50", text: "text-amber-700", border: "border-amber-100" }
+  {
+    name: "Google Meet",
+    color: "#00AC47",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/9/9b/Google_Meet_icon_%282020%29.svg"
+  },
+  {
+    name: "Zoom",
+    color: "#2D8CFF",
+    icon: "https://cdn.worldvectorlogo.com/logos/zoom-1.svg"
+  },
+  {
+    name: "Microsoft Teams",
+    color: "#6264A7",
+    icon: "https://cdn.worldvectorlogo.com/logos/microsoft-teams-1.svg"
+  },
+  {
+    name: "Slack",
+    color: "#E01E5A",
+    icon: "https://cdn.worldvectorlogo.com/logos/slack-new-logo.svg"
+  },
+  {
+    name: "Gmail",
+    color: "#EA4335",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/7/7e/Gmail_icon_%282020%29.svg"
+  },
+  {
+    name: "Google Calendar",
+    color: "#4285F4",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/a/a5/Google_Calendar_icon_%282020%29.svg"
+  },
+  {
+    name: "Notion",
+    color: "#000000",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/4/45/Notion_app_logo.png"
+  },
+  {
+    name: "HubSpot",
+    color: "#FF7A59",
+    icon: "https://cdn.worldvectorlogo.com/logos/hubspot.svg"
+  }
 ] as const;
 
 const featureBuckets = [
   {
     title: "Capture meetings automatically",
-    description: "Sync your calendar, surface the right join links, and prepare the assistant before conversations begin.",
+    description: "Sync your calendar, surface the right join links, and prepare Artiva before conversations begin.",
     items: ["Auto-detect today's meetings", "Live join context and meeting links", "Clear upcoming view for busy operators"]
   },
   {
@@ -216,43 +248,49 @@ function HeroPreview() {
   );
 }
 
-function IntegrationMark({
-  name,
-  short,
-  tint,
-  text,
-  border
-}: (typeof integrations)[number]) {
-  const icon =
-    name === "Google Meet" ? (
-      <Video className="h-4 w-4" />
-    ) : name === "Zoom" ? (
-      <MessagesSquare className="h-4 w-4" />
-    ) : name === "Microsoft Teams" ? (
-      <BadgeCheck className="h-4 w-4" />
-    ) : name === "Slack" ? (
-      <Sparkles className="h-4 w-4" />
-    ) : name === "Gmail" ? (
-      <Mail className="h-4 w-4" />
-    ) : name === "Google Calendar" ? (
-      <CalendarDays className="h-4 w-4" />
-    ) : name === "Notion" ? (
-      <FileText className="h-4 w-4" />
-    ) : (
-      <ZoomIn className="h-4 w-4" />
-    );
-
+function IntegrationMark({ name, color, icon }: (typeof integrations)[number]) {
   return (
-    <div className={`group flex items-center gap-3 rounded-2xl border ${border} bg-white/92 px-4 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)]`}>
-      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${border} bg-gradient-to-br ${tint} ${text}`}>
-        {icon}
+    <div
+      className="group flex min-w-[110px] cursor-default flex-col items-center justify-center gap-2 rounded-2xl border border-[#f0f0f0] bg-white px-5 py-4 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_4px_16px_rgba(0,0,0,0.12)]"
+      onMouseEnter={(event) => {
+        event.currentTarget.style.transform = "translateY(-2px)";
+        event.currentTarget.style.boxShadow = "0 4px 16px rgba(0,0,0,0.12)";
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.transform = "translateY(0)";
+        event.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.06)";
+      }}
+    >
+      <img
+        src={icon}
+        alt={name}
+        className="object-contain"
+        style={{ width: "40px", height: "40px", objectFit: "contain", filter: color === "#000000" ? "none" : undefined }}
+        onError={(event) => {
+          event.currentTarget.style.display = "none";
+          const fallback = event.currentTarget.nextElementSibling as HTMLDivElement | null;
+          if (fallback) {
+            fallback.style.display = "flex";
+          }
+        }}
+      />
+      <div
+        style={{
+          display: "none",
+          width: "40px",
+          height: "40px",
+          background: color,
+          borderRadius: "8px",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "white",
+          fontWeight: 700,
+          fontSize: "13px"
+        }}
+      >
+        {name.substring(0, 2).toUpperCase()}
       </div>
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-slate-700">{name}</p>
-      </div>
-      <div className={`hidden rounded-lg bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${text} sm:block`}>
-        {short}
-      </div>
+      <span className="whitespace-nowrap text-center text-[12px] font-medium text-[#374151]">{name}</span>
     </div>
   );
 }
@@ -274,7 +312,7 @@ export function LandingPage({ isAuthenticated }: LandingPageProps) {
           <div className="flex items-center justify-between gap-6">
             <Link href="/" className="inline-flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-sm font-bold text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]">
-                AI
+                AR
               </span>
               <span>
                 <span className="block text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">Artiva</span>
@@ -383,13 +421,11 @@ export function LandingPage({ isAuthenticated }: LandingPageProps) {
         </div>
       </section>
 
-      <section className="border-y border-white/70 bg-slate-50/80 px-6 py-8 lg:px-10">
-        <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-sm space-y-2">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">Integrations</p>
-            <p className="text-base font-medium text-slate-700">Works with the tools your team already uses</p>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
+      <section className="border-y border-white/70 bg-slate-50/80 px-6 py-10 lg:px-10">
+        <div className="mx-auto w-full max-w-[1440px]">
+          <p className="mb-2 text-center text-[12px] font-semibold uppercase tracking-[0.1em] text-[#6c63ff]">INTEGRATIONS</p>
+          <h2 className="mb-8 text-center text-[24px] font-bold text-[#111827]">Works with the tools your team already uses</h2>
+          <div className="flex flex-wrap justify-center gap-4">
             {integrations.map((integration) => (
               <IntegrationMark key={integration.name} {...integration} />
             ))}

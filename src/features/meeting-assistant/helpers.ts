@@ -9,7 +9,9 @@ export function normalizeMeetingActionItems(items: MeetingActionItem[] | null | 
   return items.map((item) => ({
     task: item.task,
     owner: item.owner || "",
-    deadline: item.deadline || "",
+    deadline: item.deadline || item.dueDate || "",
+    dueDate: item.dueDate || item.deadline || "",
+    priority: item.priority || "Medium",
     completed: item.completed ?? false
   }));
 }
@@ -19,17 +21,21 @@ export function getMeetingSessionStatusLabel(status: MeetingSessionStatus) {
     case "joining":
       return "Joining";
     case "waiting_for_join":
-      return "Waiting to Join";
+      return "Preparing...";
+    case "waiting_for_admission":
+      return "Waiting";
     case "joined":
       return "Joined";
     case "capturing":
-      return "Capturing";
+      return "Recording";
     case "processing_transcript":
-      return "Processing Transcript";
+      return "Processing";
     case "processing_summary":
-      return "Processing Summary";
+      return "Processing";
     case "processing":
       return "Processing";
+    case "summarizing":
+      return "Summarizing";
     case "failed":
       return "Failed";
     case "recording":
@@ -51,16 +57,24 @@ export function getMeetingSessionStatusBadgeVariant(status: MeetingSessionStatus
       return "available" as const;
     case "joining":
     case "waiting_for_join":
+      return "info" as const;
+    case "waiting_for_admission":
       return "pending" as const;
     case "joined":
+      return "neutral" as const;
     case "capturing":
+      return "available" as const;
     case "processing_transcript":
     case "processing_summary":
     case "processing":
     case "recording":
     case "recorded":
     case "transcribed":
-      return "pending" as const;
+      return "info" as const;
+    case "summarizing":
+      return "accent" as const;
+    case "failed":
+      return "danger" as const;
     default:
       return "neutral" as const;
   }
@@ -86,7 +100,8 @@ export function buildActionItemsClipboardText(items: MeetingActionItem[]) {
     .map((item, index) => {
       const metadata = [
         item.owner ? `owner: ${item.owner}` : null,
-        item.deadline ? `deadline: ${item.deadline}` : null,
+        (item.dueDate || item.deadline) ? `deadline: ${item.dueDate || item.deadline}` : null,
+        item.priority ? `priority: ${item.priority}` : null,
         item.completed ? "completed" : "open"
       ]
         .filter(Boolean)
