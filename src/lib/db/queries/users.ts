@@ -70,6 +70,7 @@ export async function upsertUserByClerkIdentity({
       .set({
         email,
         fullName,
+        plan,
         updatedAt: now
       })
       .where(eq(users.id, existingByClerkUserId.id))
@@ -96,6 +97,7 @@ export async function upsertUserByClerkIdentity({
         clerkUserId,
         email,
         fullName,
+        plan,
         updatedAt: now
       })
       .where(eq(users.id, existingByEmail.id))

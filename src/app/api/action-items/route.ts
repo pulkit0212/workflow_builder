@@ -4,6 +4,8 @@ import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
+import { canUseActionItems } from "@/lib/subscription";
+import { getUserSubscription } from "@/lib/subscription.server";
 
 type ActionItemsTab = "all" | "high_priority" | "my_items" | "this_week";
 
@@ -80,6 +82,15 @@ export async function GET(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const subscription = await getUserSubscription(user.clerkUserId);
+
+    if (!canUseActionItems(subscription.plan)) {
+      return apiError("Action items require Pro or Elite plan.", 403, {
+        error: "upgrade_required",
+        currentPlan: subscription.plan
+      });
+    }
+
     const { searchParams } = new URL(request.url);
     const page = normalizePositiveInteger(searchParams.get("page"), 1);
     const limit = normalizePositiveInteger(searchParams.get("limit"), 10);

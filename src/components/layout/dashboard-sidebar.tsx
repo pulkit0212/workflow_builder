@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -47,6 +48,11 @@ type DashboardSidebarProps = {
   profile: DashboardProfile;
 };
 
+type SubscriptionBadgeState = {
+  plan: string;
+  trialDaysLeft: number;
+};
+
 function getInitials(value: string | null, email: string) {
   const source = value?.trim() || email;
   return source
@@ -58,8 +64,72 @@ function getInitials(value: string | null, email: string) {
 
 export function DashboardSidebar({ profile }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const [subscription, setSubscription] = useState<SubscriptionBadgeState>({ plan: profile.plan, trialDaysLeft: 0 });
   const primaryItems = navigation.filter((item) => item.section === "primary");
   const secondaryItems = navigation.filter((item) => item.section === "secondary");
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadSubscription() {
+      try {
+        const response = await fetch("/api/subscription", {
+          cache: "no-store"
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          success: boolean;
+          plan?: string;
+          trialDaysLeft?: number;
+        };
+
+        if (isMounted && payload.success) {
+          setSubscription({
+            plan: payload.plan ?? profile.plan,
+            trialDaysLeft: payload.trialDaysLeft ?? 0
+          });
+        }
+      } catch {
+        return;
+      }
+    }
+
+    void loadSubscription();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile.plan]);
+
+  function getBadgeLabel() {
+    switch (subscription.plan) {
+      case "trial":
+        return `TRIAL — ${subscription.trialDaysLeft} days left`;
+      case "pro":
+        return "PRO";
+      case "elite":
+        return "ELITE ✨";
+      default:
+        return "FREE PLAN";
+    }
+  }
+
+  function getBadgeClassName() {
+    switch (subscription.plan) {
+      case "trial":
+        return "bg-[#fefce8] text-[#b45309]";
+      case "pro":
+        return "bg-[#f5f3ff] text-[#6c63ff]";
+      case "elite":
+        return "bg-gradient-to-r from-[#1f1147] to-[#6c63ff] text-white";
+      default:
+        return "bg-white/10 text-slate-300";
+    }
+  }
 
   return (
     <aside className="hidden w-[240px] flex-col bg-[#1a1a2e] px-4 py-6 text-[#e2e8f0] lg:flex">
@@ -126,7 +196,7 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
           </div>
         </div>
         <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold text-slate-300">FREE PLAN</span>
+          <span className={cn("rounded-full px-3 py-1 text-[11px] font-semibold", getBadgeClassName())}>{getBadgeLabel()}</span>
           <Link
             href="/dashboard/billing"
             className="inline-flex items-center rounded-lg bg-[#6c63ff] px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-[#5b52ee]"

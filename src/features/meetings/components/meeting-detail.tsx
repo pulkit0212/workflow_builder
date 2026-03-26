@@ -177,6 +177,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [notFound, setNotFound] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
+  const [upgradeBlocked, setUpgradeBlocked] = useState<{ reason: "upgrade_required" | "limit_reached" } | null>(null);
   const [isPending, startTransition] = useTransition();
   const session = useSessionPolling(meeting?.meetingSessionId ?? null);
 
@@ -187,6 +188,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       setIsLoading(true);
       setError(null);
       setNotFound(false);
+      setUpgradeBlocked(null);
 
       try {
         const nextMeeting = await fetchMeetingById(meetingId);
@@ -300,12 +302,23 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     }
 
     setActionError(null);
+    setUpgradeBlocked(null);
 
     startTransition(async () => {
       try {
         const started = await startMeetingCapture(meeting.id, meeting.meetingLink);
         setMeeting(started.meeting);
       } catch (startError) {
+        const errorWithMeta = startError as Error & { status?: number; code?: string };
+
+        if (errorWithMeta.status === 403 && (errorWithMeta.code === "upgrade_required" || errorWithMeta.code === "limit_reached")) {
+          setUpgradeBlocked({
+            reason: errorWithMeta.code
+          });
+          setActionError(null);
+          return;
+        }
+
         setActionError(startError instanceof Error ? startError.message : "Failed to start recording.");
       }
     });
@@ -506,10 +519,14 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
                   Open meeting
                   <ExternalLink className="h-4 w-4" />
                 </Button>
-                {canStartBot ? (
+                {canStartBot && !upgradeBlocked ? (
                   <Button type="button" onClick={handleStartBot} disabled={isPending}>
                     {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
                     Start AI Notetaker
+                  </Button>
+                ) : canStartBot && upgradeBlocked ? (
+                  <Button asChild className="bg-[#1f1147] text-white hover:bg-[#140b33]">
+                    <Link href="/dashboard/billing">Upgrade to Pro to record meetings</Link>
                   </Button>
                 ) : canStopBot ? (
                   <Button type="button" variant="danger" onClick={handleStopBot} disabled={isPending}>
@@ -537,6 +554,30 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
 
             {actionError ? (
               <div className="mt-4 rounded-xl border border-[#fecaca] bg-[#fef2f2] p-4 text-sm text-[#991b1b]">{actionError}</div>
+            ) : null}
+
+            {upgradeBlocked ? (
+              <div className="mt-4 rounded-xl border border-[#fde68a] bg-[#fffbeb] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[#b45309]">Locked Feature</p>
+                    <p className="mt-2 font-semibold text-[#111827]">Meeting recording requires Pro or Elite</p>
+                    <p className="mt-1 text-sm text-[#92400e]">
+                      {upgradeBlocked.reason === "limit_reached"
+                        ? "You have reached your monthly meeting limit."
+                        : "Free plan users can keep using the three core generators, but meeting capture is locked."}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Button asChild>
+                      <Link href="/dashboard/billing">Upgrade to Pro - ₹99/mo</Link>
+                    </Button>
+                    <Button asChild variant="secondary">
+                      <Link href="/dashboard/billing">View all plans</Link>
+                    </Button>
+                  </div>
+                </div>
+              </div>
             ) : null}
           </Card>
 

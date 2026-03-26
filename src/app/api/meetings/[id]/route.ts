@@ -22,6 +22,8 @@ import {
   logMeetingSessionTransitionAttempt,
   normalizeMeetingSessionStatus
 } from "@/features/meetings/server/state-machine";
+import { getPlanLimits } from "@/lib/subscription";
+import { getUserSubscription, incrementMeetingUsage } from "@/lib/subscription.server";
 
 type RouteContext = {
   params: Promise<{
@@ -135,12 +137,30 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const subscription = await getUserSubscription(user.clerkUserId);
+    const limits = getPlanLimits(subscription.plan);
     const { id } = await context.params;
     const body = (await request.json().catch(() => null)) as { meetingUrl?: string } | null;
     console.info("[start-route] request received", {
       meetingId: id,
       userId
     });
+
+    if (!limits.meetingBot) {
+      return apiError("Meeting recording requires Pro or Elite plan.", 403, {
+        error: "upgrade_required",
+        currentPlan: subscription.plan,
+        limits
+      });
+    }
+
+    if (!limits.unlimited && subscription.meetingsUsedThisMonth >= limits.meetingsPerMonth) {
+      return apiError(`You have used all ${limits.meetingsPerMonth} meetings this month.`, 403, {
+        error: "limit_reached",
+        currentPlan: subscription.plan,
+        limits
+      });
+    }
 
     if (isCalendarMeetingId(id)) {
       const calendarMeetingId = decodeCalendarMeetingId(id);
@@ -166,6 +186,8 @@ export async function POST(request: Request, context: RouteContext) {
       if (!canTransitionMeetingSessionStatus(previousStatus, "waiting_for_join")) {
         return apiError("Meeting session is not ready to start Artiva.", 409);
       }
+
+      await incrementMeetingUsage(user.clerkUserId);
 
       const session = existingSession
         ? await updateMeetingSession(existingSession.id, user.id, {
@@ -240,6 +262,8 @@ export async function POST(request: Request, context: RouteContext) {
     if (!canTransitionMeetingSessionStatus(previousStatus, "waiting_for_join")) {
       return apiError("Meeting session is not ready to start Artiva.", 409);
     }
+
+    await incrementMeetingUsage(user.clerkUserId);
 
     const session = await updateMeetingSession(meeting.id, user.id, {
       meetingLink: meetingUrl,

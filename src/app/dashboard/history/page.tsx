@@ -2,13 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { History } from "lucide-react";
+import { ArrowRight, History } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
 import { SectionHeader } from "@/components/shared/section-header";
 import { ResultState } from "@/components/tools/result-state";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { formatHistoryDate, formatPreview } from "@/features/history/helpers";
 
 const ITEMS_PER_PAGE = 8;
@@ -35,12 +36,14 @@ export default function HistoryPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadRuns() {
       setIsLoading(true);
+      setUpgradeRequired(false);
 
       try {
         const response = await fetch("/api/ai-runs", {
@@ -55,10 +58,16 @@ export default function HistoryPage() {
         }
 
         if (!response.ok || !payload.success) {
+          if (response.status === 403) {
+            setUpgradeRequired(true);
+            setLoadError(null);
+            return;
+          }
           setLoadError("message" in payload ? payload.message : "Failed to load run history.");
           return;
         }
 
+        setUpgradeRequired(false);
         setRuns(payload.runs);
       } catch (error) {
         if (isMounted) {
@@ -97,6 +106,26 @@ export default function HistoryPage() {
             {Array.from({ length: 8 }).map((_, index) => (
               <div key={index} className="shimmer h-16 rounded-3xl" />
             ))}
+          </div>
+        ) : upgradeRequired ? (
+          <div className="space-y-4 rounded-3xl border border-[#fde68a] bg-[#fffbeb] p-6">
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#b45309]">Locked Feature</p>
+            <h2 className="text-2xl font-bold text-[#111827]">Meeting history requires Pro or Elite</h2>
+            <p className="max-w-2xl text-sm leading-6 text-[#92400e]">
+              Upgrade to unlock run history for meetings and workflow runs. Free users keep unlimited access to the
+              three generator tools.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/dashboard/billing">
+                  View plans
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/dashboard/tools">Keep using tools</Link>
+              </Button>
+            </div>
           </div>
         ) : loadError ? (
           <ResultState icon="error" title="Unable to load history" description={loadError} className="border-none p-0 shadow-none" />

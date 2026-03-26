@@ -30,9 +30,11 @@
     "openai": "^4.104.0",
     "playwright": "latest",
     "pg": "^8.14.1",
+    "razorpay": "^2.9.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.55.0",
+    "svix": "^1.60.0",
     "tailwind-merge": "^3.3.0",
     "zod": "^3.24.2"
   },

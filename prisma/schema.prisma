@@ -1,0 +1,45 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Subscription {
+  id                   String   @id @default(uuid())
+  userId               String   @unique @map("user_id")
+  plan                 String   @default("free")
+  status               String   @default("active")
+  trialStartedAt       DateTime @default(now()) @map("trial_started_at")
+  trialEndsAt          DateTime @map("trial_ends_at")
+  planStartedAt        DateTime? @map("plan_started_at")
+  planEndsAt           DateTime? @map("plan_ends_at")
+  razorpayOrderId      String?  @map("razorpay_order_id")
+  razorpayPaymentId    String?  @map("razorpay_payment_id")
+  razorpaySubId        String?  @map("razorpay_sub_id")
+  meetingsUsedThisMonth Int      @default(0) @map("meetings_used_this_month")
+  lastResetDate        DateTime @default(now()) @map("last_reset_date")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("subscriptions")
+}
+
+model SubscriptionPayment {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  plan              String
+  amount            Int
+  currency          String   @default("INR")
+  status            String   @default("created")
+  razorpayOrderId   String   @map("razorpay_order_id")
+  razorpayPaymentId String?  @map("razorpay_payment_id")
+  razorpaySignature String?  @map("razorpay_signature")
+  invoiceNumber     String?  @map("invoice_number")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("subscription_payments")
+}

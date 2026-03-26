@@ -149,7 +149,15 @@ export async function fetchMeetingReports(params: {
   const payload = (await response.json()) as ReportsResponse | MeetingSessionErrorResponse;
 
   if (!response.ok) {
-    throw new Error("message" in payload ? getMeetingsErrorMessage(payload) : "Failed to load meeting reports.");
+    const error = new Error("message" in payload ? getMeetingsErrorMessage(payload) : "Failed to load meeting reports.");
+    (error as Error & { status?: number; code?: string }).status = response.status;
+    if (payload && typeof payload === "object" && "details" in payload && payload.details && typeof payload.details === "object") {
+      const details = payload.details as { error?: string };
+      if (details.error) {
+        (error as Error & { code?: string }).code = details.error;
+      }
+    }
+    throw error;
   }
 
   return payload as ReportsResponse;
@@ -187,6 +195,12 @@ export async function startMeetingCapture(id: string, meetingUrl: string) {
       !payload.success ? getMeetingsErrorMessage(payload) : "Failed to start meeting capture."
     );
     (error as Error & { status?: number }).status = response.status;
+    if (payload && typeof payload === "object" && "details" in payload && payload.details && typeof payload.details === "object") {
+      const details = payload.details as { error?: string };
+      if (details.error) {
+        (error as Error & { code?: string }).code = details.error;
+      }
+    }
     throw error;
   }
 

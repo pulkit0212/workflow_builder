@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { FileText, LoaderCircle, Search } from "lucide-react";
+import { ArrowRight, FileText, LoaderCircle, Search } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
 import { Badge } from "@/components/ui/badge";
@@ -151,6 +151,7 @@ export function ReportsList() {
   const [page, setPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [pagination, setPagination] = useState({
     total: 0,
     page: 1,
@@ -170,6 +171,7 @@ export function ReportsList() {
     async function loadReports() {
       setIsLoading(true);
       setError(null);
+      setUpgradeRequired(false);
 
       try {
         const result = await fetchMeetingReports({
@@ -183,9 +185,15 @@ export function ReportsList() {
         if (!cancelled) {
           setReports(result.meetings);
           setPagination(result.pagination);
+          setUpgradeRequired(false);
         }
       } catch (loadError) {
         if (!cancelled) {
+          if ((loadError as Error & { status?: number }).status === 403) {
+            setUpgradeRequired(true);
+            setError(null);
+            return;
+          }
           setError(loadError instanceof Error ? loadError.message : "Failed to load reports.");
         }
       } finally {
@@ -270,6 +278,27 @@ export function ReportsList() {
             </Card>
           ))}
         </div>
+      ) : upgradeRequired ? (
+        <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
+          <div className="space-y-4">
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#b45309]">Locked Feature</p>
+            <h2 className="text-2xl font-bold text-[#111827]">Meeting reports require Pro or Elite</h2>
+            <p className="max-w-2xl text-sm leading-6 text-[#92400e]">
+              Upgrade to see completed meeting reports and recording history.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/dashboard/billing">
+                  Upgrade now
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/dashboard/tools">Keep using tools</Link>
+              </Button>
+            </div>
+          </div>
+        </Card>
       ) : error ? (
         <Card className="border-[#fecaca] p-6">
           <p className="text-sm font-semibold text-[#991b1b]">Unable to load reports</p>

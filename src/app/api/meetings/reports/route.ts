@@ -5,6 +5,8 @@ import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
 import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { canUseHistory } from "@/lib/subscription";
+import { getUserSubscription } from "@/lib/subscription.server";
 
 type ReportStatusFilter = "all" | "completed" | "recording" | "failed";
 type ReportDateFilter = "all" | "week" | "month";
@@ -43,6 +45,15 @@ export async function GET(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const subscription = await getUserSubscription(user.clerkUserId);
+
+    if (!canUseHistory(subscription.plan)) {
+      return apiError("Meeting history requires Pro or Elite plan.", 403, {
+        error: "upgrade_required",
+        currentPlan: subscription.plan
+      });
+    }
+
     const meetings = await listMeetingSessionsByUser(user.id, {
       excludeDrafts: true
     });

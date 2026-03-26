@@ -3,6 +3,8 @@ import { apiError, apiSuccess } from "@/lib/api-responses";
 import { getRunsForUser } from "@/lib/ai/execute-tool";
 import { ToolExecutionError } from "@/lib/ai/tool-execution-error";
 import { toolSlugs, type ToolSlug } from "@/lib/ai/tool-registry";
+import { canUseHistory } from "@/lib/subscription";
+import { getUserSubscription } from "@/lib/subscription.server";
 
 export async function GET(request: Request) {
   const { userId } = await auth();
@@ -19,6 +21,15 @@ export async function GET(request: Request) {
   }
 
   try {
+    const subscription = await getUserSubscription(userId);
+
+    if (!canUseHistory(subscription.plan)) {
+      return apiError("Meeting history requires Pro or Elite plan.", 403, {
+        error: "upgrade_required",
+        currentPlan: subscription.plan
+      });
+    }
+
     const runs = await getRunsForUser(userId, toolSlug as ToolSlug | undefined);
 
     return apiSuccess({

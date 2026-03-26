@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CalendarDays, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, FileText } from "lucide-react";
 import { ActionItemsCard } from "@/components/tools/action-items-card";
 import { KeyPointsCard } from "@/components/tools/key-points-card";
 import { ResultState } from "@/components/tools/result-state";
@@ -61,6 +61,7 @@ export function HistoryRunDetail({ runId }: HistoryRunDetailProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -79,7 +80,11 @@ export function HistoryRunDetail({ runId }: HistoryRunDetailProps) {
         if (!response.ok || !payload.success) {
           if (response.status === 404 || response.status === 403) {
             if (isMounted) {
-              setNotFound(true);
+              if (response.status === 403) {
+                setUpgradeRequired(true);
+              } else {
+                setNotFound(true);
+              }
             }
             return;
           }
@@ -128,6 +133,31 @@ export function HistoryRunDetail({ runId }: HistoryRunDetailProps) {
           <Link href="/dashboard/history">Back to history</Link>
         </Button>
       </ResultState>
+    );
+  }
+
+  if (upgradeRequired) {
+    return (
+      <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
+        <div className="space-y-4">
+          <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#b45309]">Locked Feature</p>
+          <h1 className="text-2xl font-bold text-[#111827]">Meeting history requires Pro or Elite</h1>
+          <p className="max-w-2xl text-sm leading-6 text-[#92400e]">
+            Upgrade to view saved transcripts, summaries, and action items from your meeting history.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild>
+              <Link href="/dashboard/billing">
+                Upgrade now
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/dashboard/history">Back to history</Link>
+            </Button>
+          </div>
+        </div>
+      </Card>
     );
   }
 

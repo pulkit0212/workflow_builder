@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { SectionHeader } from "@/components/shared/section-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -93,6 +94,7 @@ export default function ActionItemsPage() {
     totalPages: 1
   });
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -107,6 +109,7 @@ export default function ActionItemsPage() {
 
       setIsLoading(true);
       setLoadError(null);
+      setUpgradeRequired(false);
 
       try {
         const params = new URLSearchParams({
@@ -130,9 +133,15 @@ export default function ActionItemsPage() {
         }
 
         if (!response.ok || !("success" in payload) || payload.success !== true) {
+          if (response.status === 403) {
+            setUpgradeRequired(true);
+            setLoadError(null);
+            return;
+          }
           throw new Error("message" in payload ? payload.message || "Failed to load action items." : "Failed to load action items.");
         }
 
+        setUpgradeRequired(false);
         setItems(payload.items);
         setPagination(payload.pagination);
         setCurrentPage(payload.pagination.page);
@@ -202,6 +211,27 @@ export default function ActionItemsPage() {
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="shimmer h-12 rounded-xl" />
             ))}
+          </div>
+        </Card>
+      ) : upgradeRequired ? (
+        <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
+          <div className="space-y-4">
+            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#b45309]">Locked Feature</p>
+            <h2 className="text-2xl font-bold text-[#111827]">Action items require Pro or Elite</h2>
+            <p className="max-w-2xl text-sm leading-6 text-[#92400e]">
+              Upgrade to view and manage action items extracted from meetings.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button asChild>
+                <Link href="/dashboard/billing">
+                  Upgrade now
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+              <Button asChild variant="secondary">
+                <Link href="/dashboard/tools">Keep using tools</Link>
+              </Button>
+            </div>
           </div>
         </Card>
       ) : loadError ? (

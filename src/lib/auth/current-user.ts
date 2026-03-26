@@ -3,6 +3,7 @@ import type { Route } from "next";
 import { redirect } from "next/navigation";
 import type { AppUser } from "@/lib/db/queries/users";
 import { getUserByClerkUserId, upsertUserByClerkIdentity } from "@/lib/db/queries/users";
+import { getUserSubscription } from "@/lib/subscription.server";
 
 const signInRoute = "/sign-in" as Route;
 const authLogPrefix = "[auth-sync]";
@@ -90,7 +91,11 @@ export async function syncCurrentUserToDatabase(expectedClerkUserId?: string): P
     clerkUserId: clerkUser.clerkUserId
   });
 
-  const appUser = await upsertUserByClerkIdentity(clerkUser);
+  const subscription = await getUserSubscription(clerkUser.clerkUserId);
+  const appUser = await upsertUserByClerkIdentity({
+    ...clerkUser,
+    plan: subscription.plan
+  });
 
   console.info(`${authLogPrefix} synced app user`, {
     clerkUserId: appUser.clerkUserId,

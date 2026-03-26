@@ -32,6 +32,43 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "subscriptions" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" varchar(255) NOT NULL UNIQUE,
+      "plan" varchar(50) NOT NULL DEFAULT 'free',
+      "status" varchar(50) NOT NULL DEFAULT 'active',
+      "trial_started_at" timestamptz NOT NULL DEFAULT now(),
+      "trial_ends_at" timestamptz NOT NULL,
+      "plan_started_at" timestamptz,
+      "plan_ends_at" timestamptz,
+      "razorpay_order_id" varchar(255),
+      "razorpay_payment_id" varchar(255),
+      "razorpay_sub_id" varchar(255),
+      "meetings_used_this_month" integer NOT NULL DEFAULT 0,
+      "last_reset_date" timestamptz NOT NULL DEFAULT now(),
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "subscription_payments" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" varchar(255) NOT NULL,
+      "plan" varchar(50) NOT NULL,
+      "amount" integer NOT NULL,
+      "currency" varchar(10) NOT NULL DEFAULT 'INR',
+      "status" varchar(50) NOT NULL DEFAULT 'created',
+      "razorpay_order_id" varchar(255) NOT NULL,
+      "razorpay_payment_id" varchar(255),
+      "razorpay_signature" text,
+      "invoice_number" varchar(255),
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS "tools" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "slug" varchar(100) NOT NULL UNIQUE,

@@ -6,6 +6,8 @@ import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { db } from "@/lib/db/client";
 import { actionItems } from "@/db/schema";
+import { canUseActionItems } from "@/lib/subscription";
+import { getUserSubscription } from "@/lib/subscription.server";
 
 export const runtime = "nodejs";
 
@@ -58,6 +60,15 @@ export async function POST(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const subscription = await getUserSubscription(user.clerkUserId);
+
+    if (!canUseActionItems(subscription.plan)) {
+      return apiError("Action items require Pro or Elite plan.", 403, {
+        error: "upgrade_required",
+        currentPlan: subscription.plan
+      });
+    }
+
     const database = getDbOrThrow();
     const source = parsed.data.source.includes("document") ? "document" : parsed.data.source;
     const now = new Date();
