@@ -1,3 +1,3 @@
 export const taskGeneratorMeta = {
-  phase: "coming-soon"
+  phase: "available"
 } as const;

@@ -1,3 +1,3 @@
 export const emailGeneratorMeta = {
-  phase: "coming-soon"
+  phase: "available"
 } as const;

@@ -1,14 +1,20 @@
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ToolPageShell } from "@/components/tools/tool-page-shell";
-import { ComingSoonPanel } from "@/features/tools/shared/components/coming-soon-panel";
 import { toolRegistry } from "@/lib/ai/tool-registry";
+import { TaskGeneratorWorkspace } from "@/features/tools/task-generator/components/task-generator-workspace";
 
 export default function TaskGeneratorPage() {
   return (
-    <ToolPageShell tool={toolRegistry["task-generator"]}>
-      <ComingSoonPanel
-        title="Task Generator is coming soon"
-        description="This tool will inherit the same route contracts, result shell, history model, and usage accounting as the rest of the platform."
+    <div className="space-y-4">
+      <Breadcrumbs
+        items={[
+          { label: "Tools", href: "/dashboard/tools" },
+          { label: "Task Generator" }
+        ]}
       />
-    </ToolPageShell>
+      <ToolPageShell tool={toolRegistry["task-generator"]}>
+        <TaskGeneratorWorkspace />
+      </ToolPageShell>
+    </div>
   );
 }

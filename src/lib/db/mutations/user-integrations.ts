@@ -23,31 +23,38 @@ type UpsertUserIntegrationInput = {
 export async function upsertUserIntegration(values: UpsertUserIntegrationInput) {
   const database = getDbOrThrow();
   const now = new Date();
+  const [existingIntegration] = await database
+    .select()
+    .from(userIntegrations)
+    .where(and(eq(userIntegrations.userId, values.userId), eq(userIntegrations.provider, values.provider)))
+    .limit(1);
 
-  const [integration] = await database
-    .insert(userIntegrations)
-    .values({
-      userId: values.userId,
-      provider: values.provider,
-      email: values.email ?? null,
-      scopes: values.scopes ?? null,
-      accessToken: values.accessToken ?? null,
-      refreshToken: values.refreshToken ?? null,
-      expiry: values.expiry ?? null,
-      updatedAt: now
-    })
-    .onConflictDoUpdate({
-      target: [userIntegrations.userId, userIntegrations.provider],
-      set: {
-        email: values.email ?? null,
-        scopes: values.scopes ?? null,
-        accessToken: values.accessToken ?? null,
-        refreshToken: values.refreshToken ?? null,
-        expiry: values.expiry ?? null,
-        updatedAt: now
-      }
-    })
-    .returning();
+  const [integration] = existingIntegration
+    ? await database
+        .update(userIntegrations)
+        .set({
+          email: values.email ?? null,
+          scopes: values.scopes ?? null,
+          accessToken: values.accessToken ?? null,
+          refreshToken: values.refreshToken ?? null,
+          expiry: values.expiry ?? null,
+          updatedAt: now
+        })
+        .where(eq(userIntegrations.id, existingIntegration.id))
+        .returning()
+    : await database
+        .insert(userIntegrations)
+        .values({
+          userId: values.userId,
+          provider: values.provider,
+          email: values.email ?? null,
+          scopes: values.scopes ?? null,
+          accessToken: values.accessToken ?? null,
+          refreshToken: values.refreshToken ?? null,
+          expiry: values.expiry ?? null,
+          updatedAt: now
+        })
+        .returning();
 
   if (!integration) {
     throw new Error("Failed to persist integration.");

@@ -1,3 +1,3 @@
 export const documentAnalyzerMeta = {
-  phase: "coming-soon"
+  phase: "available"
 } as const;

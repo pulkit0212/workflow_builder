@@ -18,10 +18,14 @@ export function ToolPageShell({ tool, children, aside }: ToolPageShellProps) {
         description={tool.description}
         action={<Badge variant={tool.status === "available" ? "available" : "pending"}>{tool.status === "available" ? "Available" : "Coming Soon"}</Badge>}
       />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+      {aside ? (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div>{children}</div>
+          <aside className="space-y-4">{aside}</aside>
+        </div>
+      ) : (
         <div>{children}</div>
-        {aside ? <aside className="space-y-4">{aside}</aside> : null}
-      </div>
+      )}
     </div>
   );
 }

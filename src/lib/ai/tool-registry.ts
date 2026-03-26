@@ -51,31 +51,31 @@ export const toolRegistry: Record<ToolSlug, ToolDefinition> = {
     slug: "email-generator",
     name: "Email Generator",
     description: "Draft outbound emails, replies, and follow-ups with shared prompt orchestration.",
-    status: "coming-soon",
+    status: "available",
     route: "/dashboard/tools/email-generator",
     icon: Mail,
     marketingCopy: "Create polished emails from simple inputs without reinventing product structure.",
-    implemented: false
+    implemented: true
   },
   "document-analyzer": {
     slug: "document-analyzer",
     name: "Document Analyzer",
     description: "Extract insights from uploaded files with support for reusable file and run history.",
-    status: "coming-soon",
+    status: "available",
     route: "/dashboard/tools/document-analyzer",
     icon: FileText,
     marketingCopy: "Prepare for file analysis with the same run storage, usage logs, and UI shell.",
-    implemented: false
+    implemented: true
   },
   "task-generator": {
     slug: "task-generator",
     name: "Task Generator",
     description: "Convert messy notes into action-ready task lists, owners, and deadlines.",
-    status: "coming-soon",
+    status: "available",
     route: "/dashboard/tools/task-generator",
     icon: ListTodo,
     marketingCopy: "Expand into AI task planning using the same tool contract and dashboard patterns.",
-    implemented: false
+    implemented: true
   }
 };
 

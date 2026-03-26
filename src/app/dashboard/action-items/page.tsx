@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { SectionHeader } from "@/components/shared/section-header";
@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
 import { CheckSquare, ListChecks } from "lucide-react";
-import { fetchJoinedMeetings } from "@/features/meetings/api";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -25,6 +24,17 @@ type ActionItemRow = {
   meetingTitle: string;
   meetingId: string;
   createdAt: string;
+};
+
+type ActionItemsResponse = {
+  success: true;
+  items: ActionItemRow[];
+  pagination: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
 };
 
 function formatDate(value: string) {
@@ -44,52 +54,99 @@ function formatDate(value: string) {
 function getEmptyStateCopy(activeTab: ActionItemTab) {
   switch (activeTab) {
     case "high_priority":
-      return "No high priority items found";
+      return {
+        title: "No high priority items",
+        description: "High priority tasks from your meetings will appear here",
+        icon: ListChecks
+      };
     case "my_items":
-      return "No items assigned to you";
+      return {
+        title: "No items assigned to you",
+        description: "Items where your name is mentioned as owner will appear here",
+        icon: ListChecks
+      };
     case "this_week":
-      return "No items from this week";
+      return {
+        title: "No items from this week",
+        description: "Record meetings this week to see tasks here",
+        icon: ListChecks
+      };
     default:
-      return "No action items yet";
+      return {
+        title: "No action items yet",
+        description: "Record a meeting to automatically extract tasks",
+        icon: CheckSquare
+      };
   }
 }
 
 export default function ActionItemsPage() {
   const { user } = useUser();
-  const [allItems, setAllItems] = useState<ActionItemRow[]>([]);
+  const [items, setItems] = useState<ActionItemRow[]>([]);
   const [activeTab, setActiveTab] = useState<ActionItemTab>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [pagination, setPagination] = useState({
+    total: 0,
+    page: 1,
+    limit: ITEMS_PER_PAGE,
+    totalPages: 1
+  });
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     async function loadItems() {
+      if (!user) {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+        return;
+      }
+
       setIsLoading(true);
+      setLoadError(null);
 
       try {
-        const meetingSessions = await fetchJoinedMeetings();
+        const params = new URLSearchParams({
+          tab: activeTab,
+          page: String(currentPage),
+          limit: String(ITEMS_PER_PAGE),
+          firstName: user.firstName || ""
+        });
+        const response = await fetch(`/api/action-items?${params.toString()}`, {
+          cache: "no-store"
+        });
+        const payload = (await response.json()) as
+          | ActionItemsResponse
+          | {
+              success?: false;
+              message?: string;
+            };
 
         if (!isMounted) {
           return;
         }
 
-        const rows = meetingSessions
-          .filter((meeting) => meeting.status === "completed")
-          .flatMap((meeting) =>
-            meeting.actionItems.map((item, index) => ({
-              id: `${meeting.id}-${index}`,
-              task: item.task,
-              owner: item.owner || "Unassigned",
-              dueDate: item.dueDate || item.deadline || "Not specified",
-              priority: item.priority || "Medium",
-              meetingTitle: meeting.title,
-              meetingId: meeting.id,
-              createdAt: meeting.createdAt
-            }))
-          );
+        if (!response.ok || !("success" in payload) || payload.success !== true) {
+          throw new Error("message" in payload ? payload.message || "Failed to load action items." : "Failed to load action items.");
+        }
 
-        setAllItems(rows);
+        setItems(payload.items);
+        setPagination(payload.pagination);
+        setCurrentPage(payload.pagination.page);
+      } catch (error) {
+        if (isMounted) {
+          setItems([]);
+          setPagination({
+            total: 0,
+            page: 1,
+            limit: ITEMS_PER_PAGE,
+            totalPages: 1
+          });
+          setLoadError(error instanceof Error ? error.message : "Failed to load action items.");
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -102,32 +159,14 @@ export default function ActionItemsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
-
-  const filteredItems = useMemo(() => {
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const firstName = user?.firstName?.toLowerCase() || "";
-
-    switch (activeTab) {
-      case "high_priority":
-        return allItems.filter((item) => item.priority === "High");
-      case "my_items":
-        return allItems.filter((item) => firstName && item.owner.toLowerCase().includes(firstName));
-      case "this_week":
-        return allItems.filter((item) => new Date(item.createdAt) >= sevenDaysAgo);
-      default:
-        return allItems;
-    }
-  }, [activeTab, allItems, user?.firstName]);
-
-  const totalPages = Math.max(Math.ceil(filteredItems.length / ITEMS_PER_PAGE), 1);
-  const paginatedItems = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  }, [activeTab, currentPage, user]);
 
   function handleTabChange(tab: ActionItemTab) {
     setActiveTab(tab);
     setCurrentPage(1);
   }
+
+  const emptyState = getEmptyStateCopy(activeTab);
 
   return (
     <div className="space-y-6">
@@ -165,17 +204,17 @@ export default function ActionItemsPage() {
             ))}
           </div>
         </Card>
-      ) : filteredItems.length === 0 ? (
+      ) : loadError ? (
         <EmptyState
           icon={ListChecks}
-          title={getEmptyStateCopy(activeTab)}
-          description={
-            activeTab === "my_items"
-              ? "No items assigned to you yet"
-              : activeTab === "all"
-                ? "No action items yet. Complete a meeting to see tasks here."
-                : "Action items matching this filter will appear here."
-          }
+          title="Unable to load action items"
+          description={loadError}
+        />
+      ) : items.length === 0 ? (
+        <EmptyState
+          icon={emptyState.icon}
+          title={emptyState.title}
+          description={emptyState.description}
         />
       ) : (
         <>
@@ -196,7 +235,7 @@ export default function ActionItemsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginatedItems.map((row, index) => (
+                  {items.map((row, index) => (
                     <tr key={row.id} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
                       <td className="px-4 py-4">
                         <span className="inline-flex h-5 w-5 items-center justify-center rounded border border-[#d1d5db]">
@@ -238,9 +277,9 @@ export default function ActionItemsPage() {
 
           <Pagination
             currentPage={currentPage}
-            totalPages={totalPages}
-            totalItems={filteredItems.length}
-            pageSize={ITEMS_PER_PAGE}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.total}
+            pageSize={pagination.limit}
             itemLabel="items"
             onPageChange={setCurrentPage}
           />

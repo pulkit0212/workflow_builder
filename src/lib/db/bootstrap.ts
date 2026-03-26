@@ -43,6 +43,10 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "tools_slug_uidx" ON "tools" ("slug")
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS "ai_runs" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
@@ -82,6 +86,30 @@ async function createRequiredTables() {
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
     )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "action_items" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "task" text NOT NULL,
+      "owner" text NOT NULL DEFAULT 'Unassigned',
+      "due_date" text NOT NULL DEFAULT 'Not specified',
+      "priority" varchar(20) NOT NULL DEFAULT 'Medium',
+      "completed" boolean NOT NULL DEFAULT false,
+      "meeting_id" uuid REFERENCES "meeting_sessions"("id") ON DELETE CASCADE,
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "source" varchar(50) NOT NULL DEFAULT 'meeting',
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE INDEX IF NOT EXISTS "action_items_user_id_idx" ON "action_items" ("user_id")
+  `);
+
+  await database.execute(sql`
+    CREATE INDEX IF NOT EXISTS "action_items_meeting_id_idx" ON "action_items" ("meeting_id")
   `);
 
   await database.execute(sql`
@@ -133,6 +161,11 @@ async function createRequiredTables() {
       "updated_at" timestamptz NOT NULL DEFAULT now(),
       UNIQUE ("user_id", "provider")
     )
+  `);
+
+  await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "user_integrations_user_provider_uidx"
+    ON "user_integrations" ("user_id", "provider")
   `);
 
   await database.execute(sql`

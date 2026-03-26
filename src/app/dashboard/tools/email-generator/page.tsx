@@ -1,14 +1,20 @@
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ToolPageShell } from "@/components/tools/tool-page-shell";
-import { ComingSoonPanel } from "@/features/tools/shared/components/coming-soon-panel";
 import { toolRegistry } from "@/lib/ai/tool-registry";
+import { EmailGeneratorWorkspace } from "@/features/tools/email-generator/components/email-generator-workspace";
 
 export default function EmailGeneratorPage() {
   return (
-    <ToolPageShell tool={toolRegistry["email-generator"]}>
-      <ComingSoonPanel
-        title="Email Generator is coming soon"
-        description="The route, registry entry, and shared shell are already in place. Phase 2 can add prompts, templates, and run execution without changing the surrounding app architecture."
+    <div className="space-y-4">
+      <Breadcrumbs
+        items={[
+          { label: "Tools", href: "/dashboard/tools" },
+          { label: "Email Generator" }
+        ]}
       />
-    </ToolPageShell>
+      <ToolPageShell tool={toolRegistry["email-generator"]}>
+        <EmailGeneratorWorkspace />
+      </ToolPageShell>
+    </div>
   );
 }

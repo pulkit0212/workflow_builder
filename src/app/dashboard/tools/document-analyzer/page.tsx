@@ -1,14 +1,20 @@
+import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ToolPageShell } from "@/components/tools/tool-page-shell";
-import { ComingSoonPanel } from "@/features/tools/shared/components/coming-soon-panel";
 import { toolRegistry } from "@/lib/ai/tool-registry";
+import { DocumentAnalyzerWorkspace } from "@/features/tools/document-analyzer/components/document-analyzer-workspace";
 
 export default function DocumentAnalyzerPage() {
   return (
-    <ToolPageShell tool={toolRegistry["document-analyzer"]}>
-      <ComingSoonPanel
-        title="Document Analyzer is coming soon"
-        description="The uploaded_files and ai_runs schema are prepared so file-based workflows can be added without redesigning storage or dashboard navigation."
+    <div className="space-y-4">
+      <Breadcrumbs
+        items={[
+          { label: "Tools", href: "/dashboard/tools" },
+          { label: "Document Analyzer" }
+        ]}
       />
-    </ToolPageShell>
+      <ToolPageShell tool={toolRegistry["document-analyzer"]}>
+        <DocumentAnalyzerWorkspace />
+      </ToolPageShell>
+    </div>
   );
 }
