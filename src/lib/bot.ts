@@ -17,6 +17,7 @@ type BotStopResult = {
   success: boolean;
   transcript?: string;
   meetingDurationSeconds?: number;
+  outputPath?: string;
   summary?: {
     summary?: string;
     key_decisions?: string[];

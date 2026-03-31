@@ -36,6 +36,9 @@ temp/
 
 uploads/
 public/uploads/
+public/recordings/
+!public/recordings/
+!public/recordings/.gitkeep
 
 *.pem
 *.key

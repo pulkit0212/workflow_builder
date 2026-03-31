@@ -41,6 +41,11 @@ export type MeetingDetailRecord = {
   meetingDuration: number | null;
   keyPoints: string[];
   actionItems: MeetingActionItem[];
+  recordingUrl: string | null;
+  recordingSize: number | null;
+  recordingDuration: number | null;
+  insights: Record<string, unknown> | null;
+  chapters: Array<Record<string, unknown>> | null;
   canJoinAndCapture: boolean;
 };
 
@@ -68,11 +73,17 @@ export type MeetingStatusResponse = {
   errorCode: string | null;
   failureReason: string | null;
   recordingFilePath: string | null;
+  recordingUrl: string | null;
+  recordingDuration: number | null;
   recordingStartedAt: string | null;
   recordingEndedAt: string | null;
   transcript: string | null;
   summary: MeetingStructuredSummary | null;
+  insights: Record<string, unknown> | null;
+  chapters: Array<Record<string, unknown>> | null;
   updatedAt: string;
+  platform: string;
+  platformName: string;
 };
 
 export type MeetingStructuredSummary = {

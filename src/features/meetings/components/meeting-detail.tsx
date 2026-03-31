@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -47,6 +47,102 @@ const tabs: Array<{ id: DetailTab; label: string }> = [
   { id: "insights", label: "Insights" }
 ];
 
+const SPEAKER_COLORS = ["#6c63ff", "#16a34a", "#2563eb", "#ca8a04", "#dc2626", "#0891b2"];
+const WORD_COLORS = ["#6c63ff", "#16a34a", "#2563eb", "#ca8a04", "#dc2626", "#0891b2", "#7c3aed", "#059669", "#d97706"];
+
+function ScoreCard({
+  label,
+  value,
+  max,
+  color,
+  isText,
+  subtitle
+}: {
+  label: string;
+  value: string | number | null | undefined;
+  max?: number;
+  color: string;
+  isText?: boolean;
+  subtitle?: string;
+}) {
+  const numericValue = typeof value === "number" ? value : 0;
+
+  return (
+    <div
+      style={{
+        background: "white",
+        borderRadius: "12px",
+        padding: "20px",
+        border: "1px solid #f3f4f6",
+        textAlign: "center"
+      }}
+    >
+      <p
+        style={{
+          fontSize: "12px",
+          color: "#9ca3af",
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          marginBottom: "8px"
+        }}
+      >
+        {label}
+      </p>
+      {isText ? (
+        <p style={{ fontSize: "20px", fontWeight: 700, color, textTransform: "capitalize" }}>
+          {String(value || "Unknown")}
+        </p>
+      ) : (
+        <>
+          <p style={{ fontSize: "32px", fontWeight: 700, color }}>
+            {max ? `${numericValue}` : typeof value === "number" ? value.toLocaleString() : String(value || 0)}
+          </p>
+          {max ? (
+            <div style={{ height: "4px", background: "#f3f4f6", borderRadius: "9999px", marginTop: "8px" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${Math.max(0, Math.min(100, (numericValue / max) * 100))}%`,
+                  background: color,
+                  borderRadius: "9999px"
+                }}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
+      {subtitle ? <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "4px" }}>{subtitle}</p> : null}
+    </div>
+  );
+}
+
+function InsightsCard({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        background: "white",
+        borderRadius: "12px",
+        padding: "20px 24px",
+        border: "1px solid #f3f4f6",
+        marginBottom: "16px",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)"
+      }}
+    >
+      <h3 style={{ fontSize: "15px", fontWeight: 600, color: "#111827", marginBottom: "16px" }}>{title}</h3>
+      {children}
+    </div>
+  );
+}
+
+function formatDuration(seconds: number | null | undefined) {
+  if (!seconds) return "Unknown";
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins < 60) return `${mins}m ${secs}s`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}h ${mins % 60}m`;
+}
+
 function MeetingDetailSkeleton() {
   return (
     <div className="space-y-6">
@@ -66,7 +162,7 @@ function MeetingDetailSkeleton() {
 function getStatusMessage(status: MeetingDetailRecord["status"]) {
   switch (status) {
     case "waiting_for_join":
-      return "Preparing to join Google Meet in a separate browser.";
+      return "Preparing to join the meeting in a separate browser.";
     case "waiting_for_admission":
       return "Waiting for the meeting host to admit the Artiva bot.";
     case "capturing":
@@ -86,11 +182,13 @@ function getStatusMessage(status: MeetingDetailRecord["status"]) {
 
 function getFailureMessage(errorCode: string | null, fallback: string | null) {
   const errorMessages: Record<string, string> = {
-    meet_access_denied: "Bot profile not set up. Run: npm run setup:bot-profile in your terminal.",
-    invalid_meeting_link: "The meeting link is invalid or the meeting has ended.",
-    no_audio_captured: "No audio was captured. Check MEETING_AUDIO_SOURCE in your .env.local file.",
-    transcription_failed: "Transcription failed. The audio may be too short or corrupted.",
-    summary_failed: "Summary generation failed. The transcript may be empty.",
+    unsupported_platform: "This meeting platform is not supported yet.",
+    meet_access_denied: "Bot cannot access this meeting. Run: npm run setup:bot-profile",
+    invalid_meeting_link: "Meeting link is invalid or expired.",
+    no_audio_captured: "No audio was captured. Check MEETING_AUDIO_SOURCE setting.",
+    bot_kicked: "Bot was removed from the meeting.",
+    transcription_failed: "Transcription failed. Audio may be too short.",
+    summary_failed: "Summary generation failed.",
     host_admission_required: "Bot is waiting to be admitted by the meeting host.",
     default: "An unexpected error occurred. Check the server logs."
   };
@@ -169,6 +267,35 @@ function renderStatusBadge(status: MeetingDetailRecord["status"]) {
   );
 }
 
+function getPlatformFromUrl(url: string | null | undefined) {
+  if (!url) {
+    return "google";
+  }
+
+  const normalized = url.toLowerCase();
+
+  if (normalized.includes("zoom.us") || normalized.includes("zoom.com")) {
+    return "zoom";
+  }
+
+  if (normalized.includes("teams.microsoft.com") || normalized.includes("teams.live.com")) {
+    return "teams";
+  }
+
+  return "google";
+}
+
+function getPlatformConfig(platform: string) {
+  const platformConfig: Record<string, { name: string; color: string; bg: string }> = {
+    google: { name: "Google Meet", color: "#00AC47", bg: "#e8f5e9" },
+    zoom: { name: "Zoom", color: "#2D8CFF", bg: "#e3f2fd" },
+    teams: { name: "Microsoft Teams", color: "#6264A7", bg: "#ede7f6" },
+    unknown: { name: "Unknown", color: "#6b7280", bg: "#f3f4f6" }
+  };
+
+  return platformConfig[platform] || platformConfig.unknown;
+}
+
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [meeting, setMeeting] = useState<MeetingDetailRecord | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("notes");
@@ -235,7 +362,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
             failureReason: session.failureReason ?? currentMeeting.failureReason,
             captureStartedAt: session.recordingStartedAt ?? currentMeeting.captureStartedAt,
             captureEndedAt: session.recordingEndedAt ?? currentMeeting.captureEndedAt,
-            transcript: session.transcript ?? currentMeeting.transcript
+            transcript: session.transcript ?? currentMeeting.transcript,
+            recordingUrl: session.recordingUrl ?? currentMeeting.recordingUrl,
+            recordingDuration: session.recordingDuration ?? currentMeeting.recordingDuration,
+            insights: session.insights ?? currentMeeting.insights,
+            chapters: session.chapters ?? currentMeeting.chapters
           }
         : currentMeeting
     );
@@ -282,6 +413,30 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     hasProcessedMeetingContent(meeting ?? { transcript: null, summary: null, keyPoints: [], actionItems: [] }) ||
     (!!meeting && meeting.status === "failed" && hasProcessedMeetingContent(meeting));
   const failureMessage = getFailureMessage(meeting?.errorCode ?? null, meeting?.failureReason || actionError);
+  const sessionPlatform = session?.platform || getPlatformFromUrl(meeting?.meetingLink);
+  const platform = getPlatformConfig(sessionPlatform);
+  const platformName = session?.platformName || platform.name;
+  const recordingUrl = session?.recordingUrl ?? meeting.recordingUrl;
+  const recordingDuration = session?.recordingDuration ?? meeting.recordingDuration;
+  const resolvedInsights = (session?.insights ?? meeting.insights) as
+    | {
+        speakers?: Array<{ name: string; talkTimePercent: number; wordCount: number; sentiment: string }>;
+        sentiment?: {
+          overall?: string;
+          score?: number;
+          timeline?: Array<{ segment: number; label: string; score: number }>;
+        };
+        topics?: Array<{ title: string; duration: number; summary: string }>;
+        wordCloud?: Array<{ word: string; count: number }>;
+        engagementScore?: number;
+        totalWords?: number;
+        avgWordsPerMinute?: number;
+        keyMoments?: Array<{ time: string; description: string }>;
+      }
+    | null;
+  const resolvedChapters = (session?.chapters ?? meeting.chapters) as
+    | Array<{ title: string; startMinute: number; endMinute: number; summary: string }>
+    | null;
   const canStartBot =
     meeting?.canJoinAndCapture &&
     meeting?.status !== "waiting_for_join" &&
@@ -426,18 +581,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     );
   }
 
-  const engagementScore = Math.min(
-    96,
-    58 + speakerStats.length * 10 + (meeting.actionItems.length > 0 ? 8 : 0) + (meeting.keyDecisions.length > 0 ? 8 : 0)
-  );
-  const engagementLabel = engagementScore >= 80 ? "Good" : engagementScore >= 65 ? "Fair" : "Poor";
   const durationLabel = formatMeetingDuration(meeting.meetingDuration);
-  const topicTimeline = meeting.keyTopics.map((topic, index) => ({
-    topic,
-    timestamp: formatOffset(
-      Math.round(((meeting.meetingDuration || Math.max(meeting.keyTopics.length * 60, 60)) / Math.max(meeting.keyTopics.length, 1)) * index)
-    )
-  }));
 
   return (
     <div className="space-y-6">
@@ -477,6 +621,18 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
             <div className="flex flex-wrap items-center gap-2">
               {renderStatusBadge(meeting.status)}
               <Badge variant="neutral">{getMeetingSessionProviderLabel(meeting.provider)}</Badge>
+              <span
+                style={{
+                  background: platform.bg,
+                  color: platform.color,
+                  padding: "4px 12px",
+                  borderRadius: "9999px",
+                  fontSize: "12px",
+                  fontWeight: 600
+                }}
+              >
+                {platformName}
+              </span>
             </div>
             <div>
               <h1>{meeting.title}</h1>
@@ -495,7 +651,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
             </div>
             <div className="rounded-xl bg-[#f9fafb] p-4">
               <p className="text-caption">Platform</p>
-              <p className="mt-1 font-semibold text-[#111827]">{getMeetingSessionProviderLabel(meeting.provider)}</p>
+              <p className="mt-1 font-semibold text-[#111827]">{platformName}</p>
             </div>
           </div>
         </div>
@@ -512,6 +668,9 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
                 </div>
                 <h2>AI Notetaker control</h2>
                 <p>{getStatusMessage(meeting.status)}</p>
+                <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
+                  Supports Google Meet, Zoom, and Microsoft Teams
+                </p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button type="button" variant="ghost" onClick={handleOpenMeetingLink}>
@@ -690,138 +849,350 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
 
       {activeTab === "transcript" ? (
         <div className="space-y-6">
-          <Card className="p-6">
-            <div className="flex flex-wrap items-center gap-2">
-              {meeting.keyTopics.length > 0 ? (
-                meeting.keyTopics.map((topic) => (
-                  <span key={topic} className="rounded-full bg-[#f5f3ff] px-3 py-1 text-[12px] font-medium text-[#6c63ff]">
-                    {topic}
-                  </span>
-                ))
-              ) : (
-                <span className="text-sm text-[#6b7280]">No key topics available yet.</span>
-              )}
+          {recordingUrl ? (
+            <div
+              style={{
+                background: "white",
+                borderRadius: "12px",
+                padding: "20px 24px",
+                border: "1px solid #f3f4f6",
+                marginBottom: "20px"
+              }}
+            >
+              <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>🎵 Meeting Recording</h3>
+              <audio controls style={{ width: "100%" }} src={recordingUrl}>
+                Your browser does not support audio.
+              </audio>
+              <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "8px" }}>
+                Duration: {formatDuration(recordingDuration)}
+              </p>
             </div>
-          </Card>
+          ) : null}
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            {speakerStats.length > 0 ? (
-              speakerStats.map((speaker) => (
-                <Card key={speaker.speaker} className="p-5">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f5f3ff] text-sm font-semibold text-[#6c63ff]">
-                      {getInitials(speaker.speaker)}
-                    </span>
-                    <div>
-                      <p className="font-semibold text-[#111827]">{speaker.speaker}</p>
-                      <p className="text-caption">{speaker.percentage}% talk share</p>
-                    </div>
-                  </div>
-                  <div className="mt-4 h-2 rounded-full bg-[#ede9fe]">
-                    <div className="h-2 rounded-full bg-[#6c63ff]" style={{ width: `${speaker.percentage}%` }} />
-                  </div>
-                </Card>
-              ))
-            ) : (
-              <Card className="p-6 lg:col-span-3">
-                <p>No transcript is available yet.</p>
-              </Card>
-            )}
-          </div>
-
-          <Card className="p-6">
-            <div className="space-y-4">
-              {transcriptBlocks.length > 0 ? (
-                transcriptBlocks.map((block, index) => (
-                  <div
-                    key={`${block.speaker}-${index}`}
-                    className={cn("rounded-xl p-5", index % 2 === 0 ? "bg-[#f9fafb]" : "bg-[#f5f3ff]/40")}
-                  >
-                    <div className="flex flex-wrap items-center gap-3">
-                      <p className="font-semibold text-[#111827]">{block.speaker}</p>
-                      <button type="button" className="text-caption rounded-full bg-white px-2 py-1 hover:text-[#6c63ff]">
-                        {block.timestamp}
-                      </button>
-                    </div>
-                    <p className="mt-3 whitespace-pre-wrap font-mono text-[13px] leading-7 text-[#374151]">{block.text}</p>
-                  </div>
-                ))
-              ) : (
-                <ResultState
-                  title="Transcript unavailable"
-                  description="Artiva will show transcript paragraphs, speaker groupings, and timestamps when the transcript is ready."
-                />
-              )}
+          {session?.transcript || meeting.transcript ? (
+            <div
+              style={{
+                background: "white",
+                borderRadius: "12px",
+                padding: "24px",
+                border: "1px solid #f3f4f6"
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: "16px"
+                }}
+              >
+                <h3 style={{ fontSize: "16px", fontWeight: 600 }}>Full Transcript</h3>
+                <button
+                  onClick={() => {
+                    void navigator.clipboard.writeText(session?.transcript || meeting.transcript || "");
+                    alert("Transcript copied!");
+                  }}
+                  style={{
+                    padding: "6px 14px",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: "8px",
+                    background: "white",
+                    fontSize: "13px",
+                    cursor: "pointer"
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+              <div
+                style={{
+                  fontFamily: "monospace",
+                  fontSize: "13px",
+                  lineHeight: "1.8",
+                  color: "#374151",
+                  whiteSpace: "pre-wrap",
+                  maxHeight: "600px",
+                  overflowY: "auto",
+                  padding: "16px",
+                  background: "#f8fafc",
+                  borderRadius: "8px"
+                }}
+              >
+                {session?.transcript || meeting.transcript}
+              </div>
             </div>
-          </Card>
+          ) : (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "48px",
+                color: "#9ca3af",
+                background: "white",
+                borderRadius: "12px",
+                border: "1px solid #f3f4f6"
+              }}
+            >
+              <p style={{ fontSize: "14px" }}>Transcript will appear here after the meeting is processed.</p>
+            </div>
+          )}
         </div>
       ) : null}
 
       {activeTab === "insights" ? (
         <div className="space-y-6">
-          <Card className="p-6">
-            <h2>Participation</h2>
-            <div className="mt-4 space-y-4">
-              {speakerStats.length > 0 ? (
-                speakerStats.map((speaker) => (
-                  <div key={speaker.speaker}>
-                    <div className="mb-2 flex items-center justify-between gap-4">
-                      <p className="font-medium text-[#111827]">{speaker.speaker}</p>
-                      <p className="text-caption">{speaker.percentage}%</p>
-                    </div>
-                    <div className="h-2 rounded-full bg-[#e5e7eb]">
-                      <div className="h-2 rounded-full bg-[#6c63ff]" style={{ width: `${speaker.percentage}%` }} />
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p>No speaker participation data yet.</p>
-              )}
+          {!resolvedInsights ? (
+            <div style={{ textAlign: "center", padding: "48px" }}>
+              <p>Insights are being generated...</p>
+              <p style={{ color: "#9ca3af", fontSize: "13px" }}>
+                This may take a moment after the meeting ends.
+              </p>
             </div>
-          </Card>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "16px",
+                  marginBottom: "24px"
+                }}
+              >
+                <ScoreCard
+                  label="Engagement Score"
+                  value={resolvedInsights.engagementScore ?? 0}
+                  max={100}
+                  color="#6c63ff"
+                />
+                <ScoreCard
+                  label="Overall Sentiment"
+                  value={resolvedInsights.sentiment?.overall ?? "neutral"}
+                  isText
+                  color={
+                    resolvedInsights.sentiment?.overall === "positive"
+                      ? "#16a34a"
+                      : resolvedInsights.sentiment?.overall === "negative"
+                        ? "#dc2626"
+                        : "#ca8a04"
+                  }
+                />
+                <ScoreCard
+                  label="Total Words"
+                  value={resolvedInsights.totalWords ?? 0}
+                  subtitle={`~${resolvedInsights.avgWordsPerMinute ?? 0} wpm`}
+                  color="#2563eb"
+                />
+              </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="p-6">
-              <p className="text-caption">Engagement Score</p>
-              <p className="mt-3 text-3xl font-bold text-[#111827]">{engagementScore}</p>
-              <p className="mt-1 text-sm text-[#4b5563]">{engagementLabel}</p>
-            </Card>
-            <Card className="p-6">
-              <p className="text-caption">Sentiment</p>
-              <p className="mt-3 text-3xl font-bold text-[#111827]">{meeting.meetingSentiment || "Neutral"}</p>
-              <p className="mt-1 text-sm text-[#4b5563]">Conversation tone estimate</p>
-            </Card>
-            <Card className="p-6">
-              <p className="text-caption">Follow-up needed</p>
-              <p className="mt-3 text-3xl font-bold text-[#111827]">{meeting.followUpNeeded ? "Yes" : "No"}</p>
-              <p className="mt-1 text-sm text-[#4b5563]">Based on summary signals</p>
-            </Card>
-          </div>
+              <InsightsCard title="👥 Speaker Participation">
+                {(resolvedInsights.speakers || []).length > 0 ? (
+                  (resolvedInsights.speakers || []).map((speaker, index) => (
+                    <div key={`${speaker.name}-${index}`} style={{ marginBottom: "16px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <div
+                            style={{
+                              width: "32px",
+                              height: "32px",
+                              background: SPEAKER_COLORS[index % SPEAKER_COLORS.length],
+                              borderRadius: "50%",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "white",
+                              fontSize: "12px",
+                              fontWeight: 600
+                            }}
+                          >
+                            {speaker.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span style={{ fontWeight: 500, fontSize: "14px" }}>{speaker.name}</span>
+                        </div>
+                        <span style={{ fontSize: "13px", color: "#6b7280", fontWeight: 600 }}>
+                          {speaker.talkTimePercent}%
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          height: "8px",
+                          background: "#f3f4f6",
+                          borderRadius: "9999px",
+                          overflow: "hidden"
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: "100%",
+                            width: `${speaker.talkTimePercent}%`,
+                            background: SPEAKER_COLORS[index % SPEAKER_COLORS.length],
+                            borderRadius: "9999px",
+                            transition: "width 0.8s ease"
+                          }}
+                        />
+                      </div>
+                      <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "4px" }}>
+                        {speaker.wordCount} words · {speaker.sentiment}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ fontSize: "13px", color: "#6b7280" }}>No speaker analytics available yet.</p>
+                )}
+              </InsightsCard>
 
-          <Card className="p-6">
-            <div className="flex items-center gap-2">
-              <MessageSquareText className="h-5 w-5 text-[#6c63ff]" />
-              <h2>Key Topics Timeline</h2>
-            </div>
-            <div className="mt-4 space-y-4">
-              {topicTimeline.length > 0 ? (
-                topicTimeline.map((item, index) => (
-                  <div key={`${item.topic}-${index}`} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <span className="mt-1 h-3 w-3 rounded-full bg-[#6c63ff]" />
-                      {index < topicTimeline.length - 1 ? <span className="mt-1 h-full w-px bg-[#ddd6fe]" /> : null}
+              <InsightsCard title="📌 Topics Covered">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {(resolvedInsights.topics || []).length > 0 ? (
+                    (resolvedInsights.topics || []).map((topic, index) => (
+                      <div
+                        key={`${topic.title}-${index}`}
+                        style={{
+                          padding: "8px 16px",
+                          background: "#f5f3ff",
+                          borderRadius: "8px",
+                          border: "1px solid #e9d5ff"
+                        }}
+                      >
+                        <div style={{ fontSize: "13px", fontWeight: 600, color: "#6c63ff" }}>{topic.title}</div>
+                        <div style={{ fontSize: "12px", color: "#9ca3af" }}>~{topic.duration} min</div>
+                        <div style={{ fontSize: "12px", color: "#4b5563", marginTop: "2px" }}>{topic.summary}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <p style={{ fontSize: "13px", color: "#6b7280" }}>No topic analytics available yet.</p>
+                  )}
+                </div>
+              </InsightsCard>
+
+              <InsightsCard title="😊 Sentiment Timeline">
+                <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", height: "60px" }}>
+                  {(resolvedInsights.sentiment?.timeline || []).map((point, index) => (
+                    <div
+                      key={index}
+                      title={`${point.label}: ${point.score}/100`}
+                      style={{
+                        flex: 1,
+                        height: `${point.score}%`,
+                        background:
+                          point.label === "positive" ? "#16a34a" : point.label === "negative" ? "#dc2626" : "#ca8a04",
+                        borderRadius: "4px 4px 0 0",
+                        opacity: 0.8,
+                        minHeight: "4px"
+                      }}
+                    />
+                  ))}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginTop: "8px",
+                    fontSize: "11px",
+                    color: "#9ca3af"
+                  }}
+                >
+                  <span>Start</span>
+                  <span>End</span>
+                </div>
+                <div style={{ display: "flex", gap: "12px", marginTop: "8px", fontSize: "12px" }}>
+                  <span style={{ color: "#16a34a" }}>● Positive</span>
+                  <span style={{ color: "#ca8a04" }}>● Neutral</span>
+                  <span style={{ color: "#dc2626" }}>● Negative</span>
+                </div>
+              </InsightsCard>
+
+              <InsightsCard title="💬 Key Words">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                  {(resolvedInsights.wordCloud || []).map((item, index) => {
+                    const size = Math.max(11, Math.min(22, 11 + item.count * 1.5));
+                    return (
+                      <span
+                        key={`${item.word}-${index}`}
+                        style={{
+                          fontSize: `${size}px`,
+                          color: WORD_COLORS[index % WORD_COLORS.length],
+                          fontWeight: item.count > 8 ? 600 : 400,
+                          padding: "2px 4px"
+                        }}
+                      >
+                        {item.word}
+                      </span>
+                    );
+                  })}
+                </div>
+              </InsightsCard>
+
+              {(resolvedInsights.keyMoments || []).length > 0 ? (
+                <InsightsCard title="⚡ Key Moments">
+                  {(resolvedInsights.keyMoments || []).map((moment, index) => (
+                    <div
+                      key={`${moment.time}-${index}`}
+                      style={{
+                        display: "flex",
+                        gap: "12px",
+                        padding: "12px 0",
+                        borderBottom:
+                          index < (resolvedInsights.keyMoments || []).length - 1 ? "1px solid #f3f4f6" : "none"
+                      }}
+                    >
+                      <span
+                        style={{
+                          background: "#f5f3ff",
+                          color: "#6c63ff",
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          whiteSpace: "nowrap"
+                        }}
+                      >
+                        {moment.time}
+                      </span>
+                      <span style={{ fontSize: "13px", color: "#374151" }}>{moment.description}</span>
                     </div>
-                    <div className="pb-4">
-                      <p className="font-medium text-[#111827]">{item.topic}</p>
-                      <p className="text-caption">{item.timestamp}</p>
+                  ))}
+                </InsightsCard>
+              ) : null}
+
+              {(resolvedChapters || []).length > 0 ? (
+                <InsightsCard title="📖 Meeting Chapters">
+                  {(resolvedChapters || []).map((chapter, index) => (
+                    <div
+                      key={`${chapter.title}-${index}`}
+                      style={{
+                        padding: "12px 0",
+                        borderBottom: index < (resolvedChapters || []).length - 1 ? "1px solid #f3f4f6" : "none"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                        <span
+                          style={{
+                            background: "#6c63ff",
+                            color: "white",
+                            width: "24px",
+                            height: "24px",
+                            borderRadius: "50%",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            flexShrink: 0
+                          }}
+                        >
+                          {index + 1}
+                        </span>
+                        <span style={{ fontWeight: 600, fontSize: "14px", color: "#111827" }}>{chapter.title}</span>
+                        <span style={{ fontSize: "12px", color: "#9ca3af", marginLeft: "auto" }}>
+                          {chapter.startMinute}m – {chapter.endMinute}m
+                        </span>
+                      </div>
+                      <p style={{ fontSize: "13px", color: "#6b7280", margin: "0 0 0 32px" }}>{chapter.summary}</p>
                     </div>
-                  </div>
-                ))
-              ) : (
-                <p>No topic timeline available yet.</p>
-              )}
-            </div>
-          </Card>
+                  ))}
+                </InsightsCard>
+              ) : null}
+            </>
+          )}
         </div>
       ) : null}
     </div>

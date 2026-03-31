@@ -185,6 +185,31 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "recording_url" text
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "recording_size" integer
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "recording_duration" integer
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "insights" jsonb
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "chapters" jsonb
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS "user_integrations" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
@@ -213,6 +238,34 @@ async function createRequiredTables() {
   await database.execute(sql`
     ALTER TABLE "user_integrations"
     ADD COLUMN IF NOT EXISTS "scopes" text
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "integrations" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "type" varchar(50) NOT NULL,
+      "enabled" boolean NOT NULL DEFAULT false,
+      "config" jsonb NOT NULL DEFAULT '{}'::jsonb,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now(),
+      UNIQUE ("user_id", "type")
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "integrations_user_type_uidx"
+    ON "integrations" ("user_id", "type")
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "integrations"
+    ADD COLUMN IF NOT EXISTS "enabled" boolean NOT NULL DEFAULT false
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "integrations"
+    ADD COLUMN IF NOT EXISTS "config" jsonb NOT NULL DEFAULT '{}'::jsonb
   `);
 
   await database.execute(sql`

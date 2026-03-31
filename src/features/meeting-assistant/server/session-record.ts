@@ -35,8 +35,13 @@ export function toMeetingSessionRecord(session: DatabaseMeetingSession): Meeting
     keyPoints: Array.isArray(session.keyPoints) ? session.keyPoints : [],
     actionItems: normalizeMeetingActionItems(session.actionItems),
     recordingFilePath: session.recordingFilePath ?? null,
+    recordingUrl: session.recordingUrl ?? null,
+    recordingSize: session.recordingSize ?? null,
+    recordingDuration: session.recordingDuration ?? null,
     recordingStartedAt: session.recordingStartedAt ? session.recordingStartedAt.toISOString() : null,
     recordingEndedAt: session.recordingEndedAt ? session.recordingEndedAt.toISOString() : null,
+    insights: session.insights && typeof session.insights === "object" ? session.insights : null,
+    chapters: Array.isArray(session.chapters) ? session.chapters : null,
     emailSent: Boolean(session.emailSent),
     emailSentAt: session.emailSentAt ? session.emailSentAt.toISOString() : null,
     status:

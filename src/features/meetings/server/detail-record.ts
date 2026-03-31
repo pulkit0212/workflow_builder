@@ -47,6 +47,11 @@ export function buildMeetingDetailFromSession(params: {
     meetingDuration: sessionRecord.meetingDuration,
     keyPoints: sessionRecord.keyPoints,
     actionItems: normalizeMeetingActionItems(sessionRecord.actionItems),
+    recordingUrl: sessionRecord.recordingUrl,
+    recordingSize: sessionRecord.recordingSize,
+    recordingDuration: sessionRecord.recordingDuration,
+    insights: sessionRecord.insights,
+    chapters: sessionRecord.chapters,
     canJoinAndCapture: !sessionRecord.summary && mapMeetingSessionToDetailStatus(sessionRecord.status) !== "processing"
   };
 }
@@ -80,6 +85,11 @@ export function buildMeetingDetailFromCalendarMeeting(meeting: GoogleCalendarMee
     meetingDuration: null,
     keyPoints: [],
     actionItems: [],
+    recordingUrl: null,
+    recordingSize: null,
+    recordingDuration: null,
+    insights: null,
+    chapters: null,
     canJoinAndCapture: Boolean(meeting.meetLink)
   };
 }

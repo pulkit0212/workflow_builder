@@ -172,23 +172,37 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
     botLog(meetingId, "bot_started", { meetingUrl });
     await onStatusUpdate(meetingId, "waiting_for_join");
 
-    const { browser, page, status } = await joinMeeting(meetingUrl, meetingId);
-    botLog(meetingId, "join_result", { status, reason: status });
+    const { browser, page, status, platform, platformName, reason, message } = await joinMeeting(meetingUrl, meetingId);
+    botLog(meetingId, "join_result", {
+      status,
+      platform: platform || "google",
+      platformName: platformName || "Google Meet",
+      reason: reason || status
+    });
 
     if (status === "failed") {
       await cleanupJoinArtifacts(meetingId, browser);
+
+      const errorCode = reason || "meet_access_denied";
+      const failureReason =
+        message ||
+        (errorCode === "unsupported_platform"
+          ? "This meeting platform is not supported yet. Use Google Meet, Zoom, or Microsoft Teams."
+          : "Meeting platform rejected the bot. Run npm run setup:bot-profile once, sign in manually, then try again.");
+
       botLog(meetingId, "bot_failed", {
-        error: "Google Meet rejected the bot.",
-        errorCode: "meet_access_denied",
+        error: failureReason,
+        errorCode
       });
       await onStatusUpdate(meetingId, "failed", {
-        errorCode: "meet_access_denied",
-        failureReason:
-          "Google Meet rejected the bot. Run npm run setup:bot-profile once, sign in manually, then try again.",
+        errorCode,
+        failureReason
       });
+
       return {
         success: false,
-        error: "Google Meet rejected the bot. Run npm run setup:bot-profile first, then try again.",
+        error: failureReason,
+        errorCode
       };
     }
 
@@ -230,6 +244,8 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
     writeSession(meetingId, {
       ffmpegPid: recording.ffmpeg.pid,
       outputPath: recording.outputPath,
+      platform: platform || "google",
+      platformName: platformName || "Google Meet",
       joinedAt: new Date().toISOString(),
       joinStatus: status,
       audioSource: recording.audioSource || null,
@@ -240,6 +256,7 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
 
     const watchInterval = await watchMeetingEnd(
       page,
+      platform || "google",
       meetingId,
       async (id, reason) => {
         botLog(id, "meeting_auto_ended", { reason });
@@ -269,6 +286,8 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
     botLog(meetingId, "recording_started", {
       outputPath: recording.outputPath,
       ffmpegPid: recording.ffmpeg.pid,
+      platform: platform || "google",
+      platformName: platformName || "Google Meet"
     });
     activeBrowsers.set(meetingId, {
       browser,

@@ -5,5 +5,6 @@ export * from "@/db/schema/ai-runs";
 export * from "@/db/schema/meeting-sessions";
 export * from "@/db/schema/action-items";
 export * from "@/db/schema/user-integrations";
+export * from "@/db/schema/integrations";
 export * from "@/db/schema/uploaded-files";
 export * from "@/db/schema/usage-logs";

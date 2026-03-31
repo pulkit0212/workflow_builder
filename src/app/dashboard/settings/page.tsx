@@ -12,6 +12,7 @@ import {
   Crown,
   Download,
   Gauge,
+  Link2,
   Lock,
   Pencil,
   Trash2,
@@ -86,7 +87,7 @@ type PreferencesState = {
   summaryLength: "brief" | "standard" | "detailed";
 };
 
-type ActiveTab = "profile" | "account" | "subscription" | "preferences" | "bot" | "usage";
+type ActiveTab = "profile" | "account" | "subscription" | "preferences" | "bot" | "integrations" | "usage";
 
 const tabs: Array<{
   id: ActiveTab;
@@ -98,6 +99,7 @@ const tabs: Array<{
   { id: "subscription", label: "Subscription", icon: Crown },
   { id: "preferences", label: "Preferences", icon: Bell },
   { id: "bot", label: "Bot Settings", icon: Bot },
+  { id: "integrations", label: "Integrations", icon: Link2 },
   { id: "usage", label: "Usage & Limits", icon: Gauge }
 ];
 
@@ -1214,6 +1216,29 @@ export default function SettingsPage() {
                 <Button type="button" className="w-full" onClick={saveBotSettings}>
                   Save Bot Settings
                 </Button>
+              </Card>
+            </section>
+          ) : null}
+
+          {activeTab === "integrations" ? (
+            <section className="space-y-6">
+              <SectionHeader
+                title="Integrations"
+                description="Connect Slack, Gmail, Notion, and Jira for automatic meeting follow-up."
+              />
+
+              <Card className="space-y-5 p-6">
+                <div className="rounded-[24px] border border-[#e5e7eb] bg-white p-5">
+                  <p className="text-sm font-semibold text-[#111827]">Automation integrations</p>
+                  <p className="mt-2 text-sm leading-6 text-[#6b7280]">
+                    Configure Slack, Gmail, Notion, and Jira to run automatically after meetings complete.
+                  </p>
+                  <div className="mt-5">
+                    <Button asChild>
+                      <a href="/dashboard/integrations">Open Integrations</a>
+                    </Button>
+                  </div>
+                </div>
               </Card>
             </section>
           ) : null}

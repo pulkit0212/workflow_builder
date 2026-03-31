@@ -103,6 +103,35 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
         {participants.length > 3 ? (
           <span className="rounded-full bg-[#f3f4f6] px-2.5 py-1 text-xs text-[#4b5563]">+{participants.length - 3} more</span>
         ) : null}
+        {meeting.recordingUrl ? (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "4px",
+              fontSize: "11px",
+              color: "#6c63ff",
+              background: "#f5f3ff",
+              padding: "2px 8px",
+              borderRadius: "9999px"
+            }}
+          >
+            🎵 Recording available
+          </span>
+        ) : null}
+        {meeting.insights ? (
+          <span
+            style={{
+              fontSize: "11px",
+              color: "#16a34a",
+              background: "#f0fdf4",
+              padding: "2px 8px",
+              borderRadius: "9999px"
+            }}
+          >
+            📊 Insights ready
+          </span>
+        ) : null}
       </div>
 
       <div className="mt-5 flex-1">

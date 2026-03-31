@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import fs from "node:fs";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
@@ -8,6 +9,9 @@ import { updateMeetingSession } from "@/lib/db/mutations/meeting-sessions";
 import { buildMeetingDetailFromSession } from "@/features/meetings/server/detail-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { stopBot } from "@/lib/bot";
+import { triggerIntegrations } from "@/lib/integrations/trigger";
+import { saveRecording, getRecordingSize } from "@/lib/storage";
+import { generateInsights, generateChapters } from "@/lib/insights/generate";
 
 type RouteContext = {
   params: Promise<{
@@ -58,6 +62,20 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
+    let recordingUrl: string | null = null;
+    let recordingSize: number | null = null;
+    const audioPath = result.outputPath || meeting.recordingFilePath || null;
+
+    if (audioPath && fs.existsSync(audioPath)) {
+      try {
+        recordingUrl = saveRecording(meeting.id, audioPath);
+        recordingSize = getRecordingSize(meeting.id);
+        console.log("[Stop] Recording saved:", recordingUrl);
+      } catch (error) {
+        console.error("[Stop] Recording save error:", error instanceof Error ? error.message : error);
+      }
+    }
+
     const persistedMeeting = await updateMeetingSession(meeting.id, user.id, {
       transcript: result.transcript,
       summary: result.summary?.summary ?? "No summary available.",
@@ -80,8 +98,39 @@ export async function POST(_request: Request, context: RouteContext) {
           priority: item.priority ?? "Medium",
           completed: false
         })) ?? [],
+      recordingUrl,
+      recordingSize,
+      recordingDuration: result.meetingDurationSeconds ?? null,
       status: "completed",
     });
+
+    const duration = result.meetingDurationSeconds || 0;
+
+    void generateInsights(result.transcript || "", duration)
+      .then((insights) =>
+        generateChapters(result.transcript || "", duration).then((chapters) =>
+          updateMeetingSession(meeting.id, user.id, {
+            recordingUrl,
+            recordingSize,
+            recordingDuration: duration,
+            insights,
+            chapters: chapters as Array<Record<string, unknown>>
+          })
+        )
+      )
+      .catch((error) =>
+        console.error("[Stop] Insights generation error:", error instanceof Error ? error.message : error)
+      );
+
+    void triggerIntegrations(
+      user.id,
+      meeting.id,
+      persistedMeeting.title || "Meeting",
+      result.summary ?? {},
+      result.transcript ?? ""
+    ).catch((error) =>
+      console.error("[Stop] Integration trigger error:", error instanceof Error ? error.message : error)
+    );
 
     return apiSuccess({
       success: true,

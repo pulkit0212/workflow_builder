@@ -26,7 +26,10 @@ export function useSessionPolling(meetingId: string | null) {
         const data = (await response.json()) as MeetingStatusResponse;
         setSession(data);
 
-        if (["completed", "failed"].includes(data.state) && intervalRef.current) {
+        if (
+          (data.state === "failed" || (data.state === "completed" && data.insights !== null)) &&
+          intervalRef.current
+        ) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }

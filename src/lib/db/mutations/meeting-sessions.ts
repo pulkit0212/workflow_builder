@@ -54,8 +54,13 @@ type UpdateMeetingSessionInput = {
     completed: boolean;
   }>;
   recordingFilePath?: string | null;
+  recordingUrl?: string | null;
+  recordingSize?: number | null;
+  recordingDuration?: number | null;
   recordingStartedAt?: Date | string | null;
   recordingEndedAt?: Date | string | null;
+  insights?: Record<string, unknown> | null;
+  chapters?: Array<Record<string, unknown>> | null;
   status?: MeetingSessionStatus;
   emailSent?: boolean;
   emailSentAt?: Date | string | null;
@@ -199,6 +204,18 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
     payload.recordingFilePath = values.recordingFilePath || null;
   }
 
+  if (values.recordingUrl !== undefined) {
+    payload.recordingUrl = values.recordingUrl || null;
+  }
+
+  if (values.recordingSize !== undefined) {
+    payload.recordingSize = values.recordingSize;
+  }
+
+  if (values.recordingDuration !== undefined) {
+    payload.recordingDuration = values.recordingDuration;
+  }
+
   if (values.recordingStartedAt !== undefined) {
     payload.recordingStartedAt =
       typeof values.recordingStartedAt === "string"
@@ -211,6 +228,14 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
       typeof values.recordingEndedAt === "string"
         ? new Date(values.recordingEndedAt)
         : values.recordingEndedAt;
+  }
+
+  if (values.insights !== undefined) {
+    payload.insights = values.insights;
+  }
+
+  if (values.chapters !== undefined) {
+    payload.chapters = values.chapters;
   }
 
   if (values.status !== undefined) {

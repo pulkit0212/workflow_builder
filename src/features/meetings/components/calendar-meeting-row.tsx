@@ -40,6 +40,33 @@ function getInitial(value: string) {
   return value.trim().charAt(0).toUpperCase() || "M";
 }
 
+function getPlatformFromUrl(url: string | null | undefined) {
+  if (!url) return "google";
+
+  const normalized = url.toLowerCase();
+
+  if (normalized.includes("zoom.us") || normalized.includes("zoom.com")) {
+    return "zoom";
+  }
+
+  if (normalized.includes("teams.microsoft.com") || normalized.includes("teams.live.com")) {
+    return "teams";
+  }
+
+  return "google";
+}
+
+function getPlatformBadge(platform: string) {
+  switch (platform) {
+    case "zoom":
+      return { label: "Zoom", className: "border-[#bfdbfe] bg-[#eff6ff] text-[#2D8CFF]" };
+    case "teams":
+      return { label: "Microsoft Teams", className: "border-[#ddd6fe] bg-[#f5f3ff] text-[#6264A7]" };
+    default:
+      return { label: "Google Meet", className: "border-[#bbf7d0] bg-[#f0fdf4] text-[#00AC47]" };
+  }
+}
+
 type CalendarMeetingRowProps = {
   meeting: GoogleCalendarMeeting;
 };
@@ -47,6 +74,8 @@ type CalendarMeetingRowProps = {
 export function CalendarMeetingRow({ meeting }: CalendarMeetingRowProps) {
   const detailHref = `/dashboard/meetings/${encodeCalendarMeetingId(meeting.id)}` as Route;
   const status = getMeetingStatus(meeting);
+  const platform = getPlatformFromUrl(meeting.meetLink);
+  const platformBadge = getPlatformBadge(platform);
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[#e5e7eb] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -58,7 +87,11 @@ export function CalendarMeetingRow({ meeting }: CalendarMeetingRowProps) {
           <p className="truncate text-[16px] font-semibold text-[#1f2937]">{meeting.title}</p>
           <p className="mt-1 text-sm text-[#6b7280]">{formatTimeRange(meeting.startTime, meeting.endTime)}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge variant="neutral">Google Meet</Badge>
+            <span
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${platformBadge.className}`}
+            >
+              {platformBadge.label}
+            </span>
             <Badge variant={status.variant}>{status.label}</Badge>
           </div>
         </div>

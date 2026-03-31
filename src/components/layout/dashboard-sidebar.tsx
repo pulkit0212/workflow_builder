@@ -11,6 +11,7 @@ import {
   CreditCard,
   FileText,
   Grid2x2,
+  Link2,
   Settings,
   Wrench,
   type LucideIcon
@@ -30,6 +31,7 @@ const navigation: DashboardNavItem[] = [
   { href: "/dashboard/meetings", label: "Meetings", icon: CalendarDays, section: "primary" },
   { href: "/dashboard/reports", label: "Reports", icon: FileText, section: "primary" },
   { href: "/dashboard/action-items", label: "Action Items", icon: CheckSquare, section: "primary" },
+  { href: "/dashboard/integrations", label: "Integrations", icon: Link2, section: "primary" },
   { href: "/dashboard/history", label: "History", icon: Clock3, section: "primary" },
   { href: "/dashboard/tools", label: "Tools", icon: Wrench, section: "secondary" },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, section: "secondary" },
