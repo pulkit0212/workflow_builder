@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { CalendarDays, CheckCircle2, ClipboardList, Video } from "lucide-react";
+import { SkeletonList } from "@/components/SkeletonCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { fetchJoinedMeetings, fetchTodayMeetings } from "@/features/meetings/api";
@@ -99,16 +100,39 @@ export default function DashboardPage() {
   const [reports, setReports] = useState<MeetingSessionRecord[]>([]);
   const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function loadDashboard() {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const [joinedMeetings, todayResponse] = await Promise.all([
+        fetchJoinedMeetings(),
+        fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] }))
+      ]);
+
+      setReports(joinedMeetings);
+      setTodayMeetings(todayResponse.meetings.slice(0, 3));
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard.");
+      setReports([]);
+      setTodayMeetings([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   useEffect(() => {
     let isMounted = true;
 
-    async function loadDashboard() {
+    void (async () => {
       setIsLoading(true);
+      setError(null);
 
       try {
         const [joinedMeetings, todayResponse] = await Promise.all([
-          fetchJoinedMeetings().catch(() => []),
+          fetchJoinedMeetings(),
           fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] }))
         ]);
 
@@ -118,14 +142,18 @@ export default function DashboardPage() {
 
         setReports(joinedMeetings);
         setTodayMeetings(todayResponse.meetings.slice(0, 3));
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard.");
+          setReports([]);
+          setTodayMeetings([]);
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);
         }
       }
-    }
-
-    void loadDashboard();
+    })();
 
     return () => {
       isMounted = false;
@@ -182,6 +210,14 @@ export default function DashboardPage() {
     "bg-[#fff1f2] text-[#f97316]"
   ];
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <SkeletonList count={4} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="space-y-8">
@@ -198,6 +234,20 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {error ? (
+          <Card className="border-[#fecaca] bg-[#fef2f2] p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-[#991b1b]">Unable to load dashboard</p>
+                <p className="mt-2 text-sm text-[#991b1b]">{error}</p>
+              </div>
+              <Button type="button" variant="outline" onClick={() => void loadDashboard()}>
+                Retry
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
           <Card className="col-span-1 rounded-xl border border-gray-100 bg-white shadow-sm xl:col-span-3">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
@@ -211,18 +261,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="divide-y divide-[#f3f4f6]">
-              {isLoading ? (
-                Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="flex items-center gap-4 px-6 py-4">
-                    <div className="shimmer h-10 w-10 rounded-full" />
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="shimmer h-4 w-44 rounded-full" />
-                      <div className="shimmer h-3 w-64 rounded-full" />
-                    </div>
-                    <div className="shimmer h-9 w-16 rounded-lg" />
-                  </div>
-                ))
-              ) : recentReports.length > 0 ? (
+              {recentReports.length > 0 ? (
                 recentReports.map((meeting, index) => {
                   const summary = sanitizeSummary(meeting.summary);
 
@@ -276,17 +315,7 @@ export default function DashboardPage() {
             </div>
 
             <div className="p-4">
-              {isLoading ? (
-                <div className="space-y-3">
-                  {Array.from({ length: 3 }).map((_, index) => (
-                    <div key={index} className="rounded-xl border border-gray-100 p-4">
-                      <div className="shimmer h-4 w-28 rounded-full" />
-                      <div className="mt-3 shimmer h-4 w-48 rounded-full" />
-                      <div className="mt-2 shimmer h-3 w-24 rounded-full" />
-                    </div>
-                  ))}
-                </div>
-              ) : todayMeetings.length > 0 ? (
+              {todayMeetings.length > 0 ? (
                 <div className="space-y-3">
                   {todayMeetings.map((meeting) => (
                     <div key={meeting.id} className="rounded-xl border border-gray-100 p-4">

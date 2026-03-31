@@ -2,7 +2,6 @@
 
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import {
   ArrowRight,
@@ -109,7 +108,6 @@ function planButtonStyle(plan: PlanId) {
 }
 
 export default function BillingPage() {
-  const router = useRouter();
   const { user } = useUser();
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -169,74 +167,85 @@ export default function BillingPage() {
   }, [subscription]);
 
   async function handleUpgrade(plan: "pro" | "elite") {
-    setActivePlan(plan);
-
     try {
-      const response = await fetch("/api/payment/create-order", {
+      setActivePlan(plan);
+
+      const res = await fetch("/api/payment/create-order", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan })
       });
-      const payload = (await response.json()) as
+
+      const data = (await res.json()) as
         | { success: true; orderId: string; amount: number; currency: string; keyId: string }
         | { success?: false; message?: string };
 
-      if (!response.ok || !("success" in payload) || !payload.success) {
-        throw new Error("message" in payload ? payload.message || "Failed to create payment order." : "Failed to create payment order.");
+      if (!("success" in data) || !data.success) {
+        window.alert("Payment error: " + ("message" in data ? data.message : "Failed to create payment order"));
+        setActivePlan(null);
+        return;
       }
 
-      const RazorpayCtor = (window as Window & {
-        Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
-      }).Razorpay;
-
-      if (!RazorpayCtor) {
-        throw new Error("Razorpay checkout is still loading. Please try again in a moment.");
+      if (!window.Razorpay) {
+        await new Promise<void>((resolve) => {
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = () => resolve();
+          document.body.appendChild(script);
+        });
       }
 
-      const rzp = new RazorpayCtor({
-        key: payload.keyId,
-        amount: payload.amount,
-        currency: payload.currency,
+      const options = {
+        key: data.keyId,
+        amount: data.amount,
+        currency: data.currency,
         name: "Artiva",
-        description: `${planDefinitions[plan].name} Plan - Monthly`,
-        order_id: payload.orderId,
+        description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - Monthly`,
+        order_id: data.orderId,
         handler: async (response: {
           razorpay_order_id: string;
           razorpay_payment_id: string;
           razorpay_signature: string;
         }) => {
-          const verifyResponse = await fetch("/api/payment/verify", {
+          const verifyRes = await fetch("/api/payment/verify", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...response, plan })
           });
 
-          if (!verifyResponse.ok) {
-            return;
-          }
+          const verifyData = (await verifyRes.json()) as { success?: boolean; message?: string };
 
-          setActivePlan(null);
-          router.refresh();
-          await fetch("/api/subscription", { cache: "no-store" });
-          window.alert("Payment successful. Your plan has been upgraded.");
+          if (verifyData.success) {
+            window.alert(`🎉 Payment successful! You are now on ${plan} plan.`);
+            window.location.reload();
+          } else {
+            window.alert("Payment verification failed: " + verifyData.message);
+          }
         },
         prefill: {
-          name: user?.fullName ?? "",
-          email: user?.primaryEmailAddress?.emailAddress ?? ""
+          name: user?.fullName || "",
+          email: user?.primaryEmailAddress?.emailAddress || ""
         },
         theme: {
           color: "#6c63ff"
+        },
+        modal: {
+          ondismiss: () => setActivePlan(null)
         }
-      });
+      };
 
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", (response: any) => {
+        window.alert("Payment failed: " + response.error.description);
+        setActivePlan(null);
+      });
       rzp.open();
     } catch (upgradeError) {
-      setError(upgradeError instanceof Error ? upgradeError.message : "Failed to start payment flow.");
-    } finally {
+      console.error("Payment error:", upgradeError);
+      window.alert(
+        "Something went wrong: " +
+          (upgradeError instanceof Error ? upgradeError.message : "Failed to create payment order.")
+      );
       setActivePlan(null);
     }
   }

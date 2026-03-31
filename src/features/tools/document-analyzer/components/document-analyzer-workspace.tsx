@@ -385,14 +385,14 @@ export function DocumentAnalyzerWorkspace() {
                 <Button type="button" variant="outline" className="mt-4" onClick={() => fileInputRef.current?.click()}>
                   Browse Files
                 </Button>
-                <p className="mt-4 text-sm text-slate-500">PDF, PNG, JPG, JPEG, DOCX, TXT - Max 10MB</p>
+                <p className="mt-4 text-sm text-slate-500">Supported formats: PDF, DOCX, TXT, PNG, JPG</p>
               </div>
             )}
             <input
               ref={fileInputRef}
               type="file"
               className="hidden"
-              accept=".pdf,.png,.jpg,.jpeg,.docx,.txt,image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+              accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
               onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
             />
           </section>
@@ -465,7 +465,7 @@ export function DocumentAnalyzerWorkspace() {
             <EmptyState
               icon={FileText}
               title="Upload a document to get started"
-              description="Supports PDF, images, and text files"
+              description="Supported formats: PDF, DOCX, TXT, PNG, JPG"
             />
           )
         ) : (

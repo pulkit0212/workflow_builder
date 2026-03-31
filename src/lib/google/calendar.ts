@@ -1,5 +1,5 @@
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
-import { refreshGoogleAccessToken } from "@/lib/google/integration";
+import { GoogleCalendarAuthRequiredError, refreshGoogleAccessToken } from "@/lib/google/integration";
 
 type GoogleCalendarEvent = {
   id?: string;
@@ -107,10 +107,19 @@ async function fetchGoogleCalendarEvents(params: {
   });
 
   if (response.status === 401 && params.userId && params.refreshToken) {
-    const refreshedIntegration = await refreshGoogleAccessToken({
-      userId: params.userId,
-      refreshToken: params.refreshToken
-    });
+    let refreshedIntegration;
+
+    try {
+      refreshedIntegration = await refreshGoogleAccessToken({
+        userId: params.userId,
+        refreshToken: params.refreshToken
+      });
+    } catch (error) {
+      console.error("[Calendar] Token refresh failed:", error);
+      throw error instanceof GoogleCalendarAuthRequiredError
+        ? error
+        : new GoogleCalendarAuthRequiredError();
+    }
 
     return fetchGoogleCalendarEvents({
       accessToken: refreshedIntegration.accessToken ?? "",
@@ -122,7 +131,7 @@ async function fetchGoogleCalendarEvents(params: {
   }
 
   if (response.status === 401) {
-    throw new Error("Google Calendar access has expired. Reconnect Google Calendar and try again.");
+    throw new GoogleCalendarAuthRequiredError();
   }
 
   if (!response.ok) {
@@ -174,10 +183,19 @@ async function fetchGoogleCalendarEventById(params: {
   });
 
   if (response.status === 401 && params.userId && params.refreshToken) {
-    const refreshedIntegration = await refreshGoogleAccessToken({
-      userId: params.userId,
-      refreshToken: params.refreshToken
-    });
+    let refreshedIntegration;
+
+    try {
+      refreshedIntegration = await refreshGoogleAccessToken({
+        userId: params.userId,
+        refreshToken: params.refreshToken
+      });
+    } catch (error) {
+      console.error("[Calendar] Token refresh failed:", error);
+      throw error instanceof GoogleCalendarAuthRequiredError
+        ? error
+        : new GoogleCalendarAuthRequiredError();
+    }
 
     return fetchGoogleCalendarEventById({
       accessToken: refreshedIntegration.accessToken ?? "",
@@ -188,7 +206,7 @@ async function fetchGoogleCalendarEventById(params: {
   }
 
   if (response.status === 401) {
-    throw new Error("Google Calendar access has expired. Reconnect Google Calendar and try again.");
+    throw new GoogleCalendarAuthRequiredError();
   }
 
   const payload = (await response.json()) as GoogleCalendarEventResponse;

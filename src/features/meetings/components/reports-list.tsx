@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, FileText, LoaderCircle, Search } from "lucide-react";
+import { SkeletonList } from "@/components/SkeletonCard";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
 import { Badge } from "@/components/ui/badge";
@@ -161,6 +162,16 @@ export function ReportsList() {
 
   const normalizedSearch = useMemo(() => search.trim(), [search]);
 
+  async function loadReportsData(params: {
+    page: number;
+    limit: number;
+    status: StatusFilter;
+    date: DateFilter;
+    search: string;
+  }) {
+    return fetchMeetingReports(params);
+  }
+
   useEffect(() => {
     setPage(1);
   }, [normalizedSearch, status, date]);
@@ -174,7 +185,7 @@ export function ReportsList() {
       setUpgradeRequired(false);
 
       try {
-        const result = await fetchMeetingReports({
+        const result = await loadReportsData({
           page,
           limit: 6,
           status,
@@ -209,6 +220,33 @@ export function ReportsList() {
       cancelled = true;
     };
   }, [date, normalizedSearch, page, status]);
+
+  async function handleRetry() {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const result = await loadReportsData({
+        page,
+        limit: 6,
+        status,
+        date,
+        search: normalizedSearch
+      });
+      setReports(result.meetings);
+      setPagination(result.pagination);
+      setUpgradeRequired(false);
+    } catch (loadError) {
+      if ((loadError as Error & { status?: number }).status === 403) {
+        setUpgradeRequired(true);
+        setError(null);
+      } else {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load reports.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -262,22 +300,7 @@ export function ReportsList() {
       </Card>
 
       {isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {[0, 1, 2, 3].map((index) => (
-            <Card key={index} className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="shimmer h-12 w-12 rounded-full" />
-                  <div className="space-y-2">
-                    <div className="shimmer h-4 w-40 rounded-full" />
-                    <div className="shimmer h-3 w-32 rounded-full" />
-                  </div>
-                </div>
-                <div className="shimmer h-20 rounded-xl" />
-              </div>
-            </Card>
-          ))}
-        </div>
+        <SkeletonList count={4} />
       ) : upgradeRequired ? (
         <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
           <div className="space-y-4">
@@ -301,8 +324,15 @@ export function ReportsList() {
         </Card>
       ) : error ? (
         <Card className="border-[#fecaca] p-6">
-          <p className="text-sm font-semibold text-[#991b1b]">Unable to load reports</p>
-          <p className="mt-2 text-sm text-[#991b1b]">{error}</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#991b1b]">Unable to load reports</p>
+              <p className="mt-2 text-sm text-[#991b1b]">{error}</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => void handleRetry()}>
+              Retry
+            </Button>
+          </div>
         </Card>
       ) : reports.length === 0 ? (
         <EmptyState

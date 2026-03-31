@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execSync } = require("node:child_process");
-const { joinMeeting, leaveMeeting } = require("./meetingBot");
+const { joinMeeting, leaveMeeting, watchMeetingEnd } = require("./meetingBot");
 const { getAudioFileInfo, startRecording, stopRecording, waitForRecordingToFlush } = require("./audioCapture");
 const { summarizeMeeting } = require("./summarize");
 
@@ -75,6 +75,8 @@ function persistSessionFailure(meetingId, errorCode, failureReason) {
 }
 
 async function cleanupJoinArtifacts(meetingId, browser) {
+  clearActiveHandles(activeBrowsers.get(meetingId));
+
   if (browser) {
     try {
       await leaveMeeting(browser);
@@ -89,6 +91,80 @@ async function cleanupJoinArtifacts(meetingId, browser) {
 
 function formatBotError(error, fallback) {
   return error instanceof Error ? error.message : fallback;
+}
+
+function clearActiveHandles(activeSession) {
+  if (!activeSession) {
+    return;
+  }
+
+  if (activeSession.watchInterval) {
+    clearInterval(activeSession.watchInterval);
+    activeSession.watchInterval = null;
+  }
+
+  if (activeSession.safetyTimeout) {
+    clearTimeout(activeSession.safetyTimeout);
+    activeSession.safetyTimeout = null;
+  }
+}
+
+function validateAudioFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) {
+      return { valid: false, reason: "Audio file not found. Recording may have failed." };
+    }
+
+    const stats = fs.statSync(filePath);
+    const fileSizeKB = stats.size / 1024;
+
+    console.log(`[Audio] File size: ${fileSizeKB.toFixed(1)} KB`);
+
+    if (fileSizeKB < 50) {
+      return {
+        valid: false,
+        reason: "No audio was captured. Please check your MEETING_AUDIO_SOURCE setting.",
+        errorCode: "no_audio_captured"
+      };
+    }
+
+    if (fileSizeKB < 200) {
+      console.warn("[Audio] Small file — may be very short recording");
+    }
+
+    return { valid: true, fileSizeKB };
+  } catch (error) {
+    return {
+      valid: false,
+      reason: "Could not read audio file: " + (error instanceof Error ? error.message : "unknown error")
+    };
+  }
+}
+
+async function releaseActiveResources(meetingId, session) {
+  const activeSession = activeBrowsers.get(meetingId);
+  clearActiveHandles(activeSession);
+
+  try {
+    if (activeSession?.ffmpegProcess) {
+      await stopRecording(activeSession.ffmpegProcess);
+    } else if (session?.ffmpegPid) {
+      process.kill(session.ffmpegPid, "SIGINT");
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+
+  try {
+    if (activeSession?.browser) {
+      await leaveMeeting(activeSession.browser);
+    }
+  } catch {
+    // ignore cleanup errors
+  }
+
+  activeBrowsers.delete(meetingId);
 }
 
 async function startBot(meetingId, meetingUrl, onStatusUpdate) {
@@ -161,13 +237,46 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
       meetingUrl,
       startupLog: recording.startupLog || "",
     });
+
+    const watchInterval = await watchMeetingEnd(
+      page,
+      meetingId,
+      async (id, reason) => {
+        botLog(id, "meeting_auto_ended", { reason });
+
+        if (reason === "kicked") {
+          const currentSession = getSession(id);
+          if (currentSession) {
+            writeSession(id, {
+              ...currentSession,
+              errorCode: "bot_kicked"
+            });
+          }
+        }
+
+        await stopBot(id, onStatusUpdate).catch((error) =>
+          console.error("[Bot] Auto-stop error:", error.message)
+        );
+      }
+    );
+
+    const MAX_DURATION = 4 * 60 * 60 * 1000;
+    const safetyTimeout = setTimeout(async () => {
+      botLog(meetingId, "max_duration_reached", { maxHours: 4 });
+      await stopBot(meetingId, onStatusUpdate).catch(console.error);
+    }, MAX_DURATION);
+
     botLog(meetingId, "recording_started", {
       outputPath: recording.outputPath,
       ffmpegPid: recording.ffmpeg.pid,
     });
     activeBrowsers.set(meetingId, {
       browser,
+      page,
       ffmpegProcess: recording.ffmpeg,
+      watchInterval,
+      safetyTimeout,
+      stopInProgress: false,
     });
     await onStatusUpdate(meetingId, "capturing", {
       errorCode: null,
@@ -196,9 +305,19 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
 async function stopBot(meetingId, onStatusUpdate) {
   const session = getSession(meetingId);
   const outputPath = session?.outputPath;
+  const activeSession = activeBrowsers.get(meetingId);
 
   if (!session) {
     return { success: false, error: "No active bot session found" };
+  }
+
+  if (activeSession?.stopInProgress) {
+    return { success: false, error: "Bot stop already in progress" };
+  }
+
+  if (activeSession) {
+    activeSession.stopInProgress = true;
+    clearActiveHandles(activeSession);
   }
 
   try {
@@ -218,7 +337,6 @@ async function stopBot(meetingId, onStatusUpdate) {
 
     try {
       process.kill(session.ffmpegPid, 0);
-      const activeSession = activeBrowsers.get(meetingId);
       const browserFfmpeg = activeSession && activeSession.ffmpegProcess;
 
       if (browserFfmpeg) {
@@ -236,11 +354,7 @@ async function stopBot(meetingId, onStatusUpdate) {
     if (!flushResult.success) {
       const fileInfo = getAudioFileInfo(outputPath);
       const errorMessage = `${flushResult.error} Check MEETING_AUDIO_SOURCE and confirm system audio is routed into PulseAudio/BlackHole.`;
-      const activeSession = activeBrowsers.get(meetingId);
-      if (activeSession?.browser) {
-        await leaveMeeting(activeSession.browser).catch(() => null);
-        activeBrowsers.delete(meetingId);
-      }
+      await releaseActiveResources(meetingId, session);
       persistSessionFailure(meetingId, "no_audio_captured", errorMessage);
       botLog(meetingId, "bot_failed", {
         error: errorMessage,
@@ -275,6 +389,7 @@ async function stopBot(meetingId, onStatusUpdate) {
 
     if (fileSizeKB < 50) {
       console.error("[Audio] File too small — likely silence or capture failed");
+      await releaseActiveResources(meetingId, session);
       persistSessionFailure(
         meetingId,
         "no_audio_captured",
@@ -303,10 +418,32 @@ async function stopBot(meetingId, onStatusUpdate) {
       console.warn("[Audio] File smaller than expected — audio may be partial");
     }
 
-    const activeSession = activeBrowsers.get(meetingId);
     if (activeSession?.browser) {
       await leaveMeeting(activeSession.browser);
+    }
+    activeBrowsers.delete(meetingId);
+
+    const audioValidation = validateAudioFile(session.outputPath);
+    if (!audioValidation.valid) {
+      console.error("[Bot] Audio validation failed:", audioValidation.reason);
+      persistSessionFailure(
+        meetingId,
+        audioValidation.errorCode || "audio_validation_failed",
+        audioValidation.reason
+      );
+      await onStatusUpdate(meetingId, "failed", {
+        errorCode: audioValidation.errorCode || "audio_validation_failed",
+        failureReason: audioValidation.reason,
+        recordingFilePath: outputPath,
+        recordingEndedAt,
+      });
       activeBrowsers.delete(meetingId);
+      deleteSession(meetingId);
+      return {
+        success: false,
+        error: audioValidation.reason,
+        errorCode: audioValidation.errorCode || "audio_validation_failed"
+      };
     }
 
     const transcribeScript = path.join(BOT_DIR, "transcribe.py");
@@ -389,6 +526,7 @@ async function stopBot(meetingId, onStatusUpdate) {
     };
   } catch (error) {
     console.error("[Bot] Failed to stop:", error);
+    activeBrowsers.delete(meetingId);
     persistSessionFailure(meetingId, "bot_stop_failed", formatBotError(error, "Failed to stop bot"));
     botLog(meetingId, "bot_failed", {
       error: formatBotError(error, "Failed to stop bot"),
@@ -403,5 +541,38 @@ async function stopBot(meetingId, onStatusUpdate) {
     return { success: false, error: formatBotError(error, "Failed to stop bot") };
   }
 }
+
+function recoverStaleSessions() {
+  try {
+    const sessions = readSessions();
+    const now = Date.now();
+
+    for (const [meetingId, session] of Object.entries(sessions)) {
+      if (session.state === "capturing" && session.joinedAt) {
+        const joinedAt = new Date(session.joinedAt).getTime();
+        const hoursElapsed = (now - joinedAt) / (1000 * 60 * 60);
+
+        if (hoursElapsed > 5) {
+          console.log(`[Bot] Recovering stale session: ${meetingId}`);
+          deleteSession(meetingId);
+        }
+      }
+
+      if (session.state === "processing" && session.updatedAt) {
+        const updatedAt = new Date(session.updatedAt).getTime();
+        const minsElapsed = (now - updatedAt) / (1000 * 60);
+
+        if (minsElapsed > 30) {
+          console.log(`[Bot] Stale processing session: ${meetingId}`);
+          deleteSession(meetingId);
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[Bot] Session recovery error:", error instanceof Error ? error.message : error);
+  }
+}
+
+recoverStaleSessions();
 
 module.exports = { startBot, stopBot };

@@ -5,6 +5,7 @@ import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { getActiveGoogleIntegration } from "@/lib/google/integration";
 import { fetchGoogleCalendarMeetingsForDay } from "@/lib/google/calendar";
+import { GoogleCalendarAuthRequiredError } from "@/lib/google/integration";
 
 export const runtime = "nodejs";
 
@@ -62,6 +63,14 @@ export async function GET() {
 
     return NextResponse.json(meetings);
   } catch (error) {
+    if (error instanceof GoogleCalendarAuthRequiredError) {
+      return NextResponse.json({
+        meetings: [],
+        error: "calendar_auth_required",
+        message: "Please reconnect your Google Calendar"
+      });
+    }
+
     if (isMissingDatabaseRelationError(error)) {
       return NextResponse.json(
         {

@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-responses";
-import { generateGeminiJson } from "@/lib/ai/gemini-client";
 
 export const runtime = "nodejs";
+const GEMINI_MODEL = "gemini-2.5-flash";
+const logPrefix = "[Task Generator]";
 
 const taskGeneratorInputSchema = z.object({
   input: z.string().trim().min(1, "Input is required."),
@@ -99,6 +101,20 @@ Rules:
 - If input is completely unrelated to tasks, still try to extract implied actions`;
 }
 
+function getGeminiModel() {
+  if (!process.env.GEMINI_API_KEY) {
+    console.error(`${logPrefix} GEMINI_API_KEY is not set`);
+    return null;
+  }
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  return genAI.getGenerativeModel({ model: GEMINI_MODEL });
+}
+
+function cleanGeminiJson(text: string) {
+  return text.replace(/```json/g, "").replace(/```/g, "").trim();
+}
+
 export async function POST(request: Request) {
   const { userId } = await auth();
 
@@ -120,13 +136,30 @@ export async function POST(request: Request) {
     return apiError("Invalid task generator input.", 400, parsed.error.flatten());
   }
 
-  try {
-    const output = await generateGeminiJson<z.infer<typeof taskGeneratorOutputSchema>>({
-      model: "gemini-2.0-flash",
-      prompt: buildTaskGeneratorPrompt(parsed.data)
-    });
+  const model = getGeminiModel();
 
-    const normalized = taskGeneratorOutputSchema.parse(output);
+  if (!model) {
+    return apiError("GEMINI_API_KEY not set", 500);
+  }
+
+  try {
+    const result = await model.generateContent(buildTaskGeneratorPrompt(parsed.data));
+    const text = result.response.text();
+
+    console.log(`${logPrefix} Raw Gemini response:`, text.substring(0, 200));
+
+    const cleaned = cleanGeminiJson(text);
+
+    let parsedOutput: unknown;
+
+    try {
+      parsedOutput = JSON.parse(cleaned);
+    } catch {
+      console.error(`${logPrefix} JSON parse failed:`, cleaned);
+      return apiError("Failed to parse AI response", 500);
+    }
+
+    const normalized = taskGeneratorOutputSchema.parse(parsedOutput);
 
     return apiSuccess({
       success: true,
@@ -135,9 +168,9 @@ export async function POST(request: Request) {
       total_tasks: normalized.total_tasks || normalized.tasks.length,
       unextractable: normalized.unextractable || ""
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to generate tasks.";
-    const statusCode = typeof error === "object" && error && "statusCode" in error ? Number((error as { statusCode?: number }).statusCode) || 500 : 500;
-    return apiError(message, statusCode);
+  } catch (geminiError) {
+    const message = geminiError instanceof Error ? geminiError.message : "Gemini request failed";
+    console.error(`${logPrefix} Gemini error:`, message);
+    return apiError(message || "Gemini request failed", 500);
   }
 }

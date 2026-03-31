@@ -1,75 +1,96 @@
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import Razorpay from "razorpay";
-import { apiError, apiSuccess } from "@/lib/api-responses";
-import { createPaymentRecord, getUserSubscription } from "@/lib/subscription.server";
 
 export const runtime = "nodejs";
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID ?? "",
-  key_secret: process.env.RAZORPAY_KEY_SECRET ?? ""
-});
-
-const PLAN_PRICES: Record<"pro" | "elite", number> = {
-  pro: 9900,
-  elite: 19900
-};
-
 export async function POST(req: Request) {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return apiError("Unauthorized.", 401);
-  }
-
-  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    return apiError("Razorpay is not configured.", 503);
-  }
-
-  let body: unknown;
-
   try {
-    body = await req.json();
-  } catch {
-    return apiError("Request body must be valid JSON.", 400);
-  }
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const plan = (body as { plan?: string } | null)?.plan;
+    const { plan } = await req.json();
 
-  if (plan !== "pro" && plan !== "elite") {
-    return apiError("Invalid plan.", 400);
-  }
+    const keyId = process.env.RAZORPAY_KEY_ID;
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
-  try {
-    const subscription = await getUserSubscription(userId);
-    const amount = PLAN_PRICES[plan];
-    const order = await razorpay.orders.create({
-      amount,
-      currency: "INR",
-      receipt: `artiva_${userId}_${Date.now()}`,
-      notes: {
-        userId,
-        plan,
-        currentPlan: subscription.plan
-      }
+    console.log("[Payment] Key ID exists:", !!keyId);
+    console.log("[Payment] Key Secret exists:", !!keySecret);
+    console.log("[Payment] Plan:", plan);
+
+    if (!keyId || !keySecret) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Razorpay keys not configured"
+        },
+        { status: 500 }
+      );
+    }
+
+    const prices: Record<string, number> = {
+      pro: 9900,
+      elite: 19900
+    };
+
+    const amount = prices[plan];
+    if (!amount) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid plan selected"
+        },
+        { status: 400 }
+      );
+    }
+
+    const credentials = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+
+    const response = await fetch("https://api.razorpay.com/v1/orders", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        amount,
+        currency: "INR",
+        receipt: `ord_${Date.now()}`,
+        notes: { userId, plan }
+      })
     });
 
-    await createPaymentRecord({
-      userId,
-      plan,
-      amount,
-      status: "created",
-      razorpayOrderId: order.id
-    });
+    const order = await response.json();
 
-    return apiSuccess({
+    console.log("[Payment] Razorpay response:", JSON.stringify(order));
+
+    if (!response.ok) {
+      console.error("[Payment] Razorpay error:", order);
+      return NextResponse.json(
+        {
+          success: false,
+          message: order.error?.description || "Failed to create payment order"
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
       success: true,
       orderId: order.id,
       amount,
       currency: "INR",
-      keyId: process.env.RAZORPAY_KEY_ID
+      keyId
     });
-  } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Failed to create payment order.", 500);
+  } catch (error: any) {
+    console.error("[Payment] Unexpected error:", error.message);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error.message || "Failed to create payment order."
+      },
+      { status: 500 }
+    );
   }
 }

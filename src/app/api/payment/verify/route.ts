@@ -1,6 +1,6 @@
-import crypto from "crypto";
+import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { apiError, apiSuccess } from "@/lib/api-responses";
+import crypto from "crypto";
 import { markPaymentCompleted } from "@/lib/subscription.server";
 
 export const runtime = "nodejs";
@@ -11,65 +11,80 @@ const PLAN_PRICES: Record<"pro" | "elite", number> = {
 };
 
 export async function POST(req: Request) {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return apiError("Unauthorized.", 401);
-  }
-
-  if (!process.env.RAZORPAY_KEY_SECRET) {
-    return apiError("Razorpay is not configured.", 503);
-  }
-
-  let body: unknown;
-
   try {
-    body = await req.json();
-  } catch {
-    return apiError("Request body must be valid JSON.", 400);
-  }
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const payload = body as {
-    razorpay_order_id?: string;
-    razorpay_payment_id?: string;
-    razorpay_signature?: string;
-    plan?: "pro" | "elite";
-  };
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      plan
+    } = await req.json();
 
-  if (!payload.razorpay_order_id || !payload.razorpay_payment_id || !payload.razorpay_signature) {
-    return apiError("Incomplete payment payload.", 400);
-  }
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Payment configuration error"
+        },
+        { status: 500 }
+      );
+    }
 
-  if (payload.plan !== "pro" && payload.plan !== "elite") {
-    return apiError("Invalid plan.", 400);
-  }
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+    const expectedSignature = crypto
+      .createHmac("sha256", keySecret)
+      .update(body)
+      .digest("hex");
 
-  const bodyToSign = `${payload.razorpay_order_id}|${payload.razorpay_payment_id}`;
-  const expectedSignature = crypto
-    .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-    .update(bodyToSign)
-    .digest("hex");
+    if (expectedSignature !== razorpay_signature) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid payment signature"
+        },
+        { status: 400 }
+      );
+    }
 
-  if (expectedSignature !== payload.razorpay_signature) {
-    return apiError("Invalid payment signature.", 400);
-  }
+    if (plan !== "pro" && plan !== "elite") {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid plan selected"
+        },
+        { status: 400 }
+      );
+    }
 
-  try {
-    const subscription = await markPaymentCompleted({
+    await markPaymentCompleted({
       userId,
-      plan: payload.plan,
-      amount: PLAN_PRICES[payload.plan],
-      razorpayOrderId: payload.razorpay_order_id,
-      razorpayPaymentId: payload.razorpay_payment_id,
-      razorpaySignature: payload.razorpay_signature
+      plan,
+      amount: PLAN_PRICES[plan],
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature
     });
 
-    return apiSuccess({
+    console.log("[Payment] Payment verified, plan upgraded:", plan);
+
+    return NextResponse.json({
       success: true,
-      plan: subscription.plan,
-      status: subscription.status
+      plan,
+      message: "Payment successful! Plan upgraded."
     });
-  } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Failed to verify payment.", 500);
+  } catch (error: any) {
+    console.error("[Payment] Verify error:", error.message);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error.message
+      },
+      { status: 500 }
+    );
   }
 }

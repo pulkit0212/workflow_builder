@@ -43,7 +43,7 @@ function extractText(payload: { candidates?: GeminiCandidatePayload[] }) {
     .trim();
 }
 
-async function generateGeminiRawResponse({ prompt, model = "gemini-2.0-flash", parts }: GeminiGenerateContentParams) {
+async function generateGeminiRawResponse({ prompt, model = "gemini-2.5-flash", parts }: GeminiGenerateContentParams) {
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
     method: "POST",
     headers: {

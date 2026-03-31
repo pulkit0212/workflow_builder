@@ -5,6 +5,7 @@ const { chromium } = require("playwright");
 const DEFAULT_JOIN_TIMEOUT_MS = 45_000;
 const POST_CLICK_SETTLE_MS = 5_000;
 const STATE_POLL_INTERVAL_MS = 1_500;
+const MEETING_END_CHECK_INTERVAL_MS = 30_000;
 
 function normalizeText(value) {
   return (value || "").replace(/\s+/g, " ").trim();
@@ -560,4 +561,55 @@ async function leaveMeeting(browser) {
   }
 }
 
-module.exports = { joinMeeting, leaveMeeting };
+async function watchMeetingEnd(page, meetingId, onMeetingEnd) {
+  console.log("[Bot] Starting meeting end watcher...");
+
+  const endPatterns = [
+    "meeting ended",
+    "left the meeting",
+    "the meeting has ended",
+    "return to home screen",
+    "you've left",
+    "call ended",
+    "this meeting has been ended",
+    "meeting is over"
+  ];
+
+  const kickPatterns = [
+    "removed from the meeting",
+    "been removed",
+    "you were removed",
+    "access denied"
+  ];
+
+  const checkInterval = setInterval(() => {
+    void (async () => {
+      try {
+        const bodyText = await page.evaluate(
+          () => document.body?.innerText?.toLowerCase() || ""
+        );
+
+        const meetingEnded = endPatterns.some((pattern) => bodyText.includes(pattern));
+        const wasKicked = kickPatterns.some((pattern) => bodyText.includes(pattern));
+
+        if (meetingEnded) {
+          console.log("[Bot] Meeting end detected — auto stopping");
+          clearInterval(checkInterval);
+          onMeetingEnd(meetingId, "ended");
+        } else if (wasKicked) {
+          console.log("[Bot] Bot was kicked — stopping");
+          clearInterval(checkInterval);
+          onMeetingEnd(meetingId, "kicked");
+        }
+      } catch {
+        console.log("[Bot] Page closed — meeting ended");
+        clearInterval(checkInterval);
+        onMeetingEnd(meetingId, "page_closed");
+      }
+    })();
+  }, MEETING_END_CHECK_INTERVAL_MS);
+
+  return checkInterval;
+}
+
+module.exports = { joinMeeting, leaveMeeting, watchMeetingEnd };

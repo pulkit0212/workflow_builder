@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { CalendarDays, CalendarSync, LoaderCircle } from "lucide-react";
+import { SkeletonList } from "@/components/SkeletonCard";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -82,6 +83,28 @@ function ConnectGoogleCalendarCard({
   );
 }
 
+function ReconnectGoogleCalendarCard({
+  isConnecting,
+  onReconnect
+}: {
+  isConnecting: boolean;
+  onReconnect: () => void;
+}) {
+  return (
+    <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
+      <div className="space-y-3">
+        <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#b45309]">Google Calendar</p>
+        <p className="text-lg font-semibold text-[#111827]">📅 Google Calendar needs to be reconnected</p>
+        <p className="text-sm text-[#92400e]">Your session has expired.</p>
+        <Button type="button" onClick={onReconnect} disabled={isConnecting}>
+          {isConnecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+          Reconnect Google Calendar
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
 export function MeetingsList() {
   const searchParams = useSearchParams();
   const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
@@ -90,6 +113,7 @@ export function MeetingsList() {
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [needsGoogleConnection, setNeedsGoogleConnection] = useState(false);
+  const [needsGoogleReconnect, setNeedsGoogleReconnect] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -103,6 +127,7 @@ export function MeetingsList() {
     try {
       const todayResult = await fetchTodayMeetings();
       setNeedsGoogleConnection(todayResult.status === "not_connected");
+      setNeedsGoogleReconnect(todayResult.status === "auth_required");
       setTodayMeetings(todayResult.meetings);
 
       if (todayResult.status === "connected") {
@@ -122,6 +147,14 @@ export function MeetingsList() {
 
   useEffect(() => {
     void loadMeetings();
+  }, []);
+
+  useEffect(() => {
+    void getSession().then((session) => {
+      if ((session as { error?: string } | null)?.error === "RefreshAccessTokenError") {
+        void signIn("google", { callbackUrl: "/dashboard/meetings" });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -149,6 +182,7 @@ export function MeetingsList() {
       setActionError(null);
       setIsConnectingGoogle(false);
       setNeedsGoogleConnection(false);
+      setNeedsGoogleReconnect(false);
       void loadMeetings({ silent: true });
     }
   }, [searchParams]);
@@ -172,18 +206,7 @@ export function MeetingsList() {
   const groupedUpcoming = useMemo(() => groupMeetingsByDate(upcomingMeetings), [upcomingMeetings]);
 
   if (isLoading) {
-    return (
-      <div className="space-y-6">
-        {[0, 1, 2].map((index) => (
-          <Card key={index} className="p-6">
-            <div className="space-y-3">
-              <div className="shimmer h-4 w-40 rounded-full" />
-              <div className="shimmer h-20 rounded-xl" />
-            </div>
-          </Card>
-        ))}
-      </div>
-    );
+    return <SkeletonList count={3} />;
   }
 
   return (
@@ -199,7 +222,9 @@ export function MeetingsList() {
         </Button>
       </div>
 
-      {needsGoogleConnection ? (
+      {needsGoogleReconnect ? (
+        <ReconnectGoogleCalendarCard isConnecting={isConnectingGoogle} onReconnect={handleConnectGoogle} />
+      ) : needsGoogleConnection ? (
         <ConnectGoogleCalendarCard
           isConnecting={isConnectingGoogle}
           actionError={actionError}
@@ -207,8 +232,15 @@ export function MeetingsList() {
         />
       ) : error ? (
         <Card className="border-[#fecaca] p-6">
-          <h2>Unable to load meetings</h2>
-          <p className="mt-2">{error}</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2>Unable to load meetings</h2>
+              <p className="mt-2">{error}</p>
+            </div>
+            <Button type="button" variant="outline" onClick={handleSyncCalendar} disabled={isSyncing}>
+              Retry
+            </Button>
+          </div>
         </Card>
       ) : (
         <>

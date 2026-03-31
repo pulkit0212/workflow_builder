@@ -8,6 +8,15 @@ const googleProvider = "google";
 const googleIntegrationLogPrefix = "[google-integration]";
 const googleCalendarReadonlyScope = "https://www.googleapis.com/auth/calendar.readonly";
 
+export class GoogleCalendarAuthRequiredError extends Error {
+  code = "calendar_auth_required";
+
+  constructor(message = "Please reconnect your Google Calendar") {
+    super(message);
+    this.name = "GoogleCalendarAuthRequiredError";
+  }
+}
+
 function getGoogleClientId() {
   const googleAuthEnv = getGoogleAuthEnv();
 
@@ -90,7 +99,11 @@ export async function refreshGoogleAccessToken(params: {
   });
 
   if (!response.ok) {
-    throw new Error("Failed to refresh Google access token.");
+    console.error(`${googleIntegrationLogPrefix} token refresh failed`, {
+      userId: params.userId,
+      status: response.status
+    });
+    throw new GoogleCalendarAuthRequiredError();
   }
 
   const payload = (await response.json()) as {
@@ -100,7 +113,7 @@ export async function refreshGoogleAccessToken(params: {
   };
 
   if (!payload.access_token) {
-    throw new Error("Google refresh response did not include an access token.");
+    throw new GoogleCalendarAuthRequiredError();
   }
 
   const expiresAt = payload.expires_in ? new Date(Date.now() + payload.expires_in * 1000) : null;
@@ -154,10 +167,21 @@ export async function getActiveGoogleIntegration(userId: string) {
   );
 
   if (needsRefresh && integration.refreshToken) {
-    return refreshGoogleAccessToken({
-      userId,
-      refreshToken: integration.refreshToken
-    });
+    try {
+      return await refreshGoogleAccessToken({
+        userId,
+        refreshToken: integration.refreshToken
+      });
+    } catch (error) {
+      console.error("[Calendar] Token refresh failed:", error);
+      throw error instanceof GoogleCalendarAuthRequiredError
+        ? error
+        : new GoogleCalendarAuthRequiredError();
+    }
+  }
+
+  if (expiryTime && expiryTime <= Date.now() + 60 * 1000 && !integration.refreshToken) {
+    throw new GoogleCalendarAuthRequiredError();
   }
 
   return integration;

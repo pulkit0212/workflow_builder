@@ -1,188 +1,277 @@
 import { auth } from "@clerk/nextjs/server";
-import { z } from "zod";
-import { apiError, apiSuccess } from "@/lib/api-responses";
-import { generateGeminiJson, toBase64 } from "@/lib/ai/gemini-client";
+import { NextResponse } from "next/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
-const extractOptionsSchema = z.array(
-  z.enum(["summary", "actionItems", "keyPoints", "decisions", "risks", "rawInsights"])
-);
+type ExtractOption = "summary" | "actionItems" | "keyPoints" | "decisions" | "risks" | "rawInsights";
 
-const documentAnalyzerTextInputSchema = z.object({
-  text: z.string().trim().min(1, "Document text is required."),
-  extractOptions: extractOptionsSchema.default(["summary", "actionItems", "keyPoints", "decisions", "risks"])
-});
+type DocumentAnalyzerOutput = {
+  summary: string | null;
+  action_items: Array<{
+    task: string;
+    owner: string;
+    due_date: string;
+    priority: "High" | "Medium" | "Low";
+  }>;
+  key_points: string[];
+  decisions: string[];
+  risks: string[];
+  raw_insights: string | null;
+};
 
-const documentAnalyzerActionItemSchema = z.object({
-  task: z.string().trim().min(1),
-  owner: z.string().trim().default(""),
-  due_date: z.string().trim().default(""),
-  priority: z.enum(["High", "Medium", "Low"]).default("Medium")
-});
+const defaultExtractOptions: ExtractOption[] = ["summary", "actionItems", "keyPoints", "decisions", "risks"];
+const logPrefix = "[DocAnalyzer]";
 
-const documentAnalyzerOutputSchema = z.object({
-  summary: z.string().nullable().default(null),
-  action_items: z.array(documentAnalyzerActionItemSchema).default([]),
-  key_points: z.array(z.string().trim().min(1)).default([]),
-  decisions: z.array(z.string().trim().min(1)).default([]),
-  risks: z.array(z.string().trim().min(1)).default([]),
-  raw_insights: z.string().nullable().default(null)
-});
-
-type DocumentAnalyzerOutput = z.infer<typeof documentAnalyzerOutputSchema>;
-
-function parseExtractOptions(rawValue: FormDataEntryValue | null) {
+function getExtractOptions(rawValue: FormDataEntryValue | string | null | undefined) {
   if (typeof rawValue !== "string" || rawValue.trim().length === 0) {
-    return ["summary", "actionItems", "keyPoints", "decisions", "risks"] as const;
+    return defaultExtractOptions;
   }
 
   try {
     const parsed = JSON.parse(rawValue);
-    return extractOptionsSchema.parse(Array.isArray(parsed) ? parsed : []);
+    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as ExtractOption[]) : defaultExtractOptions;
   } catch {
-    return extractOptionsSchema.parse(
-      rawValue
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    );
+    return defaultExtractOptions;
   }
 }
 
-function buildDocumentPrompt(documentText: string, extractOptions: Array<z.infer<typeof extractOptionsSchema>[number]>) {
+function buildPrompt(documentText: string, extractOptions: ExtractOption[]) {
   return `You are an expert document analyst.
 
 Analyze this document and extract structured information.
 
-${extractOptions.includes("summary") ? "Extract a comprehensive summary." : ""}
-${extractOptions.includes("actionItems") ? "Extract all action items with owner and deadline." : ""}
-${extractOptions.includes("keyPoints") ? "Extract the most important key points." : ""}
-${extractOptions.includes("decisions") ? "Extract all decisions that were made." : ""}
-${extractOptions.includes("risks") ? "Identify any risks, concerns, or blockers." : ""}
-${extractOptions.includes("rawInsights") ? "Provide additional insights and observations." : ""}
+${extractOptions.includes("summary") ? "Include a concise 2-4 sentence summary." : ""}
+${extractOptions.includes("actionItems") ? "Extract action items with task, owner, due date, and priority." : ""}
+${extractOptions.includes("keyPoints") ? "Extract at least 3 specific key points when possible." : ""}
+${extractOptions.includes("decisions") ? "Extract decisions that were made." : ""}
+${extractOptions.includes("risks") ? "Extract risks, blockers, or concerns." : ""}
+${extractOptions.includes("rawInsights") ? "Add extra observations in raw_insights." : ""}
 
 Document content:
-${documentText}
+${documentText.substring(0, 15000)}
 
 Return ONLY valid JSON, no markdown, no backticks:
 {
-  "summary": "Full summary here or null",
+  "summary": "2-4 sentence overview of the document",
   "action_items": [
-    { "task": "...", "owner": "...", "due_date": "...", "priority": "High/Medium/Low" }
-  ],
-  "key_points": ["point 1", "point 2"],
-  "decisions": ["decision 1", "decision 2"],
-  "risks": ["risk 1", "risk 2"],
-  "raw_insights": "insights text or null"
-}`;
-}
-
-function isTextLikeFile(file: File) {
-  return [
-    "text/plain",
-    "text/markdown",
-    "text/csv",
-    "application/json",
-    "application/xml",
-    "text/xml"
-  ].includes(file.type);
-}
-
-function buildInlineDataPart(file: File, buffer: ArrayBuffer) {
-  return {
-    inlineData: {
-      mimeType: file.type || "application/octet-stream",
-      data: toBase64(buffer)
+    {
+      "task": "Specific task or action item",
+      "owner": "Person responsible or Unassigned",
+      "due_date": "Deadline or Not specified",
+      "priority": "High or Medium or Low"
     }
+  ],
+  "key_points": ["Important point 1", "Important point 2", "Important point 3"],
+  "decisions": ["Decision made 1", "Decision made 2"],
+  "risks": ["Risk or concern 1"],
+  "raw_insights": "Extra observations or null"
+}
+
+Rules:
+- If no action items found: action_items = []
+- If no decisions found: decisions = []
+- If no risks found: risks = []
+- If raw insights are not needed: raw_insights = null
+- Be specific, not vague`;
+}
+
+function normalizeOutput(parsed: Partial<DocumentAnalyzerOutput>): DocumentAnalyzerOutput {
+  return {
+    summary: typeof parsed.summary === "string" ? parsed.summary : null,
+    action_items: Array.isArray(parsed.action_items)
+      ? parsed.action_items.map((item) => ({
+          task: typeof item?.task === "string" ? item.task : "",
+          owner: typeof item?.owner === "string" ? item.owner : "",
+          due_date: typeof item?.due_date === "string" ? item.due_date : "",
+          priority:
+            item?.priority === "High" || item?.priority === "Low" || item?.priority === "Medium"
+              ? item.priority
+              : "Medium"
+        })).filter((item) => item.task.trim().length > 0)
+      : [],
+    key_points: Array.isArray(parsed.key_points) ? parsed.key_points.filter((item): item is string => typeof item === "string") : [],
+    decisions: Array.isArray(parsed.decisions) ? parsed.decisions.filter((item): item is string => typeof item === "string") : [],
+    risks: Array.isArray(parsed.risks) ? parsed.risks.filter((item): item is string => typeof item === "string") : [],
+    raw_insights: typeof parsed.raw_insights === "string" ? parsed.raw_insights : null
   };
 }
 
-async function analyzeTextDocument(text: string, extractOptions: Array<z.infer<typeof extractOptionsSchema>[number]>) {
-  return generateGeminiJson<DocumentAnalyzerOutput>({
-    model: "gemini-2.0-flash",
-    prompt: buildDocumentPrompt(text, extractOptions)
-  });
-}
-
-async function analyzeBinaryDocument(file: File, extractOptions: Array<z.infer<typeof extractOptionsSchema>[number]>) {
-  const buffer = await file.arrayBuffer();
-
-  return generateGeminiJson<DocumentAnalyzerOutput>({
-    model: "gemini-2.0-flash",
-    prompt: buildDocumentPrompt(`[Attached file: ${file.name}]`, extractOptions),
-    parts: [buildInlineDataPart(file, buffer)]
-  });
-}
-
-function normalizeOutput(output: DocumentAnalyzerOutput) {
-  return documentAnalyzerOutputSchema.parse({
-    summary: output.summary ?? null,
-    action_items: output.action_items ?? [],
-    key_points: output.key_points ?? [],
-    decisions: output.decisions ?? [],
-    risks: output.risks ?? [],
-    raw_insights: output.raw_insights ?? null
-  });
-}
-
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return apiError("Unauthorized.", 401);
+    return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
   }
 
   try {
-    const contentType = request.headers.get("content-type") ?? "";
+    if (!process.env.GEMINI_API_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "GEMINI_API_KEY not configured"
+        },
+        { status: 500 }
+      );
+    }
+
+    const contentType = req.headers.get("content-type") || "";
+    let documentText = "";
+    let extractOptions: ExtractOption[] = defaultExtractOptions;
 
     if (contentType.includes("multipart/form-data")) {
-      const formData = await request.formData();
+      const formData = await req.formData();
       const file = formData.get("file");
+      extractOptions = getExtractOptions(formData.get("extractOptions"));
 
-      if (!(file instanceof File) || file.size === 0) {
-        return apiError("A file is required.", 400);
+      if (!(file instanceof File)) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: "No file provided"
+          },
+          { status: 400 }
+        );
       }
 
       if (file.size > 10 * 1024 * 1024) {
-        return apiError("Files must be 10MB or smaller.", 400);
+        return NextResponse.json(
+          {
+            success: false,
+            message: "Files must be 10MB or smaller."
+          },
+          { status: 400 }
+        );
       }
 
-      const extractOptions = parseExtractOptions(formData.get("extractOptions"));
+      const fileType = file.type;
+      const fileName = file.name.toLowerCase();
 
-      const output = isTextLikeFile(file)
-        ? await analyzeTextDocument(await file.text(), extractOptions)
-        : await analyzeBinaryDocument(file, extractOptions);
+      console.log(logPrefix, "File:", fileName, "Type:", fileType);
 
-      return apiSuccess({
-        success: true,
-        result: normalizeOutput(output)
-      });
+      if (fileType === "text/plain" || fileName.endsWith(".txt")) {
+        documentText = await file.text();
+      } else if (
+        fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        fileName.endsWith(".docx")
+      ) {
+        const mammoth = await import("mammoth");
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const result = await mammoth.extractRawText({ buffer });
+        documentText = result.value;
+        console.log(logPrefix, "DOCX extracted, length:", documentText.length);
+      } else if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
+        try {
+          const pdfParse = await import("pdf-parse");
+          const arrayBuffer = await file.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          const pdfData = await pdfParse.default(buffer);
+          documentText = pdfData.text;
+          console.log(logPrefix, "PDF extracted, length:", documentText.length);
+        } catch (pdfError) {
+          console.log(logPrefix, "PDF parse failed, using Gemini Vision", pdfError);
+          const arrayBuffer = await file.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString("base64");
+
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+          const result = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: "application/pdf",
+                data: base64
+              }
+            },
+            { text: "Extract all text content from this PDF document." }
+          ]);
+          documentText = result.response.text();
+        }
+      } else if (
+        fileType.startsWith("image/") ||
+        fileName.endsWith(".png") ||
+        fileName.endsWith(".jpg") ||
+        fileName.endsWith(".jpeg")
+      ) {
+        const arrayBuffer = await file.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        const mimeType = fileType || "image/jpeg";
+
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+        const result = await model.generateContent([
+          {
+            inlineData: { mimeType, data: base64 }
+          },
+          { text: "Extract all text and content from this image." }
+        ]);
+        documentText = result.response.text();
+      } else {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `Unsupported file type: ${fileType}. Please upload PDF, DOCX, TXT, PNG, or JPG.`
+          },
+          { status: 400 }
+        );
+      }
+    } else {
+      const body = (await req.json()) as {
+        text?: string;
+        extractOptions?: ExtractOption[];
+      };
+      documentText = body.text || "";
+      extractOptions = Array.isArray(body.extractOptions) && body.extractOptions.length > 0
+        ? body.extractOptions
+        : defaultExtractOptions;
     }
 
-    let body: unknown;
+    if (!documentText || documentText.trim().length < 10) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Could not extract text from document. Please try a different file."
+        },
+        { status: 400 }
+      );
+    }
 
+    console.log(logPrefix, "Analyzing text, length:", documentText.length);
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const result = await model.generateContent(buildPrompt(documentText, extractOptions));
+    const text = result.response.text();
+    const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+
+    let parsed: Partial<DocumentAnalyzerOutput>;
     try {
-      body = await request.json();
+      parsed = JSON.parse(cleaned) as Partial<DocumentAnalyzerOutput>;
     } catch {
-      return apiError("Request body must be valid JSON.", 400);
+      console.error(logPrefix, "JSON parse failed:", cleaned.substring(0, 200));
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Failed to parse AI response. Please try again."
+        },
+        { status: 500 }
+      );
     }
 
-    const parsed = documentAnalyzerTextInputSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return apiError("Invalid document analyzer input.", 400, parsed.error.flatten());
-    }
-
-    const output = await analyzeTextDocument(parsed.data.text, parsed.data.extractOptions);
-
-    return apiSuccess({
+    return NextResponse.json({
       success: true,
-      result: normalizeOutput(output)
+      result: normalizeOutput(parsed)
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to analyze document.";
-    const statusCode = typeof error === "object" && error && "statusCode" in error ? Number((error as { statusCode?: number }).statusCode) || 500 : 500;
-    return apiError(message, statusCode);
+  } catch (error: any) {
+    console.error(logPrefix, "Error:", error?.message || error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: error?.message || "Document analysis failed"
+      },
+      { status: 500 }
+    );
   }
 }

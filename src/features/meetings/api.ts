@@ -22,6 +22,11 @@ export type TodayMeetingsResult =
       meetings: GoogleCalendarMeeting[];
     }
   | {
+      status: "auth_required";
+      meetings: GoogleCalendarMeeting[];
+      message: string;
+    }
+  | {
       status: "not_connected";
       meetings: GoogleCalendarMeeting[];
       message: string;
@@ -75,6 +80,21 @@ export async function fetchTodayMeetings() {
     payload &&
     typeof payload === "object" &&
     !Array.isArray(payload) &&
+    "error" in payload &&
+    payload.error === "calendar_auth_required"
+  ) {
+    return {
+      status: "auth_required",
+      meetings: [],
+      message: payload.message
+    };
+  }
+
+  if (
+    response.ok &&
+    payload &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
     "message" in payload &&
     payload.message === "Google account not connected"
   ) {
@@ -117,6 +137,17 @@ export async function fetchUpcomingMeetings() {
     cache: "no-store"
   });
   const payload = (await response.json()) as GoogleCalendarMeeting[] | MeetingSessionErrorResponse;
+
+  if (
+    response.ok &&
+    payload &&
+    typeof payload === "object" &&
+    !Array.isArray(payload) &&
+    "error" in payload &&
+    payload.error === "calendar_auth_required"
+  ) {
+    return [];
+  }
 
   if (!response.ok) {
     throw new Error(

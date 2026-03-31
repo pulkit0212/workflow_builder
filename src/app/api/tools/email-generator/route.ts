@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-responses";
-import { generateGeminiJson } from "@/lib/ai/gemini-client";
 
 export const runtime = "nodejs";
+const GEMINI_MODEL = "gemini-2.5-flash";
+const logPrefix = "[Email Generator]";
 
 const emailGeneratorInputSchema = z.object({
   context: z.string().trim().min(1, "Meeting context is required."),
@@ -51,6 +53,20 @@ Rules:
 - ${input.tone === "Formal" ? "Use formal business language" : ""}`;
 }
 
+function getGeminiModel() {
+  if (!process.env.GEMINI_API_KEY) {
+    console.error(`${logPrefix} GEMINI_API_KEY is not set`);
+    return null;
+  }
+
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  return genAI.getGenerativeModel({ model: GEMINI_MODEL });
+}
+
+function cleanGeminiJson(text: string) {
+  return text.replace(/```json/g, "").replace(/```/g, "").trim();
+}
+
 export async function POST(request: Request) {
   const { userId } = await auth();
 
@@ -72,20 +88,37 @@ export async function POST(request: Request) {
     return apiError("Invalid email generator input.", 400, parsed.error.flatten());
   }
 
+  const model = getGeminiModel();
+
+  if (!model) {
+    return apiError("GEMINI_API_KEY not set", 500);
+  }
+
   try {
-    const output = await generateGeminiJson<EmailGeneratorOutput>({
-      model: "gemini-2.0-flash",
-      prompt: buildEmailPrompt(parsed.data)
-    });
+    const result = await model.generateContent(buildEmailPrompt(parsed.data));
+    const text = result.response.text();
+
+    console.log(`${logPrefix} Raw Gemini response:`, text.substring(0, 200));
+
+    const cleaned = cleanGeminiJson(text);
+
+    let output: EmailGeneratorOutput;
+
+    try {
+      output = JSON.parse(cleaned) as EmailGeneratorOutput;
+    } catch {
+      console.error(`${logPrefix} JSON parse failed:`, cleaned);
+      return apiError("Failed to parse AI response", 500);
+    }
 
     return apiSuccess({
       success: true,
       subject: output.subject.trim(),
       body: output.body.replace(/\r\n/g, "\n").trim()
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to generate email.";
-    const statusCode = typeof error === "object" && error && "statusCode" in error ? Number((error as { statusCode?: number }).statusCode) || 500 : 500;
-    return apiError(message, statusCode);
+  } catch (geminiError) {
+    const message = geminiError instanceof Error ? geminiError.message : "Gemini request failed";
+    console.error(`${logPrefix} Gemini error:`, message);
+    return apiError(message || "Gemini request failed", 500);
   }
 }

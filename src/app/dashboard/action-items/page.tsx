@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { SkeletonList } from "@/components/SkeletonCard";
 import { SectionHeader } from "@/components/shared/section-header";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -82,6 +84,14 @@ function getEmptyStateCopy(activeTab: ActionItemTab) {
 }
 
 export default function ActionItemsPage() {
+  return (
+    <ErrorBoundary>
+      <ActionItemsContent />
+    </ErrorBoundary>
+  );
+}
+
+function ActionItemsContent() {
   const { user } = useUser();
   const [items, setItems] = useState<ActionItemRow[]>([]);
   const [activeTab, setActiveTab] = useState<ActionItemTab>("all");
@@ -95,6 +105,40 @@ export default function ActionItemsPage() {
   });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
+
+  async function loadItemsData(params: {
+    activeTab: ActionItemTab;
+    currentPage: number;
+    firstName: string;
+  }) {
+    const searchParams = new URLSearchParams({
+      tab: params.activeTab,
+      page: String(params.currentPage),
+      limit: String(ITEMS_PER_PAGE),
+      firstName: params.firstName
+    });
+    const response = await fetch(`/api/action-items?${searchParams.toString()}`, {
+      cache: "no-store"
+    });
+    const payload = (await response.json()) as
+      | ActionItemsResponse
+      | {
+          success?: false;
+          message?: string;
+        };
+
+    if (!response.ok || !("success" in payload) || payload.success !== true) {
+      if (response.status === 403) {
+        const error = new Error("upgrade_required") as Error & { status?: number };
+        error.status = 403;
+        throw error;
+      }
+
+      throw new Error("message" in payload ? payload.message || "Failed to load action items." : "Failed to load action items.");
+    }
+
+    return payload;
+  }
 
   useEffect(() => {
     let isMounted = true;
@@ -112,33 +156,14 @@ export default function ActionItemsPage() {
       setUpgradeRequired(false);
 
       try {
-        const params = new URLSearchParams({
-          tab: activeTab,
-          page: String(currentPage),
-          limit: String(ITEMS_PER_PAGE),
+        const payload = await loadItemsData({
+          activeTab,
+          currentPage,
           firstName: user.firstName || ""
         });
-        const response = await fetch(`/api/action-items?${params.toString()}`, {
-          cache: "no-store"
-        });
-        const payload = (await response.json()) as
-          | ActionItemsResponse
-          | {
-              success?: false;
-              message?: string;
-            };
 
         if (!isMounted) {
           return;
-        }
-
-        if (!response.ok || !("success" in payload) || payload.success !== true) {
-          if (response.status === 403) {
-            setUpgradeRequired(true);
-            setLoadError(null);
-            return;
-          }
-          throw new Error("message" in payload ? payload.message || "Failed to load action items." : "Failed to load action items.");
         }
 
         setUpgradeRequired(false);
@@ -147,6 +172,11 @@ export default function ActionItemsPage() {
         setCurrentPage(payload.pagination.page);
       } catch (error) {
         if (isMounted) {
+          if ((error as Error & { status?: number }).status === 403) {
+            setUpgradeRequired(true);
+            setLoadError(null);
+            return;
+          }
           setItems([]);
           setPagination({
             total: 0,
@@ -169,6 +199,37 @@ export default function ActionItemsPage() {
       isMounted = false;
     };
   }, [activeTab, currentPage, user]);
+
+  async function handleRetry() {
+    if (!user) {
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadError(null);
+    setUpgradeRequired(false);
+
+    try {
+      const payload = await loadItemsData({
+        activeTab,
+        currentPage,
+        firstName: user.firstName || ""
+      });
+      setUpgradeRequired(false);
+      setItems(payload.items);
+      setPagination(payload.pagination);
+      setCurrentPage(payload.pagination.page);
+    } catch (error) {
+      if ((error as Error & { status?: number }).status === 403) {
+        setUpgradeRequired(true);
+        setLoadError(null);
+      } else {
+        setLoadError(error instanceof Error ? error.message : "Failed to load action items.");
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   function handleTabChange(tab: ActionItemTab) {
     setActiveTab(tab);
@@ -206,13 +267,7 @@ export default function ActionItemsPage() {
       </Card>
 
       {isLoading ? (
-        <Card className="p-6">
-          <div className="space-y-3">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <div key={index} className="shimmer h-12 rounded-xl" />
-            ))}
-          </div>
-        </Card>
+        <SkeletonList count={6} />
       ) : upgradeRequired ? (
         <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
           <div className="space-y-4">
@@ -235,11 +290,17 @@ export default function ActionItemsPage() {
           </div>
         </Card>
       ) : loadError ? (
-        <EmptyState
-          icon={ListChecks}
-          title="Unable to load action items"
-          description={loadError}
-        />
+        <Card className="border-[#fecaca] bg-[#fef2f2] p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-[#991b1b]">Unable to load action items</p>
+              <p className="mt-2 text-sm text-[#991b1b]">{loadError}</p>
+            </div>
+            <Button type="button" variant="outline" onClick={() => void handleRetry()}>
+              Retry
+            </Button>
+          </div>
+        </Card>
       ) : items.length === 0 ? (
         <EmptyState
           icon={emptyState.icon}
