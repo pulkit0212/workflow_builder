@@ -40,6 +40,8 @@ public/recordings/
 !public/recordings/
 !public/recordings/.gitkeep
 
+private/
+
 *.pem
 *.key
 

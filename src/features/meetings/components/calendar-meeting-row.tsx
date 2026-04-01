@@ -1,6 +1,5 @@
 import type { Route } from "next";
 import Link from "next/link";
-import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
@@ -9,31 +8,25 @@ import type { GoogleCalendarMeeting } from "@/lib/google/types";
 function formatTimeRange(startTime: string, endTime: string) {
   const start = new Date(startTime);
   const end = new Date(endTime);
-
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return "Time unavailable";
-  }
-
-  return `${start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} - ${end.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  })}`;
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Time unavailable";
+  const s = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const e = end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return s === e ? s : `${s} - ${e}`;
 }
 
 function getMeetingStatus(meeting: GoogleCalendarMeeting) {
   const now = Date.now();
   const start = new Date(meeting.startTime).getTime();
   const end = new Date(meeting.endTime).getTime();
+  const hasDuration = end > start;
 
-  if (now >= start && now <= end) {
+  if (now > end || (!hasDuration && now >= start)) {
+    return { label: "Completed", variant: "available" as const };
+  }
+  if (hasDuration && now >= start && now <= end) {
     return { label: "Live", variant: "accent" as const };
   }
-
-  if (now > end) {
-    return { label: "Ended", variant: "neutral" as const };
-  }
-
-  return { label: "Upcoming", variant: "info" as const };
+  return { label: "Scheduled", variant: "info" as const };
 }
 
 function getInitial(value: string) {
@@ -42,17 +35,9 @@ function getInitial(value: string) {
 
 function getPlatformFromUrl(url: string | null | undefined) {
   if (!url) return "google";
-
   const normalized = url.toLowerCase();
-
-  if (normalized.includes("zoom.us") || normalized.includes("zoom.com")) {
-    return "zoom";
-  }
-
-  if (normalized.includes("teams.microsoft.com") || normalized.includes("teams.live.com")) {
-    return "teams";
-  }
-
+  if (normalized.includes("zoom.us") || normalized.includes("zoom.com")) return "zoom";
+  if (normalized.includes("teams.microsoft.com") || normalized.includes("teams.live.com")) return "teams";
   return "google";
 }
 
@@ -87,9 +72,7 @@ export function CalendarMeetingRow({ meeting }: CalendarMeetingRowProps) {
           <p className="truncate text-[16px] font-semibold text-[#1f2937]">{meeting.title}</p>
           <p className="mt-1 text-sm text-[#6b7280]">{formatTimeRange(meeting.startTime, meeting.endTime)}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span
-              className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${platformBadge.className}`}
-            >
+            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${platformBadge.className}`}>
               {platformBadge.label}
             </span>
             <Badge variant={status.variant}>{status.label}</Badge>
@@ -97,14 +80,6 @@ export function CalendarMeetingRow({ meeting }: CalendarMeetingRowProps) {
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
-        {meeting.meetLink ? (
-          <Button asChild>
-            <a href={meeting.meetLink} target="_blank" rel="noreferrer">
-              Join Meeting
-              <ExternalLink className="h-4 w-4" />
-            </a>
-          </Button>
-        ) : null}
         <Button asChild variant="secondary">
           <Link href={detailHref}>View Details</Link>
         </Button>

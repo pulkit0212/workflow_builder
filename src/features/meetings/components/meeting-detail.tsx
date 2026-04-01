@@ -2,12 +2,11 @@
 
 import { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
   CheckSquare,
-  ExternalLink,
-  Link2,
   LoaderCircle,
   MessageSquareText,
   Mic,
@@ -20,7 +19,7 @@ import { ResultState } from "@/components/tools/result-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { copyTextToClipboard, getMeetingSessionProviderLabel } from "@/features/meeting-assistant/helpers";
+import { copyTextToClipboard, getMeetingSessionProviderLabel, normalizeMeetingActionItems } from "@/features/meeting-assistant/helpers";
 import { fetchMeetingById, startMeetingCapture, stopMeetingCapture } from "@/features/meetings/api";
 import { formatMeetingDate, formatMeetingDuration, formatMeetingTime, getMeetingDetailStatusBadgeVariant, getMeetingDetailStatusLabel, hasProcessedMeetingContent } from "@/features/meetings/helpers";
 import type { MeetingDetailRecord } from "@/features/meetings/types";
@@ -188,6 +187,7 @@ function getFailureMessage(errorCode: string | null, fallback: string | null) {
     no_audio_captured: "No audio was captured. Check MEETING_AUDIO_SOURCE setting.",
     bot_kicked: "Bot was removed from the meeting.",
     transcription_failed: "Transcription failed. Audio may be too short.",
+    empty_transcript: "Transcript was empty. Audio may be silence — check MEETING_AUDIO_SOURCE.",
     summary_failed: "Summary generation failed.",
     host_admission_required: "Bot is waiting to be admitted by the meeting host.",
     default: "An unexpected error occurred. Check the server logs."
@@ -285,6 +285,60 @@ function getPlatformFromUrl(url: string | null | undefined) {
   return "google";
 }
 
+function AudioPlayer({ url, duration }: { url: string; duration: number | null | undefined }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+
+    fetch(url, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load recording (${res.status})`);
+        return res.blob();
+      })
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setBlobUrl(objectUrl);
+      })
+      .catch((err: unknown) => {
+        setAudioError(err instanceof Error ? err.message : "Failed to load recording.");
+      });
+
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [url]);
+
+  return (
+    <div
+      style={{
+        background: "white",
+        borderRadius: "12px",
+        padding: "20px 24px",
+        border: "1px solid #f3f4f6",
+        marginBottom: "20px"
+      }}
+    >
+      <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>🎵 Meeting Recording</h3>
+      {audioError ? (
+        <p style={{ fontSize: "13px", color: "#dc2626" }}>{audioError}</p>
+      ) : blobUrl ? (
+        <audio controls style={{ width: "100%" }} src={blobUrl}>
+          Your browser does not support audio.
+        </audio>
+      ) : (
+        <p style={{ fontSize: "13px", color: "#9ca3af" }}>Loading recording…</p>
+      )}
+      {duration ? (
+        <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "8px" }}>
+          Duration: {formatDuration(duration)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function getPlatformConfig(platform: string) {
   const platformConfig: Record<string, { name: string; color: string; bg: string }> = {
     google: { name: "Google Meet", color: "#00AC47", bg: "#e8f5e9" },
@@ -297,6 +351,7 @@ function getPlatformConfig(platform: string) {
 }
 
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
+  const router = useRouter();
   const [meeting, setMeeting] = useState<MeetingDetailRecord | null>(null);
   const [activeTab, setActiveTab] = useState<DetailTab>("notes");
   const [isLoading, setIsLoading] = useState(true);
@@ -306,7 +361,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [upgradeBlocked, setUpgradeBlocked] = useState<{ reason: "upgrade_required" | "limit_reached" } | null>(null);
   const [isPending, startTransition] = useTransition();
-  const session = useSessionPolling(meeting?.meetingSessionId ?? null);
+
+  // Only poll when the meeting session is actively in-progress
+  const activeStates = new Set(["joining", "waiting_for_join", "waiting_for_admission", "joined", "capturing", "processing", "summarizing"]);
+  const shouldPoll = meeting?.meetingSessionId != null && meeting?.status != null && activeStates.has(meeting.status);
+  const session = useSessionPolling(shouldPoll ? (meeting?.meetingSessionId ?? null) : null);
 
   useEffect(() => {
     let isMounted = true;
@@ -353,23 +412,30 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       return;
     }
 
-    setMeeting((currentMeeting) =>
-      currentMeeting
-        ? {
-            ...currentMeeting,
-            status: session.state,
-            errorCode: session.errorCode ?? currentMeeting.errorCode,
-            failureReason: session.failureReason ?? currentMeeting.failureReason,
-            captureStartedAt: session.recordingStartedAt ?? currentMeeting.captureStartedAt,
-            captureEndedAt: session.recordingEndedAt ?? currentMeeting.captureEndedAt,
-            transcript: session.transcript ?? currentMeeting.transcript,
-            recordingUrl: session.recordingUrl ?? currentMeeting.recordingUrl,
-            recordingDuration: session.recordingDuration ?? currentMeeting.recordingDuration,
-            insights: session.insights ?? currentMeeting.insights,
-            chapters: session.chapters ?? currentMeeting.chapters
-          }
-        : currentMeeting
-    );
+    setMeeting((currentMeeting) => {
+      if (!currentMeeting) {
+        return currentMeeting;
+      }
+      const structured = session.summary;
+      return {
+        ...currentMeeting,
+        status: session.state,
+        errorCode: session.errorCode ?? currentMeeting.errorCode,
+        failureReason: session.failureReason ?? currentMeeting.failureReason,
+        captureStartedAt: session.recordingStartedAt ?? currentMeeting.captureStartedAt,
+        captureEndedAt: session.recordingEndedAt ?? currentMeeting.captureEndedAt,
+        transcript: session.transcript ?? currentMeeting.transcript,
+        summary: structured?.summary ?? currentMeeting.summary,
+        keyPoints: structured?.key_points?.length ? structured.key_points : currentMeeting.keyPoints,
+        actionItems: structured?.action_items?.length
+          ? normalizeMeetingActionItems(structured.action_items)
+          : currentMeeting.actionItems,
+        recordingUrl: session.recordingUrl ?? currentMeeting.recordingUrl,
+        recordingDuration: session.recordingDuration ?? currentMeeting.recordingDuration,
+        insights: session.insights ?? currentMeeting.insights,
+        chapters: session.chapters ?? currentMeeting.chapters
+      };
+    });
 
     if (session.state === "completed" || session.state === "failed") {
       void fetchMeetingById(meetingId)
@@ -412,31 +478,6 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     meeting?.status === "processing" ||
     hasProcessedMeetingContent(meeting ?? { transcript: null, summary: null, keyPoints: [], actionItems: [] }) ||
     (!!meeting && meeting.status === "failed" && hasProcessedMeetingContent(meeting));
-  const failureMessage = getFailureMessage(meeting?.errorCode ?? null, meeting?.failureReason || actionError);
-  const sessionPlatform = session?.platform || getPlatformFromUrl(meeting?.meetingLink);
-  const platform = getPlatformConfig(sessionPlatform);
-  const platformName = session?.platformName || platform.name;
-  const recordingUrl = session?.recordingUrl ?? meeting.recordingUrl;
-  const recordingDuration = session?.recordingDuration ?? meeting.recordingDuration;
-  const resolvedInsights = (session?.insights ?? meeting.insights) as
-    | {
-        speakers?: Array<{ name: string; talkTimePercent: number; wordCount: number; sentiment: string }>;
-        sentiment?: {
-          overall?: string;
-          score?: number;
-          timeline?: Array<{ segment: number; label: string; score: number }>;
-        };
-        topics?: Array<{ title: string; duration: number; summary: string }>;
-        wordCloud?: Array<{ word: string; count: number }>;
-        engagementScore?: number;
-        totalWords?: number;
-        avgWordsPerMinute?: number;
-        keyMoments?: Array<{ time: string; description: string }>;
-      }
-    | null;
-  const resolvedChapters = (session?.chapters ?? meeting.chapters) as
-    | Array<{ title: string; startMinute: number; endMinute: number; summary: string }>
-    | null;
   const canStartBot =
     meeting?.canJoinAndCapture &&
     meeting?.status !== "waiting_for_join" &&
@@ -463,6 +504,9 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       try {
         const started = await startMeetingCapture(meeting.id, meeting.meetingLink);
         setMeeting(started.meeting);
+        if (started.status === "already_recording" && started.meeting.id !== meetingId) {
+          router.replace(`/dashboard/meetings/${started.meeting.id}`);
+        }
       } catch (startError) {
         const errorWithMeta = startError as Error & { status?: number; code?: string };
 
@@ -581,6 +625,35 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     );
   }
 
+  const effectiveStatus: MeetingDetailRecord["status"] =
+    meeting.status === "scheduled" && hasProcessedMeetingContent(meeting) ? "completed" : meeting.status;
+
+  const failureMessage = getFailureMessage(meeting.errorCode ?? null, meeting.failureReason || actionError);
+  const sessionPlatform = session?.platform || getPlatformFromUrl(meeting.meetingLink);
+  const platform = getPlatformConfig(sessionPlatform);
+  const platformName = session?.platformName || platform.name;
+  const recordingUrl = session?.recordingUrl ?? meeting.recordingUrl;
+  const recordingDuration = session?.recordingDuration ?? meeting.recordingDuration;
+  const resolvedInsights = (session?.insights ?? meeting.insights) as
+    | {
+        speakers?: Array<{ name: string; talkTimePercent: number; wordCount: number; sentiment: string }>;
+        sentiment?: {
+          overall?: string;
+          score?: number;
+          timeline?: Array<{ segment: number; label: string; score: number }>;
+        };
+        topics?: Array<{ title: string; duration: number; summary: string }>;
+        wordCloud?: Array<{ word: string; count: number }>;
+        engagementScore?: number;
+        totalWords?: number;
+        avgWordsPerMinute?: number;
+        keyMoments?: Array<{ time: string; description: string }>;
+      }
+    | null;
+  const resolvedChapters = (session?.chapters ?? meeting.chapters) as
+    | Array<{ title: string; startMinute: number; endMinute: number; summary: string }>
+    | null;
+
   const durationLabel = formatMeetingDuration(meeting.meetingDuration);
 
   return (
@@ -619,7 +692,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              {renderStatusBadge(meeting.status)}
+              {renderStatusBadge(effectiveStatus)}
               <Badge variant="neutral">{getMeetingSessionProviderLabel(meeting.provider)}</Badge>
               <span
                 style={{
@@ -647,7 +720,14 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
           <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px]">
             <div className="rounded-xl bg-[#f9fafb] p-4">
               <p className="text-caption">Participants</p>
-              <p className="mt-1 font-semibold text-[#111827]">{participantCount || "Unknown"}</p>
+              <p className="mt-1 font-semibold text-[#111827]">
+                {participantCount > 0 ? participantCount : "—"}
+              </p>
+              {speakerStats.length > 0 ? (
+                <p className="mt-1 text-[12px] text-[#6b7280]">
+                  {speakerStats.map((s) => s.speaker).join(", ")}
+                </p>
+              ) : null}
             </div>
             <div className="rounded-xl bg-[#f9fafb] p-4">
               <p className="text-caption">Platform</p>
@@ -663,21 +743,16 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
             <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  {renderStatusBadge(meeting.status)}
+                  {renderStatusBadge(effectiveStatus)}
                   <span className="text-caption">AI Notetaker</span>
                 </div>
                 <h2>AI Notetaker control</h2>
-                <p>{getStatusMessage(meeting.status)}</p>
+                <p>{getStatusMessage(effectiveStatus)}</p>
                 <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
                   Supports Google Meet, Zoom, and Microsoft Teams
                 </p>
               </div>
               <div className="flex flex-wrap gap-3">
-                <Button type="button" variant="ghost" onClick={handleOpenMeetingLink}>
-                  <Link2 className="h-4 w-4" />
-                  Open meeting
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
                 {canStartBot && !upgradeBlocked ? (
                   <Button type="button" onClick={handleStartBot} disabled={isPending}>
                     {isPending ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
@@ -810,7 +885,13 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
                     {meeting.actionItems.map((item, index) => (
                       <tr key={`${item.task}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
                         <td className="px-4 py-4 text-[#111827]">{item.task}</td>
-                        <td className="px-4 py-4 text-[#4b5563]">{item.owner || "Unassigned"}</td>
+                        <td className="px-4 py-4 text-[#4b5563]">
+                          {item.owner && item.owner.trim()
+                            ? item.owner
+                            : speakerStats.length > 0
+                              ? speakerStats[0].speaker
+                              : "Unassigned"}
+                        </td>
                         <td className="px-4 py-4 text-[#4b5563]">{item.dueDate || item.deadline || "Not specified"}</td>
                         <td className="px-4 py-4">
                           <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", getPriorityTone(item.priority))}>
@@ -850,23 +931,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
       {activeTab === "transcript" ? (
         <div className="space-y-6">
           {recordingUrl ? (
-            <div
-              style={{
-                background: "white",
-                borderRadius: "12px",
-                padding: "20px 24px",
-                border: "1px solid #f3f4f6",
-                marginBottom: "20px"
-              }}
-            >
-              <h3 style={{ fontSize: "14px", fontWeight: 600, marginBottom: "12px" }}>🎵 Meeting Recording</h3>
-              <audio controls style={{ width: "100%" }} src={recordingUrl}>
-                Your browser does not support audio.
-              </audio>
-              <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "8px" }}>
-                Duration: {formatDuration(recordingDuration)}
-              </p>
-            </div>
+            <AudioPlayer url={recordingUrl} duration={recordingDuration} />
           ) : null}
 
           {session?.transcript || meeting.transcript ? (

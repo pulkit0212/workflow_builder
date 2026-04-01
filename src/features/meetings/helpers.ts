@@ -97,6 +97,11 @@ export function getMeetingDetailStatusLabel(status: MeetingDetailStatus) {
       return "Completed";
     case "failed":
       return "Failed";
+    case "joining":
+    case "joined":
+      return "Joining";
+    case "scheduled":
+      return "Scheduled";
     default:
       return "Scheduled";
   }

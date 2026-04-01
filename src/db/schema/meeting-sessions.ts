@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { aiRuns } from "@/db/schema/ai-runs";
 import { users } from "@/db/schema/users";
@@ -14,6 +15,8 @@ export const meetingSessions = pgTable("meeting_sessions", {
   provider: varchar("provider", { length: 50 }).notNull().default("google_meet"),
   title: varchar("title", { length: 255 }).notNull(),
   meetingLink: text("meeting_link").notNull(),
+  normalizedMeetingUrl: varchar("normalized_meeting_url", { length: 512 }),
+  sharedWithUserIds: jsonb("shared_with_user_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   scheduledStartTime: timestamp("scheduled_start_time", { withTimezone: true }),
   scheduledEndTime: timestamp("scheduled_end_time", { withTimezone: true }),
   joinedAt: timestamp("joined_at", { withTimezone: true }),
@@ -33,6 +36,8 @@ export const meetingSessions = pgTable("meeting_sessions", {
   followUpEmail: text("follow_up_email"),
   keyPoints: jsonb("key_points").$type<string[] | null>(),
   actionItems: jsonb("action_items").$type<MeetingActionItem[] | null>(),
+  ffmpegPid: integer("ffmpeg_pid"),
+  outputPath: text("output_path"),
   recordingFilePath: text("recording_file_path"),
   recordingUrl: text("recording_url"),
   recordingSize: integer("recording_size"),

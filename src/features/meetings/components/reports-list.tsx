@@ -36,7 +36,8 @@ function getInitials(value: string) {
     .join("");
 }
 
-function getStatusVariant(status: MeetingSessionRecord["status"]) {
+function getStatusVariant(status: MeetingSessionRecord["status"], hasSummary: boolean) {
+  if (hasSummary && (status === "draft" || status === "completed")) return "available" as const;
   switch (status) {
     case "completed":
       return "available" as const;
@@ -47,6 +48,12 @@ function getStatusVariant(status: MeetingSessionRecord["status"]) {
     default:
       return "info" as const;
   }
+}
+
+function getDisplayStatus(status: MeetingSessionRecord["status"], hasSummary: boolean) {
+  if (hasSummary && (status === "draft" || status === "completed")) return "Completed";
+  if (status === "capturing") return "Recording";
+  return getMeetingSessionStatusLabel(status);
 }
 
 function isRecordingState(status: MeetingSessionRecord["status"]) {
@@ -70,6 +77,7 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
   const participants = getParticipants(meeting);
   const duration = formatMeetingDuration(meeting.meetingDuration);
   const preview = meeting.summary?.trim() ? getMeetingSummaryPreview(meeting) : null;
+  const hasSummary = !!(meeting.summary?.trim() || meeting.transcript?.trim());
 
   return (
     <Card className="flex h-full flex-col p-6">
@@ -79,9 +87,9 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={getStatusVariant(meeting.status)}>
+            <Badge variant={getStatusVariant(meeting.status, hasSummary)}>
               {isRecordingState(meeting.status) ? <span className="pulse-dot" aria-hidden="true" /> : null}
-              {meeting.status === "capturing" ? "Recording" : getMeetingSessionStatusLabel(meeting.status)}
+              {getDisplayStatus(meeting.status, hasSummary)}
             </Badge>
             <Badge variant="neutral">{getMeetingSessionProviderLabel(meeting.provider)}</Badge>
             {duration ? <Badge variant="neutral">{duration}</Badge> : null}
@@ -135,7 +143,7 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
       </div>
 
       <div className="mt-5 flex-1">
-        {meeting.status === "completed" ? (
+        {hasSummary ? (
           <>
             {preview ? <p className="line-clamp-2 text-[14px] leading-6 text-[#6b7280]">{preview}</p> : null}
             {meeting.actionItems.length > 0 ? (
@@ -159,7 +167,7 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
       </div>
 
       <div className="mt-6 flex items-center justify-end">
-        {meeting.status === "completed" ? (
+        {meeting.status === "completed" || (meeting.summary?.trim() || meeting.transcript?.trim()) ? (
           <Button asChild>
             <Link href={`/dashboard/meetings/${meeting.id}`}>View Report</Link>
           </Button>

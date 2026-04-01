@@ -10,10 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { fetchJoinedMeetings, fetchTodayMeetings } from "@/features/meetings/api";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
-import { formatMeetingDateTime } from "@/features/meetings/helpers";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 import { cn } from "@/lib/utils";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -23,44 +24,134 @@ const getGreeting = () => {
   return "Good night";
 };
 
-function sanitizeSummary(summary: string | null) {
-  const value = summary?.replace(/\s+/g, " ").trim() || "";
-  const normalized = value.toLowerCase();
-  const blockedPatterns = ["summary generation failed", "googlegenerativeai error", "error fetching", "404", "failed:"];
+function hasContent(m: MeetingSessionRecord) {
+  // Include if has summary, transcript, or is completed/has any processed content
+  const summary = m.summary?.trim() ?? "";
+  const transcript = m.transcript?.trim() ?? "";
+  const errorPhrases = ["not enough content", "summary generation failed", "googlegenerativeai", "error fetching"];
+  const summaryIsError = errorPhrases.some((p) => summary.toLowerCase().includes(p));
+  return (
+    (summary.length > 0 && !summaryIsError) ||
+    transcript.length > 0 ||
+    m.status === "completed" ||
+    m.keyPoints.length > 0 ||
+    m.actionItems.length > 0
+  );
+}
 
-  if (!value) {
-    return { text: "Summary not available for this meeting.", isFallback: true };
+/** Returns a clean summary preview or null if it's an error/too short */
+function getSummaryPreview(summary: string | null): string | null {
+  if (!summary) return null;
+  const text = summary.replace(/\s+/g, " ").trim();
+  const errorPhrases = [
+    "not enough content",
+    "summary generation failed",
+    "googlegenerativeai",
+    "error fetching",
+    "404",
+    "failed:",
+  ];
+  if (
+    errorPhrases.some((p) => text.toLowerCase().includes(p)) ||
+    text.length < 20
+  ) {
+    return null;
   }
+  return text.length > 120 ? `${text.slice(0, 117).trimEnd()}...` : text;
+}
 
-  const hasBlockedPattern = blockedPatterns.some((pattern) => normalized.includes(pattern));
+function formatCompactDate(value: string | null) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
-  if (hasBlockedPattern) {
-    return { text: "Summary not available for this meeting.", isFallback: true };
-  }
-
-  return {
-    text: value.length > 110 ? `${value.slice(0, 107).trimEnd()}...` : value,
-    isFallback: false
-  };
+function formatTime(dateStr: string) {
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 function formatTimeRange(startTime: string, endTime: string) {
-  const start = new Date(startTime);
-  const end = new Date(endTime);
+  const s = formatTime(startTime);
+  const e = formatTime(endTime);
+  if (!s) return "Time unavailable";
+  if (!e || s === e) return s;
+  return `${s} – ${e}`;
+}
 
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return "Time unavailable";
+const PLATFORM_NAMES = new Set(["google meet", "zoom", "teams", "microsoft teams"]);
+
+/** If the stored title is just a platform name, derive a better display title */
+function getDisplayTitle(meeting: MeetingSessionRecord): string {
+  const raw = meeting.title?.trim() ?? "";
+  if (raw && !PLATFORM_NAMES.has(raw.toLowerCase())) {
+    return raw;
   }
-
-  return `${start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} - ${end.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit"
-  })}`;
+  // Fallback: use date
+  const date = meeting.scheduledStartTime ?? meeting.createdAt;
+  if (date) {
+    const d = new Date(date);
+    if (!Number.isNaN(d.getTime())) {
+      return `Meeting on ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+    }
+  }
+  return "Untitled Meeting";
 }
 
 function getMeetingDetailHref(meeting: GoogleCalendarMeeting) {
   return `/dashboard/meetings/${encodeCalendarMeetingId(meeting.id)}`;
 }
+
+function getPlatformLabel(provider: string) {
+  if (provider === "zoom_web") return "Zoom";
+  if (provider === "teams_web") return "Teams";
+  return "Google Meet";
+}
+
+function getPlatformStyle(provider: string): { bg: string; color: string } {
+  if (provider === "zoom_web") return { bg: "#e3f2fd", color: "#2D8CFF" };
+  if (provider === "teams_web") return { bg: "#ede7f6", color: "#6264A7" };
+  return { bg: "#e8f5e9", color: "#16a34a" };
+}
+
+type StatusInfo = {
+  label: string;
+  color: string;
+  bg: string;
+  pulse?: boolean;
+};
+
+function getMeetingStatus(meeting: GoogleCalendarMeeting): StatusInfo {
+  const now = Date.now();
+  const start = new Date(meeting.startTime).getTime();
+  const end = new Date(meeting.endTime).getTime();
+  const hasDuration = end > start; // only show Live if there's an actual time window
+
+  // Already ended or same-time (no duration) and in the past
+  if (now > end || (!hasDuration && now >= start)) {
+    return { label: "Completed", color: "#16a34a", bg: "#f0fdf4" };
+  }
+  // More than 15 min before start
+  if (now < start - 15 * 60 * 1000) {
+    return { label: "Scheduled", color: "#6c63ff", bg: "#f5f3ff" };
+  }
+  // Within 15 min of start or currently running (with real duration)
+  if (hasDuration && now >= start && now <= end) {
+    return { label: "Live Now", color: "#dc2626", bg: "#fef2f2", pulse: true };
+  }
+  // Within 15 min window before start
+  return { label: "Scheduled", color: "#6c63ff", bg: "#f5f3ff" };
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
 
 function StatCard({
   label,
@@ -68,7 +159,7 @@ function StatCard({
   helper,
   icon,
   accent,
-  iconBg
+  iconBg,
 }: {
   label: string;
   value: number;
@@ -78,22 +169,30 @@ function StatCard({
   iconBg: string;
 }) {
   return (
-    <Card className="card-shadow-hover rounded-xl border border-gray-100 bg-white p-6 transition-shadow" style={{ borderLeft: `4px solid ${accent}` }}>
+    <Card
+      className="rounded-2xl border border-gray-100 bg-white p-6 transition-all hover:shadow-md"
+      style={{ borderLeft: `4px solid ${accent}` }}
+    >
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <span className="flex h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: iconBg, color: accent }}>
-            {icon}
-          </span>
-        </div>
+        <span
+          className="flex h-11 w-11 items-center justify-center rounded-full"
+          style={{ backgroundColor: iconBg, color: accent }}
+        >
+          {icon}
+        </span>
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-gray-500">{label}</p>
-          <p className="mt-2 text-[36px] font-bold leading-none text-gray-900">{value}</p>
-          <p className="mt-3 text-sm text-gray-500">{helper}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+            {label}
+          </p>
+          <p className="mt-1 text-[38px] font-bold leading-none text-gray-900">{value}</p>
+          <p className="mt-2 text-[13px] text-gray-500">{helper}</p>
         </div>
       </div>
     </Card>
   );
 }
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -105,17 +204,19 @@ export default function DashboardPage() {
   async function loadDashboard() {
     setIsLoading(true);
     setError(null);
-
     try {
-      const [joinedMeetings, todayResponse] = await Promise.all([
+      const [joined, todayRes] = await Promise.all([
         fetchJoinedMeetings(),
-        fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] }))
+        fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
       ]);
-
-      setReports(joinedMeetings);
-      setTodayMeetings(todayResponse.meetings.slice(0, 3));
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard.");
+      setReports(joined);
+      // Sort today's meetings by start time ascending
+      const sorted = [...todayRes.meetings].sort(
+        (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      );
+      setTodayMeetings(sorted.slice(0, 5));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load dashboard.");
       setReports([]);
       setTodayMeetings([]);
     } finally {
@@ -124,95 +225,103 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    let isMounted = true;
-
+    let mounted = true;
     void (async () => {
       setIsLoading(true);
       setError(null);
-
       try {
-        const [joinedMeetings, todayResponse] = await Promise.all([
+        const [joined, todayRes] = await Promise.all([
           fetchJoinedMeetings(),
-          fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] }))
+          fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
         ]);
-
-        if (!isMounted) {
-          return;
-        }
-
-        setReports(joinedMeetings);
-        setTodayMeetings(todayResponse.meetings.slice(0, 3));
-      } catch (loadError) {
-        if (isMounted) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load dashboard.");
+        if (!mounted) return;
+        setReports(joined);
+        const sorted = [...todayRes.meetings].sort(
+          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+        setTodayMeetings(sorted.slice(0, 5));
+      } catch (err) {
+        if (mounted) {
+          setError(err instanceof Error ? err.message : "Failed to load dashboard.");
           setReports([]);
           setTodayMeetings([]);
         }
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        if (mounted) setIsLoading(false);
       }
     })();
-
-    return () => {
-      isMounted = false;
-    };
+    return () => { mounted = false; };
   }, []);
 
   const greeting = useMemo(() => getGreeting(), []);
-  const completedReports = reports.filter((meeting) => meeting.status === "completed");
-  const meetingsThisWeek = reports.filter((meeting) => {
-    const timestamp = new Date(meeting.scheduledStartTime ?? meeting.createdAt).getTime();
-    return timestamp >= Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+  // Stats derived from reports (already sorted DESC by createdAt from API)
+  const meetingsWithContent = reports.filter(hasContent);
+  const completedCount = meetingsWithContent.length;
+  const meetingsThisWeek = reports.filter((m) => {
+    const ts = new Date(m.scheduledStartTime ?? m.createdAt).getTime();
+    return ts >= Date.now() - 7 * 24 * 60 * 60 * 1000;
   }).length;
-  const totalActionItems = reports.reduce((total, meeting) => total + meeting.actionItems.length, 0);
-  const recentReports = completedReports.slice(0, 5);
+  const totalActionItems = reports.reduce((sum, m) => sum + m.actionItems.length, 0);
+
+  // Recent reports: meetings with content, newest first, max 5
+  // API already returns DESC by createdAt, so just filter + slice
+  const recentReports = reports.filter(hasContent).slice(0, 5);
+
+  const mondayDate = (() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  })();
+
   const stats = [
     {
       label: "Total Meetings Recorded",
       value: reports.length,
-      helper: `${completedReports.length} completed summaries ready`,
+      helper: `${completedCount} with transcripts`,
       icon: <Video className="h-5 w-5" />,
       accent: "#6c63ff",
-      iconBg: "#f5f3ff"
+      iconBg: "#f5f3ff",
     },
     {
       label: "Meetings This Week",
       value: meetingsThisWeek,
-      helper: "Pulled from your recent meeting activity",
+      helper: `Since ${mondayDate}`,
       icon: <CalendarDays className="h-5 w-5" />,
       accent: "#2563eb",
-      iconBg: "#eff6ff"
+      iconBg: "#eff6ff",
     },
     {
       label: "Total Action Items",
       value: totalActionItems,
-      helper: "Tasks captured across all saved reports",
+      helper: `Across ${reports.length} meetings`,
       icon: <ClipboardList className="h-5 w-5" />,
       accent: "#16a34a",
-      iconBg: "#f0fdf4"
+      iconBg: "#f0fdf4",
     },
     {
       label: "Completed Meetings",
-      value: completedReports.length,
-      helper: "Meetings with transcripts and summaries complete",
+      value: completedCount,
+      helper: `${completedCount} with full summaries`,
       icon: <CheckCircle2 className="h-5 w-5" />,
       accent: "#ca8a04",
-      iconBg: "#fefce8"
-    }
+      iconBg: "#fefce8",
+    },
   ];
+
   const avatarColors = [
     "bg-[#f5f3ff] text-[#6c63ff]",
     "bg-[#eff6ff] text-[#2563eb]",
     "bg-[#f0fdf4] text-[#16a34a]",
     "bg-[#fefce8] text-[#ca8a04]",
-    "bg-[#fff1f2] text-[#f97316]"
+    "bg-[#fff1f2] text-[#f97316]",
   ];
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 p-8">
         <SkeletonList count={4} />
       </div>
     );
@@ -221,19 +330,23 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-50 p-8">
       <div className="space-y-8">
-        <div className="space-y-2">
-          <h1 className="text-[22px] font-bold text-gray-900">
+
+        {/* Greeting */}
+        <div className="space-y-1">
+          <h1 className="text-[24px] font-bold text-gray-900">
             {greeting}, {user?.firstName || "there"} 👋
           </h1>
           <p className="text-sm text-gray-500">Here&apos;s your meeting intelligence overview.</p>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {/* Stats */}
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
           {stats.map((stat) => (
             <StatCard key={stat.label} {...stat} />
           ))}
         </div>
 
+        {/* Error */}
         {error ? (
           <Card className="border-[#fecaca] bg-[#fef2f2] p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -248,14 +361,20 @@ export default function DashboardPage() {
           </Card>
         ) : null}
 
+        {/* Recent Reports + Today's Meetings */}
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-          <Card className="col-span-1 rounded-xl border border-gray-100 bg-white shadow-sm xl:col-span-3">
+
+          {/* ── Recent Reports ── */}
+          <Card className="col-span-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:col-span-3">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Recent Reports</h2>
-                <p className="mt-1 text-[13px] text-gray-500">Last 5 completed meetings</p>
+                <h2 className="text-[16px] font-semibold text-gray-900">Recent Reports</h2>
+                <p className="mt-0.5 text-[13px] text-gray-400">Last 5 meetings with summaries</p>
               </div>
-              <Link href="/dashboard/reports" className="text-sm font-medium text-[#6c63ff] hover:text-[#5b52ee]">
+              <Link
+                href="/dashboard/reports"
+                className="text-[13px] font-medium text-[#6c63ff] hover:text-[#5b52ee]"
+              >
                 View all →
               </Link>
             </div>
@@ -263,91 +382,145 @@ export default function DashboardPage() {
             <div className="divide-y divide-[#f3f4f6]">
               {recentReports.length > 0 ? (
                 recentReports.map((meeting, index) => {
-                  const summary = sanitizeSummary(meeting.summary);
+                  const preview = getSummaryPreview(meeting.summary);
+                  const displayTitle = getDisplayTitle(meeting);
+                  const avatarLetter = displayTitle.charAt(0).toUpperCase();
 
                   return (
-                    <div key={meeting.id} className="flex flex-col gap-3 px-6 py-4 transition-colors hover:bg-[#fafafa] sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex min-w-0 items-center gap-4">
-                        <span
-                          className={cn(
-                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
-                            avatarColors[index % avatarColors.length]
-                          )}
-                        >
-                          {meeting.title.charAt(0).toUpperCase() || "M"}
-                        </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-[15px] font-semibold text-gray-900">{meeting.title}</p>
-                          <p className="mt-1 text-[12px] text-gray-400">{formatMeetingDateTime(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
-                          <p
-                            className={cn(
-                              "mt-1 truncate text-[13px]",
-                              summary.isFallback ? "italic text-gray-400" : "text-gray-500"
-                            )}
-                          >
-                            {summary.text}
+                    <div
+                      key={meeting.id}
+                      className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-[#fafafa]"
+                    >
+                      {/* Avatar */}
+                      <span
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
+                          avatarColors[index % avatarColors.length]
+                        )}
+                      >
+                        {avatarLetter}
+                      </span>
+
+                      {/* Content */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-[14px] font-semibold text-gray-900">
+                            {displayTitle}
                           </p>
+                          <span className="shrink-0 rounded-full bg-[#f0fdf4] px-2 py-0.5 text-[10px] font-semibold text-[#16a34a]">
+                            Completed
+                          </span>
                         </div>
+                        <p className="mt-0.5 text-[12px] text-gray-400">
+                          {formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}
+                        </p>
+                        {preview ? (
+                          <p className="mt-0.5 truncate text-[13px] text-gray-500">{preview}</p>
+                        ) : (
+                          <p className="mt-0.5 truncate text-[13px] italic text-gray-400">
+                            Summary not available
+                          </p>
+                        )}
                       </div>
-                      <Button asChild variant="secondary" size="sm">
+
+                      {/* Action */}
+                      <Button asChild variant="secondary" size="sm" className="shrink-0">
                         <Link href={`/dashboard/meetings/${meeting.id}`}>View</Link>
                       </Button>
                     </div>
                   );
                 })
               ) : (
-                <div className="px-6 py-10 text-center text-sm text-gray-500">No completed reports yet.</div>
+                <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+                  <span className="text-3xl">📋</span>
+                  <p className="text-[14px] font-medium text-gray-700">No reports yet</p>
+                  <p className="text-[13px] text-gray-400">
+                    Start AI Notetaker on a meeting to generate your first report.
+                  </p>
+                </div>
               )}
             </div>
           </Card>
 
-          <Card className="col-span-1 rounded-xl border border-gray-100 bg-white shadow-sm xl:col-span-2">
+          {/* ── Today's Meetings ── */}
+          <Card className="col-span-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:col-span-2">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Today&apos;s Meetings</h2>
-                <p className="mt-1 text-[13px] text-gray-500">
-                  {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                <h2 className="text-[16px] font-semibold text-gray-900">Today&apos;s Meetings</h2>
+                <p className="mt-0.5 text-[13px] text-gray-400">
+                  {new Date().toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "short",
+                    day: "numeric",
+                  })}
                 </p>
               </div>
-              <Link href="/dashboard/meetings" className="text-sm font-medium text-[#6c63ff] hover:text-[#5b52ee]">
+              <Link
+                href="/dashboard/meetings"
+                className="text-[13px] font-medium text-[#6c63ff] hover:text-[#5b52ee]"
+              >
                 View all →
               </Link>
             </div>
 
-            <div className="p-4">
+            <div className="divide-y divide-[#f3f4f6]">
               {todayMeetings.length > 0 ? (
-                <div className="space-y-3">
-                  {todayMeetings.map((meeting) => (
-                    <div key={meeting.id} className="rounded-xl border border-gray-100 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <span className="inline-flex rounded-full bg-[#eff6ff] px-2.5 py-1 text-[11px] font-semibold text-[#2563eb]">
-                            Google Meet
-                          </span>
-                          <p className="mt-3 truncate text-[15px] font-semibold text-gray-900">{meeting.title}</p>
-                          <p className="mt-1 text-[13px] text-gray-500">{formatTimeRange(meeting.startTime, meeting.endTime)}</p>
-                        </div>
+                todayMeetings.map((meeting) => {
+                  const status = getMeetingStatus(meeting);
+                  const platformStyle = getPlatformStyle(meeting.provider);
+                  const platformLabel = getPlatformLabel(meeting.provider);
+                  const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
+
+                  return (
+                    <a
+                      key={meeting.id}
+                      href={getMeetingDetailHref(meeting)}
+                      className="block px-5 py-4 transition-colors hover:bg-[#fafafa]"
+                    >
+                      {/* Badges row */}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                          className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                          style={{ background: platformStyle.bg, color: platformStyle.color }}
+                        >
+                          {platformLabel}
+                        </span>
+                        <span
+                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                          style={{ background: status.bg, color: status.color }}
+                        >
+                          {status.pulse ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+                              style={{ backgroundColor: status.color }}
+                            />
+                          ) : null}
+                          {status.label}
+                        </span>
                       </div>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {meeting.meetLink ? (
-                          <Button asChild size="sm" className="bg-[#16a34a] hover:bg-[#15803d]">
-                            <a href={meeting.meetLink} target="_blank" rel="noreferrer">
-                              Join
-                            </a>
-                          </Button>
-                        ) : null}
-                        <Button asChild size="sm">
-                          <Link href={getMeetingDetailHref(meeting)}>Start Notetaker</Link>
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+
+                      {/* Title */}
+                      <p className="mt-2 truncate text-[14px] font-semibold text-gray-900">
+                        {meeting.title}
+                      </p>
+
+                      {/* Time */}
+                      <p className="mt-0.5 text-[12px] text-gray-400">{timeRange}</p>
+                    </a>
+                  );
+                })
               ) : (
-                <div className="px-4 py-6 text-center text-sm text-gray-500">No meetings scheduled for today</div>
+                <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+                  <span className="text-3xl">📅</span>
+                  <p className="text-[14px] font-medium text-gray-700">No meetings today</p>
+                  <p className="text-[13px] text-gray-400">
+                    Connect Google Calendar to see your schedule here.
+                  </p>
+                </div>
               )}
             </div>
           </Card>
+
         </div>
       </div>
     </div>

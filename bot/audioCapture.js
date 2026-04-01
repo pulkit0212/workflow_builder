@@ -40,27 +40,38 @@ function startRecording(meetingId) {
     ];
   } else if (isLinux) {
     const audioSource = process.env.MEETING_AUDIO_SOURCE || "default";
-    console.log("[Audio] ─────────────────────────────────");
-    console.log("[Audio] Recording started");
-    console.log("[Audio] Source:", audioSource);
+    const micSource = process.env.MEETING_MIC_SOURCE || null;
+    console.log("[Audio] ══════════════════════════════════");
+    console.log("[Audio] Starting recording (Linux / PipeWire-PulseAudio)");
+    console.log("[Audio] Monitor source:", audioSource);
+    console.log("[Audio] Mic source:", micSource || "not set — only capturing remote audio");
     console.log("[Audio] Output:", outputPath);
     console.log("[Audio] Sample rate: 16000 Hz");
-    console.log("[Audio] ─────────────────────────────────");
-    console.log(`[Audio] Starting Linux PulseAudio capture using source: ${audioSource}`);
-    ffmpegArgs = [
-      "-y",
-      "-f",
-      "pulse",
-      "-i",
-      audioSource,
-      "-acodec",
-      "pcm_s16le",
-      "-ar",
-      "16000",
-      "-ac",
-      "1",
-      outputPath,
-    ];
+    console.log("[Audio] ══════════════════════════════════");
+
+    if (micSource) {
+      // Mix monitor (remote participants) + microphone (local user) into one track
+      ffmpegArgs = [
+        "-y",
+        "-f", "pulse", "-i", audioSource,   // input 0: monitor (remote audio)
+        "-f", "pulse", "-i", micSource,      // input 1: microphone (local audio)
+        "-filter_complex", "amix=inputs=2:duration=longest:dropout_transition=0",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        outputPath,
+      ];
+    } else {
+      ffmpegArgs = [
+        "-y",
+        "-f", "pulse",
+        "-i", audioSource,
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        outputPath,
+      ];
+    }
   } else {
     return {
       success: false,
@@ -89,6 +100,13 @@ function startRecording(meetingId) {
         )
       ) {
         startupError = message.trim();
+      }
+
+      if (
+        /\[(panic|error|fatal)\]|Could not|failed to|Invalid|No such|Unknown/i.test(message) &&
+        !/deprecated|bitrate|frame=/i.test(message)
+      ) {
+        console.error("[Audio] ffmpeg:", message.trim());
       }
     });
 
@@ -150,7 +168,13 @@ function startRecording(meetingId) {
 
 async function stopRecording(ffmpegProcess) {
   ffmpegProcess.kill("SIGINT");
-  await once(ffmpegProcess, "close");
+  const { code, signal } = await new Promise((resolve) => {
+    ffmpegProcess.once("close", (exitCode, sig) => resolve({ code: exitCode, signal: sig }));
+  });
+  console.log("[Audio] ffmpeg exited with code:", code, signal ? `signal: ${signal}` : "");
+  if (code !== 0 && code !== 255 && code !== null) {
+    console.error("[Audio] ffmpeg unexpected exit code:", code);
+  }
   console.log("[Audio] Recording stopped");
 }
 

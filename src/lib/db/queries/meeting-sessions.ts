@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { meetingSessions } from "@/db/schema";
 import { db } from "@/lib/db/client";
 
@@ -16,7 +16,19 @@ export async function getMeetingSessionByIdForUser(sessionId: string, userId: st
   const [session] = await database
     .select()
     .from(meetingSessions)
-    .where(and(eq(meetingSessions.id, sessionId), eq(meetingSessions.userId, userId)))
+    .where(
+      and(
+        eq(meetingSessions.id, sessionId),
+        or(
+          eq(meetingSessions.userId, userId),
+          sql`EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements_text(COALESCE(${meetingSessions.sharedWithUserIds}, '[]'::jsonb)) AS elem
+            WHERE elem = ${userId}::text
+          )`
+        )
+      )
+    )
     .limit(1);
 
   return session ?? null;
@@ -97,4 +109,30 @@ export async function listMeetingSessionsByStatusesForUser(userId: string, statu
     .from(meetingSessions)
     .where(and(eq(meetingSessions.userId, userId), inArray(meetingSessions.status, statuses)))
     .orderBy(desc(meetingSessions.updatedAt));
+}
+
+const ACTIVE_GOOGLE_MEET_STATUSES = [
+  "waiting_for_join",
+  "waiting_for_admission",
+  "capturing",
+  "processing",
+  "summarizing"
+] as const;
+
+export async function findActiveGoogleMeetSessionByNormalizedUrl(normalizedUrl: string) {
+  const database = getDbOrThrow();
+
+  const [session] = await database
+    .select()
+    .from(meetingSessions)
+    .where(
+      and(
+        eq(meetingSessions.normalizedMeetingUrl, normalizedUrl),
+        inArray(meetingSessions.status, [...ACTIVE_GOOGLE_MEET_STATUSES])
+      )
+    )
+    .orderBy(desc(meetingSessions.updatedAt))
+    .limit(1);
+
+  return session ?? null;
 }

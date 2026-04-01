@@ -42,6 +42,10 @@ type BotStatusPayload = {
   recordingFilePath?: string | null;
   recordingStartedAt?: string | null;
   recordingEndedAt?: string | null;
+  transcript?: string | null;
+  summary?: BotStopResult["summary"] | null;
+  meetingDurationSeconds?: number | null;
+  outputPath?: string | null;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports

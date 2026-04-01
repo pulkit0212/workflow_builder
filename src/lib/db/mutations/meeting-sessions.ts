@@ -18,6 +18,7 @@ type CreateMeetingSessionInput = {
   provider: "google_meet" | "zoom_web" | "teams_web";
   title: string;
   meetingLink: string;
+  normalizedMeetingUrl?: string | null;
   externalCalendarEventId?: string | null;
   claimToken?: string | null;
   scheduledStartTime?: Date | string | null;
@@ -30,6 +31,8 @@ type UpdateMeetingSessionInput = {
   provider?: "google_meet" | "zoom_web" | "teams_web";
   title?: string;
   meetingLink?: string;
+  normalizedMeetingUrl?: string | null;
+  sharedWithUserIds?: string[];
   externalCalendarEventId?: string | null;
   claimToken?: string | null;
   scheduledStartTime?: Date | string | null;
@@ -82,6 +85,7 @@ export async function createMeetingSession(values: CreateMeetingSessionInput) {
       provider: values.provider,
       title: values.title,
       meetingLink: values.meetingLink,
+      normalizedMeetingUrl: values.normalizedMeetingUrl ?? null,
       externalCalendarEventId: values.externalCalendarEventId ?? null,
       claimToken: values.claimToken ?? null,
       scheduledStartTime:
@@ -120,6 +124,14 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
 
   if (values.meetingLink !== undefined) {
     payload.meetingLink = values.meetingLink;
+  }
+
+  if (values.normalizedMeetingUrl !== undefined) {
+    payload.normalizedMeetingUrl = values.normalizedMeetingUrl || null;
+  }
+
+  if (values.sharedWithUserIds !== undefined) {
+    payload.sharedWithUserIds = values.sharedWithUserIds;
   }
 
   if (values.externalCalendarEventId !== undefined) {
@@ -268,4 +280,30 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
   }
 
   return session;
+}
+
+export async function addUserToMeetingSessionShares(sessionId: string, userIdToAdd: string) {
+  const database = getDbOrThrow();
+  const [row] = await database.select().from(meetingSessions).where(eq(meetingSessions.id, sessionId)).limit(1);
+
+  if (!row) {
+    return null;
+  }
+
+  const current = row.sharedWithUserIds ?? [];
+
+  if (current.includes(userIdToAdd)) {
+    return row;
+  }
+
+  const [updated] = await database
+    .update(meetingSessions)
+    .set({
+      sharedWithUserIds: [...current, userIdToAdd],
+      updatedAt: new Date()
+    })
+    .where(eq(meetingSessions.id, sessionId))
+    .returning();
+
+  return updated ?? null;
 }

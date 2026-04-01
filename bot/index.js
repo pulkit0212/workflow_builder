@@ -1,15 +1,26 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { execSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
+const { Pool } = require("pg");
 const { joinMeeting, leaveMeeting, watchMeetingEnd } = require("./meetingBot");
 const { getAudioFileInfo, startRecording, stopRecording, waitForRecordingToFlush } = require("./audioCapture");
 const { summarizeMeeting } = require("./summarize");
+
+// Load .env.local for DATABASE_URL when running outside Next.js
+try {
+  require("dotenv").config({ path: path.join(process.cwd(), ".env.local") });
+} catch {
+  // dotenv optional — DATABASE_URL may already be in environment
+}
+
+const dbPool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  : null;
 
 const PROJECT_ROOT = process.cwd();
 const BOT_DIR = path.join(PROJECT_ROOT, "bot");
 const TMP_DIR = path.join(PROJECT_ROOT, "tmp");
 const AUDIO_DIR = path.join(TMP_DIR, "audio");
-const SESSIONS_FILE = path.join(TMP_DIR, "bot-sessions.json");
 const activeBrowsers = new Map();
 
 fs.mkdirSync(AUDIO_DIR, { recursive: true });
@@ -18,7 +29,6 @@ fs.mkdirSync(TMP_DIR, { recursive: true });
 console.log("[Bot] PROJECT_ROOT:", process.cwd());
 console.log("[Bot] BOT_DIR:", BOT_DIR);
 console.log("[Bot] AUDIO_DIR:", AUDIO_DIR);
-console.log("[Bot] SESSIONS_FILE:", SESSIONS_FILE);
 
 function botLog(meetingId, event, data = {}) {
   const log = {
@@ -30,44 +40,119 @@ function botLog(meetingId, event, data = {}) {
   console.log("[Artiva Bot]", JSON.stringify(log));
 }
 
-function readSessions() {
+/**
+ * Fetches the session row by meetingId from the DB.
+ * Returns a plain object with camelCase keys, or null if not found.
+ * Requirements: 2.6
+ */
+async function getSessionFromDB(meetingId) {
+  if (!dbPool) {
+    console.warn("[Bot] getSessionFromDB: DATABASE_URL not set — returning null");
+    return null;
+  }
+
   try {
-    if (!fs.existsSync(SESSIONS_FILE)) {
-      return {};
+    const result = await dbPool.query(
+      "SELECT * FROM meeting_sessions WHERE id = $1",
+      [meetingId]
+    );
+
+    if (result.rows.length === 0) {
+      return null;
     }
 
-    return JSON.parse(fs.readFileSync(SESSIONS_FILE, "utf8"));
-  } catch {
-    return {};
+    const row = result.rows[0];
+    return {
+      ffmpegPid: row.ffmpeg_pid,
+      outputPath: row.output_path,
+      status: row.status,
+      errorCode: row.error_code,
+      failureReason: row.failure_reason,
+      joinedAt: row.joined_at,
+      recordingStartedAt: row.recording_started_at,
+    };
+  } catch (err) {
+    console.error(`[Bot] getSessionFromDB(${meetingId}) failed:`, err.message);
+    return null;
   }
 }
 
-function writeSession(meetingId, data) {
-  const sessions = readSessions();
-  sessions[meetingId] = {
-    ...data,
-    updatedAt: new Date().toISOString(),
+/**
+ * Upserts session fields to the meeting_sessions table.
+ * Accepted fields in `data`: ffmpegPid, outputPath, status, errorCode, failureReason,
+ * platform, platformName, joinedAt, joinStatus, audioSource, recordingStartedAt,
+ * meetingUrl, startupLog, failedAt, and any other column-mapped fields.
+ *
+ * Requirements: 2.6
+ */
+async function saveSessionToDB(meetingId, data) {
+  if (!dbPool) {
+    console.warn("[Bot] saveSessionToDB: DATABASE_URL not set — skipping DB write");
+    return;
+  }
+
+  // Map JS camelCase keys to snake_case DB columns
+  const columnMap = {
+    ffmpegPid: "ffmpeg_pid",
+    outputPath: "output_path",
+    status: "status",
+    errorCode: "error_code",
+    failureReason: "failure_reason",
+    failedAt: "failed_at",
+    platform: "provider",
+    platformName: "title",
+    joinedAt: "joined_at",
+    recordingStartedAt: "recording_started_at",
   };
-  fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+
+  const setClauses = [];
+  const values = [];
+  let idx = 1;
+
+  for (const [key, col] of Object.entries(columnMap)) {
+    if (Object.prototype.hasOwnProperty.call(data, key) && data[key] !== undefined) {
+      setClauses.push(`${col} = $${idx}`);
+      values.push(data[key]);
+      idx++;
+    }
+  }
+
+  // Always bump updated_at
+  setClauses.push(`updated_at = NOW()`);
+
+  if (setClauses.length === 1) {
+    // Only updated_at — nothing meaningful to write
+    return;
+  }
+
+  values.push(meetingId);
+
+  const sql = `
+    UPDATE meeting_sessions
+    SET ${setClauses.join(", ")}
+    WHERE id = $${idx}
+  `;
+
+  try {
+    await dbPool.query(sql, values);
+  } catch (err) {
+    console.error(`[Bot] saveSessionToDB(${meetingId}) failed:`, err.message);
+  }
 }
 
-function deleteSession(meetingId) {
-  const sessions = readSessions();
-  delete sessions[meetingId];
-  fs.mkdirSync(path.dirname(SESSIONS_FILE), { recursive: true });
-  fs.writeFileSync(SESSIONS_FILE, JSON.stringify(sessions, null, 2));
+/**
+ * Marks a session as cleaned up by setting status to 'deleted'.
+ * Requirements: 2.6
+ */
+async function deleteSession(meetingId) {
+  await saveSessionToDB(meetingId, { status: "deleted" });
 }
 
-function getSession(meetingId) {
-  return readSessions()[meetingId] || null;
-}
-
-function persistSessionFailure(meetingId, errorCode, failureReason) {
-  const existingData = getSession(meetingId) || {};
-  writeSession(meetingId, {
+async function persistSessionFailure(meetingId, errorCode, failureReason) {
+  const existingData = (await getSessionFromDB(meetingId)) || {};
+  saveSessionToDB(meetingId, {
     ...existingData,
-    state: "failed",
+    status: "failed",
     errorCode: errorCode || "unknown",
     failureReason: failureReason || null,
     failedAt: new Date().toISOString(),
@@ -91,6 +176,21 @@ async function cleanupJoinArtifacts(meetingId, browser) {
 
 function formatBotError(error, fallback) {
   return error instanceof Error ? error.message : fallback;
+}
+
+/**
+ * Returns true if the process with the given PID is still alive.
+ * Uses signal 0 (no-op) to probe the process without killing it.
+ * Returns false if the process is dead or we lack permission to signal it.
+ * Requirements: 2.7
+ */
+function isProcessRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function clearActiveHandles(activeSession) {
@@ -120,7 +220,7 @@ function validateAudioFile(filePath) {
 
     console.log(`[Audio] File size: ${fileSizeKB.toFixed(1)} KB`);
 
-    if (fileSizeKB < 50) {
+    if (stats.size < 10_000) {
       return {
         valid: false,
         reason: "No audio was captured. Please check your MEETING_AUDIO_SOURCE setting.",
@@ -165,6 +265,68 @@ async function releaseActiveResources(meetingId, session) {
   }
 
   activeBrowsers.delete(meetingId);
+}
+
+/**
+ * Spawns `python3 transcribe.py <audioPath>` as a child process and returns a
+ * Promise that resolves when the process exits with code 0, or rejects with the
+ * stderr output on any non-zero exit code.
+ * Using spawn (not execSync) keeps the Node.js event loop unblocked.
+ * Requirements: 2.4, 2.5
+ */
+async function transcribeAsync(audioPath) {
+  return new Promise((resolve, reject) => {
+    const transcribeScript = path.join(BOT_DIR, "transcribe.py");
+    const proc = spawn('python3', [transcribeScript, audioPath]);
+    let stdout = '';
+    let stderr = '';
+    proc.stdout.on('data', d => stdout += d);
+    proc.stderr.on('data', d => stderr += d);
+    proc.on('close', code => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
+  });
+}
+
+/**
+ * Wraps transcribeAsync with exponential backoff retry logic.
+ * Retries up to maxRetries times with delays of 2s, 4s, 8s between attempts.
+ * Throws on final failure after maxRetries attempts.
+ * Requirements: 2.11
+ */
+async function transcribeWithRetry(audioPath, maxRetries = 3) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await transcribeAsync(audioPath);
+    } catch (err) {
+      if (attempt === maxRetries - 1) throw err;
+      await new Promise(r => setTimeout(r, 2000 * Math.pow(2, attempt)));
+    }
+  }
+}
+
+// Concurrency semaphore — max 2 simultaneous transcription jobs
+let activeTranscriptions = 0;
+const MAX_CONCURRENT_TRANSCRIPTIONS = 2;
+const transcriptionQueue = [];
+
+/**
+ * Runs transcribeWithRetry gated by the concurrency semaphore.
+ * If 2 jobs are already running, queues the job until a slot opens.
+ * Requirements: 2.12
+ */
+async function transcribeQueued(audioPath) {
+  if (activeTranscriptions >= MAX_CONCURRENT_TRANSCRIPTIONS) {
+    await new Promise((resolve) => transcriptionQueue.push(resolve));
+  }
+  activeTranscriptions++;
+  try {
+    return await transcribeWithRetry(audioPath);
+  } finally {
+    activeTranscriptions--;
+    if (transcriptionQueue.length > 0) {
+      const next = transcriptionQueue.shift();
+      next();
+    }
+  }
 }
 
 async function startBot(meetingId, meetingUrl, onStatusUpdate) {
@@ -241,7 +403,7 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
       };
     }
 
-    writeSession(meetingId, {
+    await saveSessionToDB(meetingId, {
       ffmpegPid: recording.ffmpeg.pid,
       outputPath: recording.outputPath,
       platform: platform || "google",
@@ -262,13 +424,7 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
         botLog(id, "meeting_auto_ended", { reason });
 
         if (reason === "kicked") {
-          const currentSession = getSession(id);
-          if (currentSession) {
-            writeSession(id, {
-              ...currentSession,
-              errorCode: "bot_kicked"
-            });
-          }
+          await saveSessionToDB(id, { errorCode: "bot_kicked" });
         }
 
         await stopBot(id, onStatusUpdate).catch((error) =>
@@ -322,7 +478,7 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
 }
 
 async function stopBot(meetingId, onStatusUpdate) {
-  const session = getSession(meetingId);
+  const session = await getSessionFromDB(meetingId);
   const outputPath = session?.outputPath;
   const activeSession = activeBrowsers.get(meetingId);
 
@@ -392,9 +548,11 @@ async function stopBot(meetingId, onStatusUpdate) {
       };
     }
 
+    console.log("[Stop] ═══ Audio file check ═══");
+    console.log("[Stop] Audio file path:", session.outputPath);
     const audioExists = fs.existsSync(session.outputPath);
     const audioSize = audioExists ? fs.statSync(session.outputPath).size : 0;
-    console.log(`[Audio] File exists: ${audioExists}, size: ${(audioSize / 1024).toFixed(1)} KB`);
+    console.log("[Stop] Audio exists:", audioExists, "Size:", (audioSize / 1024).toFixed(1), "KB");
 
     const audioStats = fs.statSync(outputPath);
     const fileSizeKB = audioStats.size / 1024;
@@ -406,8 +564,8 @@ async function stopBot(meetingId, onStatusUpdate) {
 
     const MIN_SIZE_1MIN = 500;
 
-    if (fileSizeKB < 50) {
-      console.error("[Audio] File too small — likely silence or capture failed");
+    if (!audioExists || audioSize < 10_000) {
+      console.error("[Stop] Audio file missing or too small (< 10 KB)");
       await releaseActiveResources(meetingId, session);
       persistSessionFailure(
         meetingId,
@@ -424,11 +582,12 @@ async function stopBot(meetingId, onStatusUpdate) {
           "No audio was captured. Check your MEETING_AUDIO_SOURCE setting in .env.local. Run: pactl list short sources to find the correct device.",
         recordingFilePath: outputPath,
         recordingEndedAt,
+        transcript: null,
       });
       return {
         success: false,
         error:
-          "No audio was captured. Check your MEETING_AUDIO_SOURCE setting in .env.local. Run: pactl list short sources to find the correct device.",
+          "No audio captured. Check your MEETING_AUDIO_SOURCE setting.",
         errorCode: "no_audio_captured",
       };
     }
@@ -465,28 +624,78 @@ async function stopBot(meetingId, onStatusUpdate) {
       };
     }
 
-    const transcribeScript = path.join(BOT_DIR, "transcribe.py");
     botLog(meetingId, "transcription_started", {});
-    const result = execSync(`python3 ${transcribeScript} ${outputPath}`, {
-      timeout: 300_000,
-    });
+    console.log("[Stop] Starting transcription...");
+    console.log("[Stop] Audio path:", outputPath);
 
-    const { transcript, error } = JSON.parse(result.toString());
+    let transcript;
+    let transcriptResult;
 
-    if (error || !transcript) {
-      persistSessionFailure(meetingId, "transcription_failed", error || "Transcription failed");
+    try {
+      const output = await transcribeQueued(outputPath);
+
+      const preview = typeof output === "string" ? output.substring(0, 200) : String(output).substring(0, 200);
+      console.log("[Stop] Raw transcription output (first 200 chars):", preview);
+
+      transcriptResult = JSON.parse(typeof output === "string" ? output.trim() : output.toString().trim());
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[Stop] Transcription failed:", msg);
+      persistSessionFailure(meetingId, "transcription_failed", msg);
       botLog(meetingId, "bot_failed", {
-        error: error || "Transcription failed",
+        error: msg,
         errorCode: "transcription_failed",
       });
       await onStatusUpdate(meetingId, "failed", {
         errorCode: "transcription_failed",
-        failureReason: error || "Transcription failed",
+        failureReason: msg,
         recordingFilePath: session.outputPath,
         recordingEndedAt,
+        transcript: null,
       });
-      return { success: false, error: error || "Transcription failed" };
+      deleteSession(meetingId);
+      return { success: false, error: "Transcription failed: " + msg, errorCode: "transcription_failed" };
     }
+
+    const transcribeError = transcriptResult.error;
+    transcript = transcriptResult.transcript;
+
+    if (transcribeError || !transcript) {
+      const errMsg = transcribeError || "Transcription failed";
+      console.error("[Stop] Transcription returned error:", errMsg);
+      persistSessionFailure(meetingId, "transcription_failed", errMsg);
+      await onStatusUpdate(meetingId, "failed", {
+        errorCode: "transcription_failed",
+        failureReason: errMsg,
+        recordingFilePath: session.outputPath,
+        recordingEndedAt,
+        transcript: null,
+      });
+      deleteSession(meetingId);
+      return { success: false, error: errMsg, errorCode: "transcription_failed" };
+    }
+
+    console.log("[Stop] Transcript length:", transcript.length);
+    console.log("[Stop] Transcript preview:", transcript.substring(0, 100));
+
+    if (!transcript || transcript.trim().length < 10) {
+      console.error("[Stop] Transcript is empty or too short");
+      persistSessionFailure(meetingId, "empty_transcript", "Transcript is empty. Audio may be silence.");
+      await onStatusUpdate(meetingId, "failed", {
+        errorCode: "empty_transcript",
+        failureReason: "Transcript is empty. Audio may be silence. Check MEETING_AUDIO_SOURCE.",
+        recordingFilePath: session.outputPath,
+        recordingEndedAt,
+        transcript: "",
+      });
+      deleteSession(meetingId);
+      return {
+        success: false,
+        error: "Transcript is empty. Audio may be silence. Check MEETING_AUDIO_SOURCE.",
+        errorCode: "empty_transcript",
+      };
+    }
+
     botLog(meetingId, "transcription_completed", {
       transcriptLength: transcript.length,
     });
@@ -497,44 +706,50 @@ async function stopBot(meetingId, onStatusUpdate) {
       recordingFilePath: session.outputPath,
       recordingEndedAt,
     });
-    const summary = await summarizeMeeting(transcript);
-    if (
-      !summary ||
-      !summary.summary ||
-      summary.summary.startsWith("Summary generation failed:") ||
-      summary.summary === "Summary unavailable - Gemini API key not configured."
-    ) {
-      persistSessionFailure(
-        meetingId,
-        "summary_failed",
-        summary?.summary || "Summary generation failed. The transcript may be empty."
-      );
-      botLog(meetingId, "bot_failed", {
-        error: summary?.summary || "Summary generation failed. The transcript may be empty.",
-        errorCode: "summary_failed",
-      });
-      await onStatusUpdate(meetingId, "failed", {
-        errorCode: "summary_failed",
-        failureReason:
-          summary?.summary || "Summary generation failed. The transcript may be empty.",
-        recordingFilePath: session.outputPath,
-        recordingEndedAt,
-      });
-      return {
-        success: false,
-        error: summary?.summary || "Summary generation failed. The transcript may be empty.",
-        errorCode: "summary_failed",
+
+    console.log("[Stop] Starting summarization...");
+    let summary;
+    try {
+      summary = await summarizeMeeting(transcript);
+      console.log("[Stop] Summary generated:", JSON.stringify(summary).substring(0, 200));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[Stop] Summary failed:", msg);
+      summary = {
+        summary: "Summary generation failed: " + msg,
+        key_decisions: [],
+        action_items: [],
+        key_topics: [],
+        risks_and_blockers: [],
       };
     }
+
+    if (!summary || !summary.summary) {
+      summary = {
+        summary: "Summary unavailable.",
+        key_decisions: [],
+        action_items: [],
+        key_topics: [],
+        risks_and_blockers: [],
+      };
+    }
+
     botLog(meetingId, "summary_completed", {
       actionItemCount: Array.isArray(summary.action_items) ? summary.action_items.length : 0,
     });
+
+    console.log("[Stop] Saving to database (via status callback)...");
     await onStatusUpdate(meetingId, "completed", {
       errorCode: null,
       failureReason: null,
       recordingFilePath: session.outputPath,
       recordingEndedAt,
+      transcript,
+      summary,
+      meetingDurationSeconds: meetingDurationSeconds ?? null,
+      outputPath: session.outputPath,
     });
+    console.log("[Stop] Meeting completed successfully");
     deleteSession(meetingId);
 
     return {
@@ -542,6 +757,7 @@ async function stopBot(meetingId, onStatusUpdate) {
       transcript,
       meetingDurationSeconds: meetingDurationSeconds ?? undefined,
       summary,
+      outputPath: session.outputPath,
     };
   } catch (error) {
     console.error("[Bot] Failed to stop:", error);
@@ -561,37 +777,51 @@ async function stopBot(meetingId, onStatusUpdate) {
   }
 }
 
-function recoverStaleSessions() {
+/**
+ * On bot process startup, finds any sessions stuck in 'capturing' or 'waiting_for_join'
+ * from a previous run and marks them as failed if their ffmpeg process is no longer alive.
+ * Requirements: 2.7, 3.10
+ */
+async function recoverStuckSessions() {
+  if (!dbPool) {
+    console.warn("[Bot] recoverStuckSessions: DATABASE_URL not set — skipping recovery");
+    return;
+  }
+
   try {
-    const sessions = readSessions();
-    const now = Date.now();
+    const result = await dbPool.query(
+      "SELECT id, ffmpeg_pid FROM meeting_sessions WHERE status IN ('capturing', 'waiting_for_join')"
+    );
 
-    for (const [meetingId, session] of Object.entries(sessions)) {
-      if (session.state === "capturing" && session.joinedAt) {
-        const joinedAt = new Date(session.joinedAt).getTime();
-        const hoursElapsed = (now - joinedAt) / (1000 * 60 * 60);
+    if (result.rows.length === 0) {
+      console.log("[Bot] recoverStuckSessions: no stuck sessions found");
+      return;
+    }
 
-        if (hoursElapsed > 5) {
-          console.log(`[Bot] Recovering stale session: ${meetingId}`);
-          deleteSession(meetingId);
-        }
-      }
+    console.log(`[Bot] recoverStuckSessions: found ${result.rows.length} stuck session(s)`);
 
-      if (session.state === "processing" && session.updatedAt) {
-        const updatedAt = new Date(session.updatedAt).getTime();
-        const minsElapsed = (now - updatedAt) / (1000 * 60);
+    for (const row of result.rows) {
+      const meetingId = row.id;
+      const ffmpegPid = row.ffmpeg_pid;
+      const isAlive = ffmpegPid != null && isProcessRunning(ffmpegPid);
 
-        if (minsElapsed > 30) {
-          console.log(`[Bot] Stale processing session: ${meetingId}`);
-          deleteSession(meetingId);
-        }
+      if (!isAlive) {
+        console.log(`[Bot] recoverStuckSessions: marking session ${meetingId} as failed (pid ${ffmpegPid} not running)`);
+        await saveSessionToDB(meetingId, {
+          status: "failed",
+          errorCode: "server_restart",
+          failureReason: "Server restarted while session was active",
+          failedAt: new Date().toISOString(),
+        });
+      } else {
+        console.log(`[Bot] recoverStuckSessions: session ${meetingId} has live pid ${ffmpegPid} — leaving untouched`);
       }
     }
-  } catch (error) {
-    console.error("[Bot] Session recovery error:", error instanceof Error ? error.message : error);
+  } catch (err) {
+    console.error("[Bot] recoverStuckSessions failed:", err.message);
   }
 }
 
-recoverStaleSessions();
+recoverStuckSessions();
 
-module.exports = { startBot, stopBot };
+module.exports = { startBot, stopBot, isProcessRunning, recoverStuckSessions, transcribeAsync, transcribeWithRetry, transcribeQueued };

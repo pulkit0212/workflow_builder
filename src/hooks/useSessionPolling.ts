@@ -26,10 +26,20 @@ export function useSessionPolling(meetingId: string | null) {
         const data = (await response.json()) as MeetingStatusResponse;
         setSession(data);
 
-        if (
-          (data.state === "failed" || (data.state === "completed" && data.insights !== null)) &&
-          intervalRef.current
-        ) {
+        if (process.env.NODE_ENV === "development") {
+          console.log(
+            "[Polling] State:",
+            data.state,
+            "Has transcript:",
+            !!data.transcript,
+            "Has summary:",
+            !!data.summary
+          );
+        }
+
+        // Only keep polling for active in-progress states
+        const activeStates = new Set(["joining", "waiting_for_join", "waiting_for_admission", "joined", "capturing", "processing", "summarizing"]);
+        if (!activeStates.has(data.state) && intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }

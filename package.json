@@ -12,7 +12,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "setup:bot": "npx playwright install chromium && (pip3 install openai-whisper ffmpeg-python || pip3 install --break-system-packages openai-whisper ffmpeg-python)",
-    "setup:bot-profile": "node bot/setupProfile.js"
+    "setup:bot-profile": "node bot/setupProfile.js",
+    "test": "vitest --run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.15.1",
@@ -47,10 +49,12 @@
     "@types/pg": "^8.11.11",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "@vitest/coverage-v8": "^4.1.2",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.9",
     "postcss": "^8.5.3",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.2"
   }
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const RECORDINGS_DIR = path.join(process.cwd(), "public", "recordings");
+const RECORDINGS_DIR = path.join(process.cwd(), "private", "recordings");
 
 export function ensureRecordingsDir() {
   if (!fs.existsSync(RECORDINGS_DIR)) {
@@ -18,7 +18,7 @@ export function saveRecording(meetingId: string, sourcePath: string): string {
   fs.copyFileSync(sourcePath, destinationPath);
   console.log("[Storage] Recording saved:", destinationPath);
 
-  return `/recordings/${fileName}`;
+  return `/api/recordings/${meetingId}`;
 }
 
 export function getRecordingUrl(meetingId: string): string | null {
@@ -26,7 +26,7 @@ export function getRecordingUrl(meetingId: string): string | null {
   const filePath = path.join(RECORDINGS_DIR, fileName);
 
   if (fs.existsSync(filePath)) {
-    return `/recordings/${fileName}`;
+    return `/api/recordings/${meetingId}`;
   }
 
   return null;

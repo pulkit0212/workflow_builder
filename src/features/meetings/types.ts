@@ -57,7 +57,7 @@ export type MeetingDetailResponse = {
 export type MeetingStartResponse = {
   success: true;
   meeting: MeetingDetailRecord;
-  status: "bot_starting";
+  status: "bot_starting" | "already_recording";
   message: string;
 };
 

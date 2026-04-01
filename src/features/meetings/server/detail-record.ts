@@ -52,7 +52,9 @@ export function buildMeetingDetailFromSession(params: {
     recordingDuration: sessionRecord.recordingDuration,
     insights: sessionRecord.insights,
     chapters: sessionRecord.chapters,
-    canJoinAndCapture: !sessionRecord.summary && mapMeetingSessionToDetailStatus(sessionRecord.status) !== "processing"
+    canJoinAndCapture: mapMeetingSessionToDetailStatus(sessionRecord.status) === "failed"
+      ? true
+      : !sessionRecord.summary && mapMeetingSessionToDetailStatus(sessionRecord.status) !== "processing"
   };
 }
 
