@@ -529,7 +529,7 @@ export default function IntegrationsPage() {
           color: "#6b7280"
         }}
       >
-        💡 <strong>How it works:</strong> When a meeting recording completes, Artiva automatically sends the summary
+        💡 <strong>How it works:</strong> When a meeting recording completes, Artivaa automatically sends the summary
         and action items to all enabled integrations. No manual action needed.
       </div>
     </div>

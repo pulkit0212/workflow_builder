@@ -59,7 +59,7 @@ export function GoogleIntegrationPanel() {
       <SectionHeader
         eyebrow="Integrations"
         title="Connected apps"
-        description="Connect Google to pull upcoming meetings from Calendar and prepare Artiva for automatic meeting intake."
+        description="Connect Google to pull upcoming meetings from Calendar and prepare Artivaa for automatic meeting intake."
       />
 
       {error ? <ResultState icon="error" title="Unable to load integrations" description={error} /> : null}
@@ -89,7 +89,7 @@ export function GoogleIntegrationPanel() {
             </div>
             <div className="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Use Case</p>
-              <p className="mt-2 text-sm font-semibold text-slate-950">Artiva intake</p>
+              <p className="mt-2 text-sm font-semibold text-slate-950">Artivaa intake</p>
             </div>
           </div>
 

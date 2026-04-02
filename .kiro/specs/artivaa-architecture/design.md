@@ -1,8 +1,8 @@
-# Artivaa Architecture Bugfix Design
+# Artivaaa Architecture Bugfix Design
 
 ## Overview
 
-This document covers five critical production bugs identified in Artivaa's bot orchestration, recording pipeline, session management, and storage layer. The fixes address: (1) a race condition in bot deduplication that allows duplicate bots to join the same meeting, (2) synchronous transcription blocking the Node.js event loop, (3) file-based session state that is lost on server restart, (4) recordings stored in the public directory without authentication, and (5) silent `startBot` errors that leave sessions stuck in `waiting_for_join` indefinitely.
+This document covers five critical production bugs identified in Artivaaa's bot orchestration, recording pipeline, session management, and storage layer. The fixes address: (1) a race condition in bot deduplication that allows duplicate bots to join the same meeting, (2) synchronous transcription blocking the Node.js event loop, (3) file-based session state that is lost on server restart, (4) recordings stored in the public directory without authentication, and (5) silent `startBot` errors that leave sessions stuck in `waiting_for_join` indefinitely.
 
 Each fix is minimal and targeted. The transcription pipeline (Whisper), summary pipeline (Gemini), integration triggers (Slack/Notion/Jira/Gmail), billing logic, and UI components are explicitly out of scope and must not be changed.
 

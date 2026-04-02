@@ -382,7 +382,7 @@ export async function POST(request: Request, context: RouteContext) {
       const meetingUrl = body?.meetingUrl?.trim() || calendarMeeting.meetLink;
 
       if (!canTransitionMeetingSessionStatus(previousStatus, "waiting_for_join")) {
-        return apiError("Meeting session is not ready to start Artiva.", 409);
+        return apiError("Meeting session is not ready to start Artivaa.", 409);
       }
 
       const normalizedMeetingUrl = normalizeMeetingUrl(meetingUrl);
@@ -447,7 +447,7 @@ export async function POST(request: Request, context: RouteContext) {
           calendarMeeting
         }),
         status: "bot_starting",
-        message: "Artiva is joining the meeting."
+        message: "Artivaa is joining the meeting."
       });
       console.info("[start-route] response sent", {
         sessionId: session.id,
@@ -471,7 +471,7 @@ export async function POST(request: Request, context: RouteContext) {
     const meetingUrl = body?.meetingUrl?.trim() || meeting.meetingLink;
 
     if (!canTransitionMeetingSessionStatus(previousStatus, "waiting_for_join")) {
-      return apiError("Meeting session is not ready to start Artiva.", 409);
+      return apiError("Meeting session is not ready to start Artivaa.", 409);
     }
 
     const normalizedMeetingUrl = normalizeMeetingUrl(meetingUrl);
@@ -522,7 +522,7 @@ export async function POST(request: Request, context: RouteContext) {
         session
       }),
       status: "bot_starting",
-      message: "Artiva is joining the meeting."
+      message: "Artivaa is joining the meeting."
     });
     console.info("[start-route] response sent", {
       sessionId: session.id,

@@ -289,7 +289,7 @@ export function DocumentAnalyzerWorkspace() {
       return;
     }
 
-    const historyKey = "artiva-document-analyzer-history";
+    const historyKey = "Artivaa-document-analyzer-history";
     const existing = window.localStorage.getItem(historyKey);
     const history = existing ? (JSON.parse(existing) as Array<Record<string, unknown>>) : [];
 
@@ -450,7 +450,7 @@ export function DocumentAnalyzerWorkspace() {
               <div className="space-y-4">
                 <div className="flex items-center gap-3 text-slate-500">
                   <LoadingSpinner />
-                  <span>Artiva is reading your document...</span>
+                  <span>Artivaa is reading your document...</span>
                 </div>
                 {Array.from({ length: 3 }).map((_, index) => (
                   <div key={index} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">

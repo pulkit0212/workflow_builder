@@ -37,7 +37,7 @@ function botLog(meetingId, event, data = {}) {
     event,
     ...data
   };
-  console.log("[Artiva Bot]", JSON.stringify(log));
+  console.log("[Artivaa Bot]", JSON.stringify(log));
 }
 
 /**

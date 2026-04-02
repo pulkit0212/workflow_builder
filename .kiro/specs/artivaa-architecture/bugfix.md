@@ -2,7 +2,7 @@
 
 ## Introduction
 
-After a full codebase audit of Artivaa's bot orchestration, recording pipeline, session management, and storage layer, several critical architectural defects were identified. These bugs span race conditions in bot deduplication, synchronous blocking in the transcription pipeline, unsafe file-based session state, insecure recording storage, and missing idempotency guarantees. Left unaddressed, these issues will cause duplicate bots joining the same meeting, data loss on server restart, blocked API responses during long transcription jobs, and publicly accessible audio recordings. This document captures all defects, their expected correct behavior, and the existing behavior that must be preserved.
+After a full codebase audit of Artivaaa's bot orchestration, recording pipeline, session management, and storage layer, several critical architectural defects were identified. These bugs span race conditions in bot deduplication, synchronous blocking in the transcription pipeline, unsafe file-based session state, insecure recording storage, and missing idempotency guarantees. Left unaddressed, these issues will cause duplicate bots joining the same meeting, data loss on server restart, blocked API responses during long transcription jobs, and publicly accessible audio recordings. This document captures all defects, their expected correct behavior, and the existing behavior that must be preserved.
 
 ---
 

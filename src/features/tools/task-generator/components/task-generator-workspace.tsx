@@ -424,7 +424,7 @@ send invoice to acme corp before month end`
                     ? "Works great with Google Voice transcripts"
                     : mode === "meeting"
                       ? "Loads summary or transcript from a completed meeting"
-                      : "The messier the better - Artiva will structure it"}
+                      : "The messier the better - Artivaa will structure it"}
                 </span>
                 <span>{input.length.toLocaleString()} characters</span>
               </div>
@@ -484,7 +484,7 @@ send invoice to acme corp before month end`
               />
               <div className="space-y-1">
                 <span className="block text-sm font-semibold text-slate-900">Auto-detect priority</span>
-                <p className="text-xs leading-5 text-slate-500">Artiva will infer urgency from language used</p>
+                <p className="text-xs leading-5 text-slate-500">Artivaa will infer urgency from language used</p>
               </div>
             </label>
           </section>
@@ -518,7 +518,7 @@ send invoice to acme corp before month end`
             <div className="flex flex-1 flex-col justify-center space-y-4">
               <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4 text-slate-700">
                 <LoadingSpinner />
-                <span className="font-medium">Artiva is reading your notes...</span>
+                <span className="font-medium">Artivaa is reading your notes...</span>
               </div>
               {Array.from({ length: 3 }).map((_, index) => (
                 <div key={index} className="h-24 animate-pulse rounded-2xl bg-slate-100" />

@@ -7,7 +7,7 @@ export function LogoMark() {
         A
       </span>
       <span className="flex flex-col">
-        <span className="text-base font-bold text-[#111827]">Artiva</span>
+        <span className="text-base font-bold text-[#111827]">Artivaa</span>
         <span className="text-xs text-slate-500">Meeting Intelligence</span>
       </span>
     </Link>

@@ -163,13 +163,13 @@ function getStatusMessage(status: MeetingDetailRecord["status"]) {
     case "waiting_for_join":
       return "Preparing to join the meeting in a separate browser.";
     case "waiting_for_admission":
-      return "Waiting for the meeting host to admit the Artiva bot.";
+      return "Waiting for the meeting host to admit the Artivaa bot.";
     case "capturing":
       return "Recording in progress. Audio is being captured for transcription.";
     case "processing":
       return "Processing the saved recording and preparing the transcript.";
     case "summarizing":
-      return "Generating the structured Artiva summary and action items.";
+      return "Generating the structured Artivaa summary and action items.";
     case "failed":
       return "The last recording run failed before the report finished.";
     case "completed":
@@ -659,7 +659,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="Artiva"
+        eyebrow="Artivaa"
         title={meeting.title}
         description="From meetings to meaningful work."
         action={

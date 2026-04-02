@@ -241,7 +241,7 @@ function ActionItemsContent() {
   return (
     <div className="space-y-6">
       <SectionHeader
-        eyebrow="Artiva"
+        eyebrow="Artivaa"
         title="Action Items"
         description="All tasks extracted from your meetings"
       />

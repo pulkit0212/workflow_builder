@@ -8,6 +8,7 @@ import { encodeCalendarMeetingId } from "@/features/meetings/ids";
 import { getMeetingDisplayStatus } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
+import { useRef, useState } from "react";
 
 function formatTimeRange(startTime: string, endTime: string) {
   const start = new Date(startTime);
@@ -52,6 +53,25 @@ export function CalendarMeetingRow({ meeting, session }: CalendarMeetingRowProps
   const status = getMeetingDisplayStatus(meeting, session);
   const platform = getPlatformFromUrl(meeting.meetLink);
   const platformBadge = getPlatformBadge(platform);
+  const [toast, setToast] = useState<ToastState | null>(null);
+    const toastTimer = useRef<number | null>(null);
+
+
+    function showToast(message: string, type: ToastType) {
+    setToast({ message, type });
+    if (toastTimer.current) {
+      window.clearTimeout(toastTimer.current);
+    }
+    toastTimer.current = window.setTimeout(() => {
+      setToast(null);
+    }, type === "error" ? 5000 : 3000);
+  }
+  type ToastType = "success" | "error" | "info";
+
+type ToastState = {
+  message: string;
+  type: ToastType;
+};
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border border-[#e5e7eb] bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -88,14 +108,16 @@ export function CalendarMeetingRow({ meeting, session }: CalendarMeetingRowProps
       <div className="flex flex-wrap gap-2">
         {status.showJoin && meeting.meetLink ? (
           <Button
-            type="button"
-            size="sm"
-            className="bg-[#16a34a] hover:bg-[#15803d]"
-            onClick={() => window.open(meeting.meetLink!, "_blank", "noopener,noreferrer")}
-          >
-            Join Meeting
-          </Button>
-        ) : null}
+           type="button"
+           size="sm"
+           className="bg-[#16a34a] hover:bg-[#15803d]"
+           onClick={() => {
+            navigator.clipboard.writeText(meeting.meetLink!)
+            showToast("Meeting link copied","success")
+         }}>
+          Copy Meeting Link
+         </Button>
+       ) : null}
 
         {status.showStartNotetaker ? (
           <Button asChild size="sm">
@@ -131,4 +153,5 @@ export function CalendarMeetingRow({ meeting, session }: CalendarMeetingRowProps
       </div>
     </div>
   );
+  
 }

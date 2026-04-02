@@ -9,8 +9,8 @@ const sans = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Artiva - From meetings to meaningful work",
-  description: "Artiva captures meetings, generates summaries, and turns conversations into actionable tasks."
+  title: "Artivaa - From meetings to meaningful work",
+  description: "Artivaa captures meetings, generates summaries, and turns conversations into actionable tasks."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

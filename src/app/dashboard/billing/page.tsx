@@ -199,7 +199,7 @@ export default function BillingPage() {
         key: data.keyId,
         amount: data.amount,
         currency: data.currency,
-        name: "Artiva",
+        name: "Artivaa",
         description: `${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan - Monthly`,
         order_id: data.orderId,
         handler: async (response: {
@@ -256,7 +256,7 @@ export default function BillingPage() {
 
       <SectionHeader
         eyebrow="Billing"
-        title="Choose your Artiva plan"
+        title="Choose your Artivaa plan"
         description="Free keeps the writing tools open. Pro unlocks meeting intelligence. Elite adds unlimited meetings and priority support."
       />
 

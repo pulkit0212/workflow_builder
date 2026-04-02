@@ -48,7 +48,7 @@ export async function fetchBotProfileStatus() {
   });
 
   if (!response.ok) {
-    throw new Error("Failed to load Artiva bot profile status.");
+    throw new Error("Failed to load Artivaa bot profile status.");
   }
 
   return (await response.json()) as {

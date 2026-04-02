@@ -64,7 +64,7 @@ function normalizeSummaryPayload(payload) {
 }
 
 function getPrompt(transcript) {
-  return `You are Artiva, a professional meeting intelligence assistant.
+  return `You are Artivaa, a professional meeting intelligence assistant.
 
 Analyze this meeting transcript and extract structured information.
 Be specific and actionable. Never be vague.

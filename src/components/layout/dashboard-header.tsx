@@ -24,7 +24,7 @@ type DashboardHeaderProps = {
 
 export function DashboardHeader({ profile }: DashboardHeaderProps) {
   const pathname = usePathname();
-  const pageTitle = pageTitles.find((item) => item.match(pathname))?.title ?? "Artiva";
+  const pageTitle = pageTitles.find((item) => item.match(pathname))?.title ?? "Artivaa";
 
   return (
     <header className="sticky top-0 z-20 border-b border-[#e5e7eb] bg-white">
@@ -37,7 +37,7 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
             <Search className="h-4 w-4 text-[#9ca3af]" />
             <input
               type="text"
-              placeholder="Ask Artiva anything..."
+              placeholder="Ask Artivaa anything..."
               className="w-full border-0 bg-transparent p-0 text-sm text-[#374151] outline-none placeholder:text-[#9ca3af]"
             />
           </label>

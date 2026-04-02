@@ -138,7 +138,7 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
       <Link href="/" className="flex items-center gap-3 rounded-xl px-3 py-2">
         <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#6c63ff] text-base font-bold text-white">A</span>
         <span className="flex flex-col">
-          <span className="text-base font-bold text-white">Artiva</span>
+          <span className="text-base font-bold text-white">Artivaa</span>
           <span className="text-xs text-slate-400">Meeting Intelligence</span>
         </span>
       </Link>
@@ -193,7 +193,7 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
             {getInitials(profile.fullName, profile.email)}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">{profile.fullName || "Artiva User"}</p>
+            <p className="truncate text-sm font-semibold text-white">{profile.fullName || "Artivaa User"}</p>
             <p className="truncate text-xs text-slate-400">{profile.email}</p>
           </div>
         </div>

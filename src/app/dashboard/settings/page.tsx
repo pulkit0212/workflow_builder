@@ -113,8 +113,8 @@ const defaultPreferences: PreferencesState = {
   summaryLength: "standard"
 };
 
-const preferencesStorageKey = "artiva.settings.preferences.v1";
-const botSettingsStorageKey = "artiva.settings.bot.v1";
+const preferencesStorageKey = "Artivaa.settings.preferences.v1";
+const botSettingsStorageKey = "Artivaa.settings.bot.v1";
 
 function formatDate(value: string | number | Date | null | undefined) {
   if (!value) return "Not available";
@@ -146,7 +146,7 @@ function getInitials(name?: string | null) {
 
 function getDisplayName(userName?: string | null, firstName?: string | null, lastName?: string | null) {
   const composed = [firstName, lastName].filter(Boolean).join(" ").trim();
-  return composed || userName || "Artiva User";
+  return composed || userName || "Artivaa User";
 }
 
 function splitDisplayName(name: string) {
@@ -989,7 +989,7 @@ export default function SettingsPage() {
 
           {activeTab === "preferences" ? (
             <section className="space-y-6">
-              <SectionHeader title="Preferences" description="Customize how Artiva works for you." />
+              <SectionHeader title="Preferences" description="Customize how Artivaa works for you." />
 
               <Card className="space-y-5 p-6">
                 <div className="space-y-3">
@@ -1245,7 +1245,7 @@ export default function SettingsPage() {
 
           {activeTab === "usage" ? (
             <section className="space-y-6">
-              <SectionHeader title="Usage & Limits" description="Monitor your Artiva usage." />
+              <SectionHeader title="Usage & Limits" description="Monitor your Artivaa usage." />
 
               <Card className="space-y-6 p-6">
                 <div className="grid gap-4 md:grid-cols-2">

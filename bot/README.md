@@ -1,4 +1,4 @@
-# Artiva Bot — Setup & Usage
+# Artivaa Bot — Setup & Usage
 
 ## First Time Setup (Run Once)
 

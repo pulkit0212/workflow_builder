@@ -238,7 +238,7 @@ export function MeetingAssistantWorkspace({
 
   function validateSetup() {
     if (!setup.title.trim()) {
-      setSetupError("Enter a meeting title before starting Artiva.");
+      setSetupError("Enter a meeting title before starting Artivaa.");
       return false;
     }
 
@@ -248,7 +248,7 @@ export function MeetingAssistantWorkspace({
     }
 
     if (!setup.meetingLink.trim()) {
-      setSetupError("Enter the Google Meet link before starting Artiva.");
+      setSetupError("Enter the Google Meet link before starting Artivaa.");
       return false;
     }
 
@@ -547,9 +547,9 @@ export function MeetingAssistantWorkspace({
   return (
     <div className="space-y-8">
       <SectionHeader
-        eyebrow="Artiva"
+        eyebrow="Artivaa"
         title="From meetings to meaningful work."
-        description="Set up the meeting, capture the recording, generate the transcript, and save a structured Artiva session."
+        description="Set up the meeting, capture the recording, generate the transcript, and save a structured Artivaa session."
         action={
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="available">Google Meet</Badge>

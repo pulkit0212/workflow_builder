@@ -72,7 +72,7 @@ export async function sendGmailSummary(
           ${decisionsHtml}
           <hr style="border: none; border-top: 1px solid #f3f4f6; margin: 20px 0;">
           <p style="color: #9ca3af; font-size: 12px; text-align: center;">
-            Powered by Artiva — From meetings to meaningful work
+            Powered by Artivaa — From meetings to meaningful work
           </p>
         </div>
       </body>

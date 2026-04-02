@@ -71,6 +71,6 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
-    return apiError(error instanceof Error ? error.message : "Failed to stop Artiva.", 500);
+    return apiError(error instanceof Error ? error.message : "Failed to stop Artivaa.", 500);
   }
 }

@@ -24,7 +24,7 @@ function getParticipants(meeting: MeetingSessionRecord) {
     return owners as string[];
   }
 
-  return ["Artiva"];
+  return ["Artivaa"];
 }
 
 function getInitials(value: string) {
@@ -156,12 +156,12 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
           <div className="rounded-xl border border-[#fecaca] bg-[#fef2f2] p-4">
             <p className="text-sm font-semibold text-[#991b1b]">Recording failed</p>
             <p className="mt-2 text-sm leading-6 text-[#991b1b]">
-              {meeting.failureReason || "Artiva could not finish this recording."}
+              {meeting.failureReason || "Artivaa could not finish this recording."}
             </p>
           </div>
         ) : (
           <div className="rounded-xl bg-[#f9fafb] p-4">
-            <p className="text-sm text-[#4b5563]">Artiva is recording this meeting...</p>
+            <p className="text-sm text-[#4b5563]">Artivaa is recording this meeting...</p>
           </div>
         )}
       </div>

@@ -93,7 +93,7 @@ const integrations = [
 const featureBuckets = [
   {
     title: "Capture meetings automatically",
-    description: "Sync your calendar, surface the right join links, and prepare Artiva before conversations begin.",
+    description: "Sync your calendar, surface the right join links, and prepare Artivaa before conversations begin.",
     items: ["Auto-detect today's meetings", "Live join context and meeting links", "Clear upcoming view for busy operators"]
   },
   {
@@ -315,7 +315,7 @@ export function LandingPage({ isAuthenticated }: LandingPageProps) {
                 AR
               </span>
               <span>
-                <span className="block text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">Artiva</span>
+                <span className="block text-sm font-semibold uppercase tracking-[0.28em] text-indigo-600">Artivaa</span>
                 <span className="block text-xs text-slate-500">From meetings to meaningful work.</span>
               </span>
             </Link>
@@ -367,17 +367,17 @@ export function LandingPage({ isAuthenticated }: LandingPageProps) {
           >
             <div className="inline-flex items-center gap-3 rounded-full border border-indigo-100 bg-white px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.3em] text-indigo-700 shadow-[0_10px_26px_rgba(15,23,42,0.05)]">
               <Sparkles className="h-4 w-4" />
-              Artiva
+              Artivaa
             </div>
 
             <div className="max-w-3xl space-y-5">
               <h1 className="text-5xl font-semibold leading-[0.98] tracking-tight text-slate-950 sm:text-6xl xl:text-[4.7rem]">
-                Artiva
+                Artivaa
                 <br />
                 From meetings to meaningful work.
               </h1>
               <p className="max-w-xl text-lg leading-8 text-slate-600">
-                Artiva captures meetings, generates summaries, and turns conversations into actionable tasks.
+                Artivaa captures meetings, generates summaries, and turns conversations into actionable tasks.
               </p>
             </div>
 

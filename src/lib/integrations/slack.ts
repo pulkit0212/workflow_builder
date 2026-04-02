@@ -65,7 +65,7 @@ export async function sendSlackSummary(
         elements: [
           {
             type: "mrkdwn",
-            text: "_Powered by Artiva — From meetings to meaningful work_"
+            text: "_Powered by Artivaa — From meetings to meaningful work_"
           }
         ]
       }
@@ -91,7 +91,7 @@ export async function testSlackWebhook(webhookUrl: string) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      text: "✅ Artiva is connected! Meeting summaries will be posted here."
+      text: "✅ Artivaa is connected! Meeting summaries will be posted here."
     })
   });
 
