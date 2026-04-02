@@ -38,7 +38,9 @@ export async function GET(
         id: run.id,
         title: run.title,
         status: run.status,
-        inputJson: run.inputJson,
+        inputJson: run.inputJson && typeof run.inputJson === "object"
+          ? (({ provider: _p, ...rest }) => rest)(run.inputJson as Record<string, unknown>)
+          : run.inputJson,
         outputJson: run.outputJson,
         model: run.model,
         tokensUsed: run.tokensUsed,

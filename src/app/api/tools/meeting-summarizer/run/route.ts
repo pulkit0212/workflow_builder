@@ -26,9 +26,26 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (error instanceof ToolExecutionError) {
-      return apiError(error.message, error.statusCode, error.details);
+      // Never expose internal provider details (API keys, provider names, raw API errors)
+      const isQuotaOrRate =
+        error.statusCode === 429 ||
+        (typeof error.details === "object" &&
+          error.details !== null &&
+          "status" in error.details &&
+          (error.details as { status?: number }).status === 429);
+
+      const safeMessage = isQuotaOrRate
+        ? "AI service is temporarily unavailable. Please try again in a moment."
+        : error.statusCode === 400
+          ? error.message  // validation errors are safe to show
+          : "Something went wrong while generating the summary. Please try again.";
+
+      // Only pass details for validation errors (400), never for provider errors
+      const safeDetails = error.statusCode === 400 ? error.details : undefined;
+
+      return apiError(safeMessage, error.statusCode >= 500 ? 500 : error.statusCode, safeDetails);
     }
 
-    return apiError(error instanceof Error ? error.message : "Unexpected server error.", 500);
+    return apiError("Something went wrong. Please try again.", 500);
   }
 }

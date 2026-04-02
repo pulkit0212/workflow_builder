@@ -1,10 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-responses";
+import { callAI } from "@/lib/ai/provider";
+import { handleUserSafeAIError } from "@/lib/ai/errorHandler";
 
 export const runtime = "nodejs";
-const GEMINI_MODEL = "gemini-2.5-flash";
 const logPrefix = "[Email Generator]";
 
 const emailGeneratorInputSchema = z.object({
@@ -53,16 +53,6 @@ Rules:
 - ${input.tone === "Formal" ? "Use formal business language" : ""}`;
 }
 
-function getGeminiModel() {
-  if (!process.env.GEMINI_API_KEY) {
-    console.error(`${logPrefix} GEMINI_API_KEY is not set`);
-    return null;
-  }
-
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  return genAI.getGenerativeModel({ model: GEMINI_MODEL });
-}
-
 function cleanGeminiJson(text: string) {
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 }
@@ -88,18 +78,8 @@ export async function POST(request: Request) {
     return apiError("Invalid email generator input.", 400, parsed.error.flatten());
   }
 
-  const model = getGeminiModel();
-
-  if (!model) {
-    return apiError("GEMINI_API_KEY not set", 500);
-  }
-
   try {
-    const result = await model.generateContent(buildEmailPrompt(parsed.data));
-    const text = result.response.text();
-
-    console.log(`${logPrefix} Raw Gemini response:`, text.substring(0, 200));
-
+    const text = await callAI(buildEmailPrompt(parsed.data));
     const cleaned = cleanGeminiJson(text);
 
     let output: EmailGeneratorOutput;
@@ -116,9 +96,13 @@ export async function POST(request: Request) {
       subject: output.subject.trim(),
       body: output.body.replace(/\r\n/g, "\n").trim()
     });
-  } catch (geminiError) {
-    const message = geminiError instanceof Error ? geminiError.message : "Gemini request failed";
-    console.error(`${logPrefix} Gemini error:`, message);
-    return apiError(message || "Gemini request failed", 500);
+  } catch (error) {
+    try {
+      handleUserSafeAIError(error);
+    } catch (safeError) {
+      const message = safeError instanceof Error ? safeError.message : "Something went wrong.";
+      console.error(`${logPrefix} AI error:`, error instanceof Error ? error.message : error);
+      return apiError(message, 500);
+    }
   }
 }

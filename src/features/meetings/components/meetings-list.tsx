@@ -8,8 +8,10 @@ import { SkeletonList } from "@/components/SkeletonCard";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { fetchTodayMeetings, fetchUpcomingMeetings } from "@/features/meetings/api";
+import { fetchJoinedMeetings, fetchTodayMeetings, fetchUpcomingMeetings } from "@/features/meetings/api";
 import { CalendarMeetingRow } from "@/features/meetings/components/calendar-meeting-row";
+import { findSessionForMeeting } from "@/features/meetings/meeting-status";
+import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 
 function formatDateHeading(value: Date, prefix: string) {
@@ -109,6 +111,7 @@ export function MeetingsList() {
   const searchParams = useSearchParams();
   const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
   const [upcomingMeetings, setUpcomingMeetings] = useState<GoogleCalendarMeeting[]>([]);
+  const [sessions, setSessions] = useState<MeetingSessionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -131,10 +134,15 @@ export function MeetingsList() {
       setTodayMeetings(todayResult.meetings);
 
       if (todayResult.status === "connected") {
-        const upcoming = await fetchUpcomingMeetings();
+        const [upcoming, joined] = await Promise.all([
+          fetchUpcomingMeetings(),
+          fetchJoinedMeetings().catch(() => []),
+        ]);
         setUpcomingMeetings(upcoming);
+        setSessions(joined);
       } else {
         setUpcomingMeetings([]);
+        setSessions([]);
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load meetings.");
@@ -251,7 +259,11 @@ export function MeetingsList() {
             {todayMeetings.length > 0 ? (
               <div className="space-y-3">
                 {todayMeetings.map((meeting) => (
-                  <CalendarMeetingRow key={meeting.id} meeting={meeting} />
+                  <CalendarMeetingRow
+                    key={meeting.id}
+                    meeting={meeting}
+                    session={findSessionForMeeting(meeting, sessions)}
+                  />
                 ))}
               </div>
             ) : (
@@ -271,7 +283,11 @@ export function MeetingsList() {
                   <div key={group.date.toISOString()} className="space-y-3">
                     <p className="text-sm font-semibold text-[#6b7280]">{formatUpcomingLabel(group.date)}</p>
                     {group.meetings.map((meeting) => (
-                      <CalendarMeetingRow key={meeting.id} meeting={meeting} />
+                      <CalendarMeetingRow
+                        key={meeting.id}
+                        meeting={meeting}
+                        session={findSessionForMeeting(meeting, sessions)}
+                      />
                     ))}
                   </div>
                 ))}

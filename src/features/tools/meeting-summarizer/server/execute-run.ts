@@ -59,13 +59,15 @@ export async function executeMeetingSummarizerRun(rawInput: unknown, clerkUserId
   }
 
   const input = parsedInput.data as MeetingSummarizerInput;
-  const inputJson = input as Record<string, unknown>;
+  // Strip provider from stored inputJson — provider is controlled by env, not user input
+  const { provider: _provider, ...inputWithoutProvider } = input as Record<string, unknown>;
+  const inputJson = inputWithoutProvider;
   const title = normalizeTitle(input.transcript);
 
   await ensureDatabaseReady();
 
   let output: MeetingSummarizerOutput | null = null;
-  let model: string = input.provider;
+  let model: string = process.env.AI_PROVIDER ?? "gemini";
   let tokensUsed = 0;
 
   try {
@@ -136,7 +138,9 @@ export async function executeMeetingSummarizerRun(rawInput: unknown, clerkUserId
         slug: tool.slug,
         name: tool.name
       },
-      inputJson: run.inputJson,
+      inputJson: run.inputJson
+        ? (({ provider: _p, ...rest }) => rest)(run.inputJson as Record<string, unknown>)
+        : null,
       outputJson: output,
       createdAt: run.createdAt.toISOString()
     };

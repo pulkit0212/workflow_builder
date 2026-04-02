@@ -1,8 +1,12 @@
+"use client";
+
 import type { Route } from "next";
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
+import { getMeetingDisplayStatus } from "@/features/meetings/meeting-status";
+import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 
 function formatTimeRange(startTime: string, endTime: string) {
@@ -12,21 +16,6 @@ function formatTimeRange(startTime: string, endTime: string) {
   const s = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   const e = end.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   return s === e ? s : `${s} - ${e}`;
-}
-
-function getMeetingStatus(meeting: GoogleCalendarMeeting) {
-  const now = Date.now();
-  const start = new Date(meeting.startTime).getTime();
-  const end = new Date(meeting.endTime).getTime();
-  const hasDuration = end > start;
-
-  if (now > end || (!hasDuration && now >= start)) {
-    return { label: "Completed", variant: "available" as const };
-  }
-  if (hasDuration && now >= start && now <= end) {
-    return { label: "Live", variant: "accent" as const };
-  }
-  return { label: "Scheduled", variant: "info" as const };
 }
 
 function getInitial(value: string) {
@@ -54,11 +43,13 @@ function getPlatformBadge(platform: string) {
 
 type CalendarMeetingRowProps = {
   meeting: GoogleCalendarMeeting;
+  session?: MeetingSessionRecord | null;
 };
 
-export function CalendarMeetingRow({ meeting }: CalendarMeetingRowProps) {
+export function CalendarMeetingRow({ meeting, session }: CalendarMeetingRowProps) {
+  const router = useRouter();
   const detailHref = `/dashboard/meetings/${encodeCalendarMeetingId(meeting.id)}` as Route;
-  const status = getMeetingStatus(meeting);
+  const status = getMeetingDisplayStatus(meeting, session);
   const platform = getPlatformFromUrl(meeting.meetLink);
   const platformBadge = getPlatformBadge(platform);
 
@@ -72,15 +63,69 @@ export function CalendarMeetingRow({ meeting }: CalendarMeetingRowProps) {
           <p className="truncate text-[16px] font-semibold text-[#1f2937]">{meeting.title}</p>
           <p className="mt-1 text-sm text-[#6b7280]">{formatTimeRange(meeting.startTime, meeting.endTime)}</p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${platformBadge.className}`}>
+            <span
+              className={`inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold ${platformBadge.className}`}
+            >
               {platformBadge.label}
             </span>
-            <Badge variant={status.variant}>{status.label}</Badge>
+            {/* Status badge with pulse */}
+            <span
+              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold"
+              style={{ background: status.bg, color: status.color }}
+            >
+              {status.pulse ? (
+                <span
+                  className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+                  style={{ backgroundColor: status.color }}
+                />
+              ) : null}
+              {status.label}
+            </span>
           </div>
         </div>
       </div>
+
       <div className="flex flex-wrap gap-2">
-        <Button asChild variant="secondary">
+        {status.showJoin && meeting.meetLink ? (
+          <Button
+            type="button"
+            size="sm"
+            className="bg-[#16a34a] hover:bg-[#15803d]"
+            onClick={() => window.open(meeting.meetLink!, "_blank", "noopener,noreferrer")}
+          >
+            Join Meeting
+          </Button>
+        ) : null}
+
+        {status.showStartNotetaker ? (
+          <Button asChild size="sm">
+            <Link href={detailHref}>Start AI Notetaker</Link>
+          </Button>
+        ) : null}
+
+        {status.showStopRecording && session ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="danger"
+            onClick={() => router.push(`/dashboard/meetings/${session.id}`)}
+          >
+            Stop Recording
+          </Button>
+        ) : null}
+
+        {status.showViewReport && session ? (
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => router.push(`/dashboard/meetings/${session.id}`)}
+          >
+            View Report
+          </Button>
+        ) : null}
+
+        {/* Always show View Details */}
+        <Button asChild variant="secondary" size="sm">
           <Link href={detailHref}>View Details</Link>
         </Button>
       </div>

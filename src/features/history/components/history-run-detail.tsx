@@ -11,11 +11,9 @@ import { SectionHeader } from "@/components/shared/section-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getMeetingProviderLabel } from "@/features/tools/meeting-summarizer/config";
 import { meetingSummarizerOutputSchema } from "@/features/tools/meeting-summarizer/schema";
 import { formatHistoryDateTime } from "@/features/history/helpers";
 import type { AiRunDetailResponse, AiRunErrorResponse, MeetingHistoryRun } from "@/features/history/types";
-import { getProviderFromInput } from "@/features/history/types";
 
 type HistoryRunDetailProps = {
   runId: string;
@@ -176,7 +174,6 @@ export function HistoryRunDetail({ runId }: HistoryRunDetailProps) {
   }
 
   const transcript = typeof run.inputJson?.transcript === "string" ? run.inputJson.transcript : "";
-  const provider = getProviderFromInput(run.inputJson);
 
   return (
     <div className="space-y-8">
@@ -199,7 +196,6 @@ export function HistoryRunDetail({ runId }: HistoryRunDetailProps) {
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="available">{run.tool.name}</Badge>
-              {provider ? <Badge variant="pending">{getMeetingProviderLabel(provider)}</Badge> : null}
               <Badge variant={run.status === "completed" ? "available" : "pending"}>{run.status}</Badge>
             </div>
             <div className="space-y-2">

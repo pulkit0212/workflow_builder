@@ -13,12 +13,6 @@ import { ToolPageShell } from "@/components/tools/tool-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  getMeetingProviderLabel,
-  getMeetingTranscriptionProviderLabel,
-  meetingAiProviderOptions,
-  meetingTranscriptionProviderOptions
-} from "@/features/tools/meeting-summarizer/config";
 import { TranscriptReviewPanel } from "@/features/tools/meeting-summarizer/components/transcript-review-panel";
 import { formatMeetingRunTimestamp, getTranscriptGuidance } from "@/features/tools/meeting-summarizer/helpers";
 import {
@@ -264,7 +258,6 @@ export function MeetingSummarizerWorkspace({
       return;
     }
 
-    const providerLabel = getMeetingProviderLabel((latestRun.inputJson?.provider as MeetingAiProvider) || "gemini");
     const transcriptValue =
       latestRun.inputJson?.transcript && typeof latestRun.inputJson.transcript === "string"
         ? latestRun.inputJson.transcript
@@ -272,7 +265,6 @@ export function MeetingSummarizerWorkspace({
     const markdown = [
       `# ${latestRun.title || "Meeting Summary"}`,
       "",
-      `- Provider: ${providerLabel}`,
       `- Generated: ${formatMeetingRunTimestamp(latestRun.createdAt)}`,
       "",
       "## Summary",
@@ -561,30 +553,15 @@ export function MeetingSummarizerWorkspace({
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="pending">{getMeetingProviderLabel((latestRun.inputJson?.provider as MeetingAiProvider) || "gemini")}</Badge>
                       <Badge variant="available">Saved</Badge>
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600 sm:grid-cols-2">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Provider Used</p>
-                      <p className="mt-1 font-medium text-slate-900">{getMeetingProviderLabel((latestRun.inputJson?.provider as MeetingAiProvider) || "gemini")}</p>
-                    </div>
-                    <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Generated At</p>
                       <p className="mt-1 font-medium text-slate-900">{formatMeetingRunTimestamp(latestRun.createdAt)}</p>
                     </div>
                   </div>
-                  {latestRun.inputJson?.transcriptionProvider ? (
-                    <div className="mt-3 rounded-[1.2rem] border border-slate-200 bg-white/90 px-4 py-3 text-sm text-slate-600">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Transcription Provider</p>
-                      <p className="mt-1 font-medium text-slate-900">
-                        {getMeetingTranscriptionProviderLabel(
-                          latestRun.inputJson.transcriptionProvider as MeetingTranscriptionProvider
-                        )}
-                      </p>
-                    </div>
-                  ) : null}
                   {typeof latestRun.inputJson?.transcript === "string" ? (
                     <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4">
                       <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Transcript</p>
@@ -625,7 +602,7 @@ export function MeetingSummarizerWorkspace({
             ) : serverError ? (
               <ResultState
                 icon="error"
-                title={serverError.isQuotaError ? `${getMeetingProviderLabel(serverError.provider || "gemini")} billing issue` : "Generation failed"}
+                title={serverError.isQuotaError ? "AI service quota exceeded" : "Generation failed"}
                 description={serverError.message}
               />
             ) : (
@@ -698,51 +675,15 @@ export function MeetingSummarizerWorkspace({
             </div>
 
             <div className="space-y-3">
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
-                <div>
-                  <label htmlFor={inputMode === "transcript" ? "transcript" : "recording-panel"} className="text-sm font-medium text-slate-900">
-                    {inputMode === "transcript" ? "Meeting transcript" : "Meeting recording"}
-                  </label>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {inputMode === "transcript"
-                      ? "Paste the full conversation or notes. Richer input leads to better summaries, key points, and action items."
-                      : "Use your microphone to capture audio locally in the browser, then review the generated transcript before the summary is saved."}
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <span className="text-sm font-medium text-slate-900">AI provider</span>
-                  <div className="space-y-2">
-                    {meetingAiProviderOptions.map((option) => {
-                      const isSelected = provider === option.value;
-                      const isDisabled = Boolean(option.disabled);
-
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          disabled={isPending}
-                          onClick={() => handleProviderSelection(option.value, isDisabled)}
-                          className={
-                            isDisabled
-                              ? "w-full cursor-not-allowed rounded-[1.2rem] border border-slate-200 bg-slate-50/70 px-4 py-3 text-left opacity-60 transition-all"
-                              : isSelected
-                                ? "w-full rounded-[1.2rem] border border-sky-300 bg-white px-4 py-3 text-left shadow-sm transition-all"
-                                : "w-full rounded-[1.2rem] border border-slate-200 bg-slate-50/90 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white"
-                          }
-                          aria-disabled={isDisabled}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="text-sm font-semibold text-slate-900">{option.label}</p>
-                              <p className="mt-1 text-sm leading-6 text-slate-500">{option.description}</p>
-                            </div>
-                            {isDisabled ? <Badge variant="pending">Coming soon</Badge> : isSelected ? <Badge variant="available">Selected</Badge> : null}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+              <div>
+                <label htmlFor={inputMode === "transcript" ? "transcript" : "recording-panel"} className="text-sm font-medium text-slate-900">
+                  {inputMode === "transcript" ? "Meeting transcript" : "Meeting recording"}
+                </label>
+                <p className="mt-1 text-sm text-slate-500">
+                  {inputMode === "transcript"
+                    ? "Paste the full conversation or notes. Richer input leads to better summaries, key points, and action items."
+                    : "Use your microphone to capture audio locally in the browser, then review the generated transcript before the summary is saved."}
+                </p>
               </div>
 
               {inputMode === "transcript" ? (
@@ -795,36 +736,6 @@ export function MeetingSummarizerWorkspace({
 
                   <Card id="recording-panel" className={audioFlowState === "recording" ? "border-rose-200 bg-rose-50/70 p-5" : "p-5"}>
                     <div className="space-y-5">
-                      <div className="space-y-2">
-                        <span className="text-sm font-medium text-slate-900">Transcription provider</span>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {meetingTranscriptionProviderOptions.map((option) => {
-                            const isSelected = transcriptionProvider === option.value;
-
-                            return (
-                              <button
-                                key={option.value}
-                                type="button"
-                                disabled={audioFlowState === "recording" || isPending}
-                                onClick={() => setTranscriptionProvider(option.value)}
-                                className={
-                                  isSelected
-                                    ? "rounded-[1.2rem] border border-sky-300 bg-white px-4 py-3 text-left shadow-sm transition-all"
-                                    : "rounded-[1.2rem] border border-slate-200 bg-slate-50/90 px-4 py-3 text-left transition-all hover:border-slate-300 hover:bg-white"
-                                }
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <p className="text-sm font-semibold text-slate-900">{option.label}</p>
-                                    <p className="mt-1 text-sm leading-6 text-slate-500">{option.description}</p>
-                                  </div>
-                                  {isSelected ? <Badge variant="available">Selected</Badge> : null}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
 
                       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div className="flex items-center gap-3">
@@ -892,9 +803,6 @@ export function MeetingSummarizerWorkspace({
                                 {recordedAudio.file.name} · {formatRecordingDuration(recordedAudio.durationMs)}
                               </p>
                             </div>
-                            <Badge variant="pending">
-                              {getMeetingTranscriptionProviderLabel(transcriptionProvider)} ready
-                            </Badge>
                           </div>
                           <audio controls className="mt-4 w-full" src={recordedAudio.previewUrl}>
                             Your browser does not support audio playback.
@@ -929,7 +837,7 @@ export function MeetingSummarizerWorkspace({
                     ? guidance
                     : audioFlowState === "transcript_ready_for_review" || audioFlowState === "summarizing" || audioFlowState === "completed"
                       ? "Review the transcript carefully before generating the final summary. The saved run will use the edited version."
-                      : "Audio is sent to Gemini for transcription first. Review the transcript before you create the final summary."}
+                      : "Record audio, then review the transcript before creating the final summary."}
                 </p>
                 {inputMode === "transcript" && (form.formState.errors.transcript || form.formState.errors.provider) ? (
                   <div className="flex items-center gap-2 text-sm text-rose-600">
@@ -974,7 +882,7 @@ export function MeetingSummarizerWorkspace({
                   <div className="space-y-1">
                     <p className="font-medium">
                       {serverError.isQuotaError
-                        ? `${getMeetingProviderLabel(serverError.provider || "gemini")} quota exceeded`
+                        ? "AI service quota exceeded"
                         : "Unable to generate summary"}
                     </p>
                     <p>{serverError.message}</p>

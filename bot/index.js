@@ -100,7 +100,7 @@ async function saveSessionToDB(meetingId, data) {
     failureReason: "failure_reason",
     failedAt: "failed_at",
     platform: "provider",
-    platformName: "title",
+    // platformName intentionally NOT mapped — must never overwrite the user-defined title
     joinedAt: "joined_at",
     recordingStartedAt: "recording_started_at",
   };
@@ -750,6 +750,17 @@ async function stopBot(meetingId, onStatusUpdate) {
       outputPath: session.outputPath,
     });
     console.log("[Stop] Meeting completed successfully");
+
+    // Cleanup: delete temp audio file after successful copy to private/recordings/
+    if (session.outputPath && fs.existsSync(session.outputPath)) {
+      try {
+        fs.unlinkSync(session.outputPath);
+        console.log("[Cleanup] Deleted temp audio:", session.outputPath);
+      } catch (e) {
+        console.warn("[Cleanup] Could not delete temp file:", e instanceof Error ? e.message : e);
+      }
+    }
+
     deleteSession(meetingId);
 
     return {
@@ -773,6 +784,10 @@ async function stopBot(meetingId, onStatusUpdate) {
       recordingFilePath: session.outputPath,
       recordingEndedAt: new Date().toISOString(),
     });
+    // Cleanup temp audio on failure too
+    if (session?.outputPath && fs.existsSync(session.outputPath)) {
+      try { fs.unlinkSync(session.outputPath); } catch (e) { /* non-fatal */ }
+    }
     return { success: false, error: formatBotError(error, "Failed to stop bot") };
   }
 }

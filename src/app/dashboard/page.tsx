@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { fetchJoinedMeetings, fetchTodayMeetings } from "@/features/meetings/api";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
+import { getMeetingDisplayStatus, findSessionForMeeting } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 import { cn } from "@/lib/utils";
@@ -120,35 +121,6 @@ function getPlatformStyle(provider: string): { bg: string; color: string } {
   if (provider === "zoom_web") return { bg: "#e3f2fd", color: "#2D8CFF" };
   if (provider === "teams_web") return { bg: "#ede7f6", color: "#6264A7" };
   return { bg: "#e8f5e9", color: "#16a34a" };
-}
-
-type StatusInfo = {
-  label: string;
-  color: string;
-  bg: string;
-  pulse?: boolean;
-};
-
-function getMeetingStatus(meeting: GoogleCalendarMeeting): StatusInfo {
-  const now = Date.now();
-  const start = new Date(meeting.startTime).getTime();
-  const end = new Date(meeting.endTime).getTime();
-  const hasDuration = end > start; // only show Live if there's an actual time window
-
-  // Already ended or same-time (no duration) and in the past
-  if (now > end || (!hasDuration && now >= start)) {
-    return { label: "Completed", color: "#16a34a", bg: "#f0fdf4" };
-  }
-  // More than 15 min before start
-  if (now < start - 15 * 60 * 1000) {
-    return { label: "Scheduled", color: "#6c63ff", bg: "#f5f3ff" };
-  }
-  // Within 15 min of start or currently running (with real duration)
-  if (hasDuration && now >= start && now <= end) {
-    return { label: "Live Now", color: "#dc2626", bg: "#fef2f2", pulse: true };
-  }
-  // Within 15 min window before start
-  return { label: "Scheduled", color: "#6c63ff", bg: "#f5f3ff" };
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -466,7 +438,8 @@ export default function DashboardPage() {
             <div className="divide-y divide-[#f3f4f6]">
               {todayMeetings.length > 0 ? (
                 todayMeetings.map((meeting) => {
-                  const status = getMeetingStatus(meeting);
+                  const session = findSessionForMeeting(meeting, reports);
+                  const status = getMeetingDisplayStatus(meeting, session);
                   const platformStyle = getPlatformStyle(meeting.provider);
                   const platformLabel = getPlatformLabel(meeting.provider);
                   const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);

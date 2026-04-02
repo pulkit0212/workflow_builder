@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { callAI } from "@/lib/ai/provider";
+import { handleUserSafeAIError } from "@/lib/ai/errorHandler";
 
 export const runtime = "nodejs";
 
@@ -105,16 +107,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "GEMINI_API_KEY not configured"
-        },
-        { status: 500 }
-      );
-    }
-
     const contentType = req.headers.get("content-type") || "";
     let documentText = "";
     let extractOptions: ExtractOption[] = defaultExtractOptions;
@@ -240,11 +232,22 @@ export async function POST(req: Request) {
 
     console.log(logPrefix, "Analyzing text, length:", documentText.length);
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-    const result = await model.generateContent(buildPrompt(documentText, extractOptions));
-    const text = result.response.text();
-    const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
+    let text: string;
+    try {
+      text = await callAI(buildPrompt(documentText, extractOptions));
+    } catch (aiError) {
+      try {
+        handleUserSafeAIError(aiError);
+      } catch (safeError) {
+        console.error(logPrefix, "AI error:", aiError instanceof Error ? aiError.message : aiError);
+        return NextResponse.json(
+          { success: false, message: safeError instanceof Error ? safeError.message : "Something went wrong." },
+          { status: 500 }
+        );
+      }
+    }
+
+    const cleaned = text!.replace(/```json/g, "").replace(/```/g, "").trim();
 
     let parsed: Partial<DocumentAnalyzerOutput>;
     try {
@@ -264,12 +267,12 @@ export async function POST(req: Request) {
       success: true,
       result: normalizeOutput(parsed)
     });
-  } catch (error: any) {
-    console.error(logPrefix, "Error:", error?.message || error);
+  } catch (error: unknown) {
+    console.error(logPrefix, "Error:", error instanceof Error ? error.message : error);
     return NextResponse.json(
       {
         success: false,
-        message: error?.message || "Document analysis failed"
+        message: "Something went wrong. Please try again."
       },
       { status: 500 }
     );
