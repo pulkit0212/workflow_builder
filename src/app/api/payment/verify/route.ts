@@ -5,10 +5,12 @@ import { markPaymentCompleted } from "@/lib/subscription.server";
 
 export const runtime = "nodejs";
 
-const PLAN_PRICES: Record<"pro" | "elite", number> = {
+const PLAN_PRICES = {
   pro: 9900,
   elite: 19900
-};
+} as const;
+
+type PlanType = keyof typeof PLAN_PRICES;
 
 export async function POST(req: Request) {
   try {
@@ -22,20 +24,23 @@ export async function POST(req: Request) {
       razorpay_payment_id,
       razorpay_signature,
       plan
+    }: {
+      razorpay_order_id: string;
+      razorpay_payment_id: string;
+      razorpay_signature: string;
+      plan: string;
     } = await req.json();
 
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keySecret) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Payment configuration error"
-        },
+        { success: false, message: "Payment configuration error" },
         { status: 500 }
       );
     }
 
     const body = razorpay_order_id + "|" + razorpay_payment_id;
+
     const expectedSignature = crypto
       .createHmac("sha256", keySecret)
       .update(body)
@@ -43,47 +48,41 @@ export async function POST(req: Request) {
 
     if (expectedSignature !== razorpay_signature) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid payment signature"
-        },
+        { success: false, message: "Invalid payment signature" },
         { status: 400 }
       );
     }
 
+    // ✅ Strong type guard
     if (plan !== "pro" && plan !== "elite") {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid plan selected"
-        },
+        { success: false, message: "Invalid plan selected" },
         { status: 400 }
       );
     }
+
+    const typedPlan: PlanType = plan;
 
     await markPaymentCompleted({
       userId,
-      plan,
-      amount: PLAN_PRICES[plan],
+      plan: typedPlan,
+      amount: PLAN_PRICES[typedPlan],
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature
     });
 
-    console.log("[Payment] Payment verified, plan upgraded:", plan);
+    console.log("[Payment] Payment verified, plan upgraded:", typedPlan);
 
     return NextResponse.json({
       success: true,
-      plan,
+      plan: typedPlan,
       message: "Payment successful! Plan upgraded."
     });
   } catch (error: any) {
     console.error("[Payment] Verify error:", error.message);
     return NextResponse.json(
-      {
-        success: false,
-        message: error.message
-      },
+      { success: false, message: error.message },
       { status: 500 }
     );
   }
