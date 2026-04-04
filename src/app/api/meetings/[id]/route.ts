@@ -26,6 +26,7 @@ import {
 } from "@/features/meetings/server/state-machine";
 import { getPlanLimits } from "@/lib/subscription";
 import { getUserSubscription } from "@/lib/subscription.server";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { meetingSessions } from "@/db/schema";
 import { db } from "@/lib/db/client";
@@ -330,6 +331,11 @@ export async function POST(request: Request, context: RouteContext) {
 
   if (!userId) {
     return apiError("Unauthorized.", 401);
+  }
+
+  const rl = checkRateLimit(`meeting-start:${userId}`, 5, 60_000);
+  if (!rl.allowed) {
+    return apiError("Too many requests. Please wait before trying again.", 429);
   }
 
   try {

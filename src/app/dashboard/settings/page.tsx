@@ -66,11 +66,43 @@ type UsageStatsResponse = {
   memberSince: string;
 };
 
+type ApiPreferencesResponse = {
+  success: true;
+  preferences: {
+    emailNotifications: {
+      meetingSummary: boolean;
+      actionItems: boolean;
+      weeklyDigest: boolean;
+      productUpdates: boolean;
+    };
+    defaultEmailTone: "professional" | "friendly" | "formal" | "concise";
+    summaryLength: "brief" | "standard" | "detailed";
+    language: "en" | "hi";
+    botDisplayName: string;
+    audioSource: string;
+  };
+};
+
+type PaymentRecord = {
+  id: string;
+  date: string;
+  plan: string;
+  amount: number;
+  currency: string;
+  status: string;
+  invoiceNumber: string | null;
+};
+
+type ApiPaymentsResponse = {
+  success: true;
+  payments: PaymentRecord[];
+};
+
 type BotProfileStatusResponse = {
   configured: boolean;
 };
 
-type ToastType = "success" | "error" | "info";
+type ToastType = "success" | "error" | "info" | "warning";
 
 type ToastState = {
   message: string;
@@ -112,9 +144,6 @@ const defaultPreferences: PreferencesState = {
   language: "English",
   summaryLength: "standard"
 };
-
-const preferencesStorageKey = "Artivaa.settings.preferences.v1";
-const botSettingsStorageKey = "Artivaa.settings.bot.v1";
 
 function formatDate(value: string | number | Date | null | undefined) {
   if (!value) return "Not available";
@@ -258,7 +287,9 @@ function Toast({ toast }: { toast: ToastState | null }) {
       ? "border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]"
       : toast.type === "error"
         ? "border-[#fecaca] bg-[#fef2f2] text-[#991b1b]"
-        : "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]";
+        : toast.type === "warning"
+          ? "border-[#fde68a] bg-[#fefce8] text-[#92400e]"
+          : "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]";
 
   return (
     <div className="fixed bottom-6 right-6 z-50 max-w-sm">
@@ -278,6 +309,7 @@ export default function SettingsPage() {
   const [usageStats, setUsageStats] = useState<UsageStatsResponse | null>(null);
   const [botStatus, setBotStatus] = useState<BotProfileStatusResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [isSavingName, setIsSavingName] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -325,27 +357,6 @@ export default function SettingsPage() {
 
     setDisplayName(getDisplayName(user.fullName, user.firstName, user.lastName));
     setNameDraft(getDisplayName(user.fullName, user.firstName, user.lastName));
-
-    const storedPreferences = window.localStorage.getItem(preferencesStorageKey);
-    if (storedPreferences) {
-      try {
-        const parsed = JSON.parse(storedPreferences) as Partial<PreferencesState>;
-        setPreferences((current) => ({ ...current, ...parsed }));
-      } catch {
-        window.localStorage.removeItem(preferencesStorageKey);
-      }
-    }
-
-    const storedBot = window.localStorage.getItem(botSettingsStorageKey);
-    if (storedBot) {
-      try {
-        const parsed = JSON.parse(storedBot) as { botName?: string; audioSource?: string };
-        if (parsed.botName) setBotName(parsed.botName);
-        if (parsed.audioSource) setAudioSource(parsed.audioSource);
-      } catch {
-        window.localStorage.removeItem(botSettingsStorageKey);
-      }
-    }
   }, [isLoaded, user]);
 
   useEffect(() => {
@@ -357,10 +368,12 @@ export default function SettingsPage() {
       setIsLoading(true);
 
       try {
-        const [subscriptionResponse, usageResponse, botResponse] = await Promise.all([
+        const [subscriptionResponse, usageResponse, botResponse, prefsResponse, paymentsResponse] = await Promise.all([
           fetch("/api/subscription", { cache: "no-store" }),
-          fetch("/api/usage/stats", { cache: "no-store" }),
-          fetch("/api/bot/profile-status", { cache: "no-store" })
+          fetch("/api/settings/usage", { cache: "no-store" }),
+          fetch("/api/bot/profile-status", { cache: "no-store" }),
+          fetch("/api/settings/preferences", { cache: "no-store" }),
+          fetch("/api/settings/payments", { cache: "no-store" })
         ]);
 
         if (!isMounted) return;
@@ -382,6 +395,35 @@ export default function SettingsPage() {
         if (botResponse.ok) {
           const payload = (await botResponse.json()) as BotProfileStatusResponse;
           setBotStatus(payload);
+        }
+
+        if (prefsResponse.ok) {
+          const payload = (await prefsResponse.json()) as ApiPreferencesResponse | { success?: false };
+          if (payload.success) {
+            const p = payload.preferences;
+            setPreferences({
+              meetingSummaryEmail: p.emailNotifications.meetingSummary,
+              actionItemsEmail: p.emailNotifications.actionItems,
+              weeklyDigest: p.emailNotifications.weeklyDigest,
+              productUpdates: p.emailNotifications.productUpdates,
+              defaultTone: (p.defaultEmailTone.charAt(0).toUpperCase() + p.defaultEmailTone.slice(1)) as PreferencesState["defaultTone"],
+              summaryLength: p.summaryLength,
+              language: p.language === "hi" ? "Hindi" : "English"
+            });
+            setBotName(p.botDisplayName);
+            setAudioSource(p.audioSource);
+          }
+        } else if (!prefsResponse.ok) {
+          showToast("Failed to load preferences.", "error");
+        }
+
+        if (paymentsResponse.ok) {
+          const payload = (await paymentsResponse.json()) as ApiPaymentsResponse | { success?: false };
+          if (payload.success) {
+            setPayments(payload.payments);
+          }
+        } else if (!paymentsResponse.ok) {
+          showToast("Failed to load payment history.", "error");
         }
       } catch {
         showToast("Failed to load settings data.", "error");
@@ -440,20 +482,73 @@ export default function SettingsPage() {
     setIsEditingName(false);
   }
 
-  function savePreferences() {
-    window.localStorage.setItem(preferencesStorageKey, JSON.stringify(preferences));
-    showToast("Preferences saved", "success");
+  async function savePreferences() {
+    const maxAttempts = 3;
+    const baseDelayMs = 400;
+    const body = JSON.stringify({
+      emailNotifications: {
+        meetingSummary: preferences.meetingSummaryEmail,
+        actionItems: preferences.actionItemsEmail,
+        weeklyDigest: preferences.weeklyDigest,
+        productUpdates: preferences.productUpdates
+      },
+      defaultEmailTone: preferences.defaultTone.toLowerCase() as "professional" | "friendly" | "formal" | "concise",
+      summaryLength: preferences.summaryLength,
+      language: preferences.language === "Hindi" ? "hi" : "en"
+    });
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await fetch("/api/settings/preferences", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body
+        });
+
+        if (response.ok) {
+          showToast("Preferences saved", "success");
+          return;
+        }
+
+        if (response.status >= 400 && response.status < 500) {
+          showToast("Failed to save preferences", "error");
+          return;
+        }
+
+        if (attempt === maxAttempts) {
+          showToast("Failed to save preferences", "error");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+      } catch {
+        if (attempt === maxAttempts) {
+          showToast("Failed to save preferences", "error");
+          return;
+        }
+        await new Promise((r) => setTimeout(r, baseDelayMs * attempt));
+      }
+    }
   }
 
-  function saveBotSettings() {
-    window.localStorage.setItem(
-      botSettingsStorageKey,
-      JSON.stringify({
-        botName,
-        audioSource
-      })
-    );
-    showToast("Bot settings saved", "success");
+  async function saveBotSettings() {
+    try {
+      const response = await fetch("/api/settings/bot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          botDisplayName: botName,
+          audioSource
+        })
+      });
+
+      if (response.ok) {
+        showToast("Bot settings saved", "success");
+      } else {
+        throw new Error("Failed to save bot settings");
+      }
+    } catch {
+      showToast("Failed to save bot settings", "error");
+    }
   }
 
   async function copyCommand(command: string) {
@@ -503,7 +598,15 @@ export default function SettingsPage() {
     }
 
     try {
-      await user.delete();
+      const response = await fetch("/api/settings/account", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" }
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete account");
+      }
+
       window.location.href = "/";
     } catch {
       showToast("Failed to delete account", "error");
@@ -534,7 +637,7 @@ export default function SettingsPage() {
       void (async () => {
         const [subscriptionResponse, usageResponse] = await Promise.all([
           fetch("/api/subscription", { cache: "no-store" }),
-          fetch("/api/usage/stats", { cache: "no-store" })
+          fetch("/api/settings/usage", { cache: "no-store" })
         ]);
 
         if (subscriptionResponse.ok) {
@@ -952,7 +1055,7 @@ export default function SettingsPage() {
                   <div className="border-b border-[#e5e7eb] px-5 py-4">
                     <p className="text-sm font-semibold text-[#111827]">Payment History</p>
                   </div>
-                  {subscription?.payments && subscription.payments.length > 0 ? (
+                  {payments && payments.length > 0 ? (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-left text-sm">
                         <thead className="bg-[#f9fafb] text-[#6b7280]">
@@ -964,7 +1067,7 @@ export default function SettingsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {subscription.payments.map((payment, index) => (
+                          {payments.map((payment, index) => (
                             <tr key={payment.id} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
                               <td className="px-5 py-4 text-[#374151]">{formatDate(payment.date)}</td>
                               <td className="px-5 py-4 font-medium text-[#111827]">{payment.plan}</td>
@@ -1108,7 +1211,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <Button type="button" className="w-full" onClick={savePreferences}>
+                <Button type="button" className="w-full" onClick={() => void savePreferences()}>
                   Save Preferences
                 </Button>
               </Card>
@@ -1213,7 +1316,35 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <Button type="button" className="w-full" onClick={saveBotSettings}>
+                <div className="rounded-[24px] border border-[#e5e7eb] bg-white p-5">
+                  <p className="text-sm font-semibold text-[#111827]">Platform Support</p>
+                  <p className="mt-1 text-sm text-[#6b7280]">Your AI Notetaker can join meetings on these platforms.</p>
+                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="rounded-2xl border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#dcfce7] text-sm font-bold text-[#16a34a]">G</div>
+                        <p className="text-sm font-semibold text-[#111827]">Google Meet</p>
+                      </div>
+                      <Badge variant="available" className="mt-3">Supported</Badge>
+                    </div>
+                    <div className="rounded-2xl border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#dcfce7] text-sm font-bold text-[#16a34a]">Z</div>
+                        <p className="text-sm font-semibold text-[#111827]">Zoom</p>
+                      </div>
+                      <Badge variant="available" className="mt-3">Supported</Badge>
+                    </div>
+                    <div className="rounded-2xl border border-[#bbf7d0] bg-[#f0fdf4] px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#dcfce7] text-sm font-bold text-[#16a34a]">T</div>
+                        <p className="text-sm font-semibold text-[#111827]">Microsoft Teams</p>
+                      </div>
+                      <Badge variant="available" className="mt-3">Supported</Badge>
+                    </div>
+                  </div>
+                </div>
+
+                <Button type="button" className="w-full" onClick={() => void saveBotSettings()}>
                   Save Bot Settings
                 </Button>
               </Card>

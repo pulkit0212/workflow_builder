@@ -109,7 +109,52 @@ export function EmailGeneratorWorkspace() {
     };
   }, []);
 
-  const filteredMeetings = meetings.filter((meeting) => meeting.title.toLowerCase().includes(deferredSearchTerm.toLowerCase()));
+  useEffect(() => {
+    let isMounted = true;
+
+    async function searchMeetings() {
+      setIsLoadingMeetings(true);
+
+      try {
+        const payload = await fetchMeetingReports({
+          page: 1,
+          limit: 20,
+          status: "completed",
+          date: "all",
+          search: deferredSearchTerm
+        });
+
+        if (!isMounted) {
+          return;
+        }
+
+        setMeetings(
+          payload.meetings.map((meeting) => ({
+            id: meeting.id,
+            title: meeting.title,
+            summary: meeting.summary,
+            createdAt: meeting.createdAt,
+            scheduledStartTime: meeting.scheduledStartTime
+          }))
+        );
+      } catch (loadError) {
+        if (isMounted) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load meetings.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingMeetings(false);
+        }
+      }
+    }
+
+    void searchMeetings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [deferredSearchTerm]);
+
   async function handleGenerate() {
     if (!context.trim()) {
       setError("Meeting context is required.");
@@ -195,11 +240,9 @@ export function EmailGeneratorWorkspace() {
               </div>
             ) : meetings.length === 0 ? (
               <EmptyState icon={Mail} title="No recorded meetings yet" description="Record a meeting first, then turn it into an email draft here." />
-            ) : filteredMeetings.length === 0 ? (
-              <EmptyState icon={Search} title="No meetings found" description="Try a different search term or clear the filter." />
             ) : (
               <div className="max-h-[320px] space-y-2 overflow-y-auto pr-1">
-                {filteredMeetings.map((meeting) => {
+                {meetings.map((meeting) => {
                   const selected = meeting.id === selectedMeetingId;
 
                   return (

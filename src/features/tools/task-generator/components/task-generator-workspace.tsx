@@ -157,6 +157,43 @@ export function TaskGeneratorWorkspace() {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
+
+    async function searchMeetings() {
+      setIsLoadingMeetings(true);
+      try {
+        const payload = await fetchMeetingReports({ 
+          page: 1, 
+          limit: 20, 
+          status: "completed", 
+          date: "all", 
+          search: deferredSearchTerm 
+        });
+        if (!mounted) return;
+        setMeetings(
+          payload.meetings.map((meeting) => ({
+            id: meeting.id,
+            title: meeting.title,
+            summary: meeting.summary,
+            transcript: meeting.transcript,
+            createdAt: meeting.createdAt,
+            scheduledStartTime: meeting.scheduledStartTime
+          }))
+        );
+      } catch (loadError) {
+        if (mounted) setError(loadError instanceof Error ? loadError.message : "Failed to load meetings.");
+      } finally {
+        if (mounted) setIsLoadingMeetings(false);
+      }
+    }
+
+    void searchMeetings();
+    return () => {
+      mounted = false;
+    };
+  }, [deferredSearchTerm]);
+
+  useEffect(() => {
     if (!removedTaskNotice) return;
     const timeout = window.setTimeout(() => {
       setRemovedTaskNotice(false);
@@ -164,11 +201,6 @@ export function TaskGeneratorWorkspace() {
     }, 3500);
     return () => window.clearTimeout(timeout);
   }, [removedTaskNotice]);
-
-  const filteredMeetings = useMemo(
-    () => meetings.filter((meeting) => meeting.title.toLowerCase().includes(deferredSearchTerm.toLowerCase())),
-    [deferredSearchTerm, meetings]
-  );
   const stats = useMemo(() => getStats(tasks), [tasks]);
   const canGenerate = input.trim().length > 0 && !isGenerating;
 
@@ -341,7 +373,7 @@ export function TaskGeneratorWorkspace() {
                       <div key={index} className="h-16 animate-pulse rounded-2xl bg-slate-100" />
                     ))}
                   </div>
-                ) : filteredMeetings.length === 0 ? (
+                ) : meetings.length === 0 ? (
                   <div className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-slate-50 px-6 py-10 text-center">
                     <div className="mb-4 animate-bounce rounded-full bg-slate-100 p-5 text-slate-400">
                       <CheckSquare className="h-10 w-10" />
@@ -351,7 +383,7 @@ export function TaskGeneratorWorkspace() {
                   </div>
                 ) : (
                   <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
-                    {filteredMeetings.map((meeting) => {
+                    {meetings.map((meeting) => {
                       const selected = meeting.id === selectedMeetingId;
                       return (
                         <button
@@ -552,7 +584,13 @@ send invoice to acme corp before month end`
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">{stats.unassigned} Unassigned</div>
               </div>
 
-              {statusMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{statusMessage}</div> : null}
+              {statusMessage ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  <span>{statusMessage}</span>
+                  {" "}
+                  <a href="/dashboard/action-items?source=task-generator" className="font-semibold underline hover:no-underline">View Action Items →</a>
+                </div>
+              ) : null}
               {summary ? (
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <p className="text-sm font-semibold text-slate-900">Summary</p>

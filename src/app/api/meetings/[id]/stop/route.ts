@@ -8,6 +8,7 @@ import { buildMeetingDetailFromSession } from "@/features/meetings/server/detail
 import { persistBotCaptureStatusUpdate } from "@/features/meetings/server/bot-capture-persist";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { stopBot } from "@/lib/bot";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 type RouteContext = {
   params: Promise<{
@@ -22,6 +23,11 @@ export async function POST(_request: Request, context: RouteContext) {
 
   if (!userId) {
     return apiError("Unauthorized.", 401);
+  }
+
+  const rl = checkRateLimit(`meeting-stop:${userId}`, 5, 60_000);
+  if (!rl.allowed) {
+    return apiError("Too many requests. Please wait before trying again.", 429);
   }
 
   try {

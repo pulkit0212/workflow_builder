@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { meetingSessions } from "@/db/schema";
 import { db } from "@/lib/db/client";
 
@@ -135,4 +135,73 @@ export async function findActiveGoogleMeetSessionByNormalizedUrl(normalizedUrl: 
     .limit(1);
 
   return session ?? null;
+}
+
+export async function listMeetingSessionsByUserPaginated(
+  userId: string,
+  options: {
+    page: number;
+    limit: number;
+    excludeDrafts?: boolean;
+    statuses?: string[];
+    search?: string;
+    dateFrom?: Date;
+  }
+) {
+  const database = getDbOrThrow();
+  const { page, limit, excludeDrafts, statuses, search, dateFrom } = options;
+  const offset = (page - 1) * limit;
+
+  const conditions = [eq(meetingSessions.userId, userId)];
+
+  if (excludeDrafts) {
+    conditions.push(ne(meetingSessions.status, "draft"));
+  }
+
+  if (statuses && statuses.length > 0) {
+    conditions.push(inArray(meetingSessions.status, statuses));
+  }
+
+  if (search && search.trim().length > 0) {
+    const term = `%${search.trim().toLowerCase()}%`;
+    conditions.push(
+      or(
+        ilike(meetingSessions.title, term),
+        ilike(meetingSessions.summary ?? sql`''`, term),
+        ilike(meetingSessions.failureReason ?? sql`''`, term)
+      )!
+    );
+  }
+
+  if (dateFrom) {
+    conditions.push(sql`${meetingSessions.createdAt} >= ${dateFrom}`);
+  }
+
+  const where = and(...conditions);
+
+  const [rows, totalRows] = await Promise.all([
+    database
+      .select()
+      .from(meetingSessions)
+      .where(where)
+      .orderBy(desc(meetingSessions.createdAt))
+      .limit(limit)
+      .offset(offset),
+    database
+      .select({ count: count() })
+      .from(meetingSessions)
+      .where(where)
+  ]);
+
+  const total = totalRows[0]?.count ?? 0;
+
+  return {
+    sessions: rows,
+    pagination: {
+      total,
+      page,
+      limit,
+      totalPages: Math.max(Math.ceil(total / limit), 1)
+    }
+  };
 }

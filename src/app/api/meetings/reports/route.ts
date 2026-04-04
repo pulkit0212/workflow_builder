@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
-import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
+import { listMeetingSessionsByUserPaginated } from "@/lib/db/queries/meeting-sessions";
 import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { canUseHistory } from "@/lib/subscription";
@@ -54,48 +54,40 @@ export async function GET(request: Request) {
       });
     }
 
-    const meetings = await listMeetingSessionsByUser(user.id, {
-      excludeDrafts: true
-    });
-    const normalized = meetings.map(toMeetingSessionRecord);
     const recordingStatuses = getRecordingStatuses();
     const now = Date.now();
 
-    const filtered = normalized.filter((meeting) => {
-      const statusMatch =
-        status === "all" ||
-        (status === "completed" && meeting.status === "completed") ||
-        (status === "failed" && meeting.status === "failed") ||
-        (status === "recording" && recordingStatuses.has(meeting.status));
+    // Build DB-level filters
+    let statuses: string[] | undefined;
+    if (status === "completed") {
+      statuses = ["completed"];
+    } else if (status === "failed") {
+      statuses = ["failed"];
+    } else if (status === "recording") {
+      statuses = [...recordingStatuses];
+    }
 
-      const searchMatch =
-        search.length === 0 ||
-        meeting.title.toLowerCase().includes(search) ||
-        (meeting.summary || "").toLowerCase().includes(search) ||
-        (meeting.failureReason || "").toLowerCase().includes(search);
+    let dateFrom: Date | undefined;
+    if (dateFilter === "week") {
+      dateFrom = new Date(now - 7 * 24 * 60 * 60 * 1000);
+    } else if (dateFilter === "month") {
+      dateFrom = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    }
 
-      const referenceDate = new Date(meeting.scheduledStartTime ?? meeting.createdAt).getTime();
-      const dateMatch =
-        dateFilter === "all" ||
-        (dateFilter === "week" && referenceDate >= now - 7 * 24 * 60 * 60 * 1000) ||
-        (dateFilter === "month" && referenceDate >= now - 30 * 24 * 60 * 60 * 1000);
-
-      return statusMatch && searchMatch && dateMatch;
+    const result = await listMeetingSessionsByUserPaginated(user.id, {
+      page,
+      limit,
+      excludeDrafts: true,
+      statuses,
+      search: search.length > 0 ? search : undefined,
+      dateFrom
     });
 
-    const total = filtered.length;
-    const totalPages = Math.max(Math.ceil(total / limit), 1);
-    const start = (page - 1) * limit;
-    const paginated = filtered.slice(start, start + limit);
+    const paginated = result.sessions.map(toMeetingSessionRecord);
 
     return apiSuccess({
       meetings: paginated,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages
-      }
+      pagination: result.pagination
     });
   } catch (error) {
     if (isMissingDatabaseRelationError(error)) {

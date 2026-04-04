@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
-import fs from "node:fs/promises";
+import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db/client";
 import { meetingSessions } from "@/db/schema";
@@ -18,24 +18,42 @@ export async function GET(_req: Request, context: RouteContext) {
   }
 
   if (!db) {
-    return new Response(null, { status: 503 });
+    return new Response(JSON.stringify({ error: "Database not configured" }), { status: 503 });
   }
 
   const { meetingId } = await context.params;
 
-  let session;
+  if (!meetingId || meetingId.length < 5) {
+    return new Response(JSON.stringify({ error: "Invalid meeting ID" }), { status: 400 });
+  }
+
+  let session: { id: string; userId: string; sharedWithUserIds: string[] | null; recordingUrl: string | null } | null = null;
+
   try {
-    session = await db
+    const rows = await db
       .select({
         id: meetingSessions.id,
         userId: meetingSessions.userId,
         sharedWithUserIds: meetingSessions.sharedWithUserIds,
+        recordingUrl: meetingSessions.recordingUrl,
       })
       .from(meetingSessions)
       .where(eq(meetingSessions.id, meetingId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null);
-  } catch {
+      .limit(1);
+    session = rows[0] ?? null;
+  } catch (dbError: unknown) {
+    const msg = dbError instanceof Error ? dbError.message : String(dbError);
+    console.error("[Recording] DB error:", msg);
+    if (
+      msg.includes("normalized_meeting_url") ||
+      msg.includes("column") ||
+      msg.includes("does not exist")
+    ) {
+      return new Response(
+        JSON.stringify({ error: "Database migration required. Run: npm run db:push" }),
+        { status: 503 }
+      );
+    }
     return new Response(JSON.stringify({ error: "Database error" }), { status: 500 });
   }
 
@@ -51,6 +69,13 @@ export async function GET(_req: Request, context: RouteContext) {
     return new Response(null, { status: 403 });
   }
 
+  if (!session.recordingUrl) {
+    return new Response(
+      JSON.stringify({ error: "No recording available for this meeting" }),
+      { status: 404 }
+    );
+  }
+
   const filePath = path.join(
     process.cwd(),
     "private",
@@ -58,12 +83,27 @@ export async function GET(_req: Request, context: RouteContext) {
     `meeting-${meetingId}.wav`
   );
 
+  if (!fs.existsSync(filePath)) {
+    console.warn("[Recording] File not found:", filePath);
+    return new Response(
+      JSON.stringify({ error: "Recording file not found" }),
+      { status: 404 }
+    );
+  }
+
   try {
-    const file = await fs.readFile(filePath);
+    const file = fs.readFileSync(filePath);
     return new Response(file, {
-      headers: { "Content-Type": "audio/wav" },
+      headers: {
+        "Content-Type": "audio/wav",
+        "Content-Length": file.length.toString(),
+        "Content-Disposition": `inline; filename="recording.wav"`,
+        "Cache-Control": "private, max-age=3600",
+      },
     });
-  } catch {
-    return new Response(null, { status: 404 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[Recording] File read error:", msg);
+    return new Response(JSON.stringify({ error: "Failed to read recording" }), { status: 500 });
   }
 }

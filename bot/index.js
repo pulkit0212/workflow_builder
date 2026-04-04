@@ -4,7 +4,8 @@ const { spawn } = require("node:child_process");
 const { Pool } = require("pg");
 const { joinMeeting, leaveMeeting, watchMeetingEnd } = require("./meetingBot");
 const { getAudioFileInfo, startRecording, stopRecording, waitForRecordingToFlush } = require("./audioCapture");
-const { summarizeMeeting } = require("./summarize");
+const { summarizeMeeting, summarizeWithRetry } = require("./summarize");
+const { logger } = require("./logger");
 
 // Load .env.local for DATABASE_URL when running outside Next.js
 try {
@@ -26,9 +27,9 @@ const activeBrowsers = new Map();
 fs.mkdirSync(AUDIO_DIR, { recursive: true });
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
-console.log("[Bot] PROJECT_ROOT:", process.cwd());
-console.log("[Bot] BOT_DIR:", BOT_DIR);
-console.log("[Bot] AUDIO_DIR:", AUDIO_DIR);
+logger.info("Bot", "PROJECT_ROOT", { path: process.cwd() });
+logger.info("Bot", "BOT_DIR", { path: BOT_DIR });
+logger.info("Bot", "AUDIO_DIR", { path: AUDIO_DIR });
 
 function botLog(meetingId, event, data = {}) {
   const log = {
@@ -103,6 +104,7 @@ async function saveSessionToDB(meetingId, data) {
     // platformName intentionally NOT mapped — must never overwrite the user-defined title
     joinedAt: "joined_at",
     recordingStartedAt: "recording_started_at",
+    participants: "participants",
   };
 
   const setClauses = [];
@@ -381,13 +383,13 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
     }
 
     if (status === "joined") {
-      console.log("[Bot] Bot confirmed in meeting. Starting recording.");
+      logger.info("Bot", "Bot confirmed in meeting. Starting recording.", { sessionId: meetingId });
     }
 
     const recording = await startRecording(meetingId);
 
     if (!recording.success) {
-      console.error(`[Bot] Recording failed to start for ${meetingId}: ${recording.error}`);
+      logger.error("Bot", "Recording failed to start", { sessionId: meetingId, error: recording.error });
       await cleanupJoinArtifacts(meetingId, browser);
       botLog(meetingId, "bot_failed", {
         error: recording.error || "Failed to start recording",
@@ -461,10 +463,10 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
       recordingEndedAt: null,
     });
 
-    console.log(`[Bot] Meeting ${meetingId} joined and recording started`);
+    logger.info("Bot", `Meeting joined and recording started`, { sessionId: meetingId });
     return { success: true, outputPath: recording.outputPath };
   } catch (error) {
-    console.error("[Bot] Failed to start:", error);
+    logger.error("Bot", "Failed to start", { sessionId: meetingId, error: formatBotError(error, "Failed to start bot") });
     botLog(meetingId, "bot_failed", {
       error: formatBotError(error, "Failed to start bot"),
       errorCode: "bot_start_failed",
@@ -624,9 +626,8 @@ async function stopBot(meetingId, onStatusUpdate) {
       };
     }
 
-    botLog(meetingId, "transcription_started", {});
-    console.log("[Stop] Starting transcription...");
-    console.log("[Stop] Audio path:", outputPath);
+    logger.info("Stop", "Starting transcription", { sessionId: meetingId });
+    logger.debug("Stop", "Audio path", { sessionId: meetingId, path: outputPath });
 
     let transcript;
     let transcriptResult;
@@ -640,7 +641,7 @@ async function stopBot(meetingId, onStatusUpdate) {
       transcriptResult = JSON.parse(typeof output === "string" ? output.trim() : output.toString().trim());
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[Stop] Transcription failed:", msg);
+      logger.error("Stop", "Transcription failed", { sessionId: meetingId, error: msg });
       persistSessionFailure(meetingId, "transcription_failed", msg);
       botLog(meetingId, "bot_failed", {
         error: msg,
@@ -707,14 +708,14 @@ async function stopBot(meetingId, onStatusUpdate) {
       recordingEndedAt,
     });
 
-    console.log("[Stop] Starting summarization...");
+    logger.info("Stop", "Starting summarization", { sessionId: meetingId });
     let summary;
     try {
-      summary = await summarizeMeeting(transcript);
-      console.log("[Stop] Summary generated:", JSON.stringify(summary).substring(0, 200));
+      summary = await summarizeWithRetry(transcript);
+      logger.info("Stop", "Summary generated", { sessionId: meetingId, chars: JSON.stringify(summary).length });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[Stop] Summary failed:", msg);
+      logger.error("Stop", "Summary failed", { sessionId: meetingId, error: msg });
       summary = {
         summary: "Summary generation failed: " + msg,
         key_decisions: [],
@@ -738,7 +739,51 @@ async function stopBot(meetingId, onStatusUpdate) {
       actionItemCount: Array.isArray(summary.action_items) ? summary.action_items.length : 0,
     });
 
-    console.log("[Stop] Saving to database (via status callback)...");
+    logger.info("Stop", "Saving to database", { sessionId: meetingId });
+    // Save participants extracted by Gemini
+    if (Array.isArray(summary.participants) && summary.participants.length > 0) {
+      await saveSessionToDB(meetingId, { participants: summary.participants });
+    }
+
+    // Save action items to action_items table (non-fatal)
+    const actionItemsList = Array.isArray(summary.action_items) ? summary.action_items : [];
+    if (actionItemsList.length > 0 && dbPool) {
+      try {
+        const sessionRow = await getSessionFromDB(meetingId);
+        const meetingTitle = sessionRow?.title || "Meeting";
+        // Get the userId from the meeting_sessions row
+        const userResult = await dbPool.query(
+          "SELECT user_id, shared_with_user_ids FROM meeting_sessions WHERE id = $1",
+          [meetingId]
+        );
+        const ownerUserId = userResult.rows[0]?.user_id;
+        const sharedUserIds = userResult.rows[0]?.shared_with_user_ids || [];
+        const allUserIds = ownerUserId ? [ownerUserId, ...sharedUserIds] : [];
+        const now = new Date();
+        for (const userId of allUserIds) {
+          for (const item of actionItemsList) {
+            await dbPool.query(
+              `INSERT INTO action_items (id, task, owner, due_date, priority, completed, status, meeting_id, meeting_title, user_id, source, created_at, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, false, 'pending', $5, $6, $7, 'meeting', $8, $8)`,
+              [
+                item.task || "",
+                item.owner || "Unassigned",
+                item.due_date || "Not specified",
+                item.priority || "Medium",
+                meetingId,
+                meetingTitle,
+                userId,
+                now,
+              ]
+            );
+          }
+        }
+        logger.info("Bot", `Saved ${actionItemsList.length} action items to DB`, { sessionId: meetingId });
+      } catch (e) {
+        logger.error("Bot", "Failed to save action items to DB (non-fatal)", { sessionId: meetingId, error: e.message });
+      }
+    }
+
     await onStatusUpdate(meetingId, "completed", {
       errorCode: null,
       failureReason: null,
@@ -749,7 +794,7 @@ async function stopBot(meetingId, onStatusUpdate) {
       meetingDurationSeconds: meetingDurationSeconds ?? null,
       outputPath: session.outputPath,
     });
-    console.log("[Stop] Meeting completed successfully");
+    logger.info("Stop", "Meeting completed successfully", { sessionId: meetingId });
 
     // Cleanup: delete temp audio file after successful copy to private/recordings/
     if (session.outputPath && fs.existsSync(session.outputPath)) {
@@ -771,7 +816,7 @@ async function stopBot(meetingId, onStatusUpdate) {
       outputPath: session.outputPath,
     };
   } catch (error) {
-    console.error("[Bot] Failed to stop:", error);
+    logger.error("Bot", "Failed to stop", { sessionId: meetingId, error: formatBotError(error, "Failed to stop bot") });
     activeBrowsers.delete(meetingId);
     persistSessionFailure(meetingId, "bot_stop_failed", formatBotError(error, "Failed to stop bot"));
     botLog(meetingId, "bot_failed", {
@@ -833,7 +878,7 @@ async function recoverStuckSessions() {
       }
     }
   } catch (err) {
-    console.error("[Bot] recoverStuckSessions failed:", err.message);
+    logger.error("Bot", "recoverStuckSessions failed", { error: err.message });
   }
 }
 

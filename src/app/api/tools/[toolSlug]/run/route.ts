@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { executeToolRun } from "@/lib/ai/execute-tool";
 import { ToolExecutionError } from "@/lib/ai/tool-execution-error";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 const toolRunRouteLogPrefix = "[api-tool-run]";
 
@@ -20,6 +21,11 @@ export async function POST(
   if (!userId) {
     console.warn(`${toolRunRouteLogPrefix} unauthorized request`, { toolSlug });
     return apiError("Unauthorized.", 401);
+  }
+
+  const rl = checkRateLimit(`tool:${userId}`, 20, 60_000);
+  if (!rl.allowed) {
+    return apiError("Too many requests. Please wait before trying again.", 429);
   }
 
   let body: unknown;

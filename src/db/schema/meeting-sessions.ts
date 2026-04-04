@@ -46,6 +46,7 @@ export const meetingSessions = pgTable("meeting_sessions", {
   recordingEndedAt: timestamp("recording_ended_at", { withTimezone: true }),
   insights: jsonb("insights").$type<Record<string, unknown> | null>(),
   chapters: jsonb("chapters").$type<Array<Record<string, unknown>> | null>(),
+  participants: jsonb("participants").$type<Array<{ name: string; talkTimePercent: number }> | null>(),
   emailSent: boolean("email_sent").notNull().default(false),
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
   status: varchar("status", { length: 50 }).notNull().default("draft"),

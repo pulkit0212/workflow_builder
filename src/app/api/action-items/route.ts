@@ -1,75 +1,17 @@
 import { auth } from "@clerk/nextjs/server";
+import { and, count, desc, eq, gte, ilike } from "drizzle-orm";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
-import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
+import { db } from "@/lib/db/client";
+import { actionItems } from "@/db/schema";
 import { canUseActionItems } from "@/lib/subscription";
 import { getUserSubscription } from "@/lib/subscription.server";
 
-type ActionItemsTab = "all" | "high_priority" | "my_items" | "this_week";
-
-type ActionItemRecord = {
-  id: string;
-  task: string;
-  owner: string;
-  dueDate: string;
-  priority: string;
-  completed: boolean;
-  meetingId: string;
-  meetingTitle: string;
-  createdAt: string;
-};
-
-function normalizeTab(value: string | null): ActionItemsTab {
-  switch (value) {
-    case "high_priority":
-    case "my_items":
-    case "this_week":
-      return value;
-    default:
-      return "all";
-  }
-}
-
-function normalizePositiveInteger(value: string | null, fallback: number) {
-  const parsed = Number.parseInt(value ?? "", 10);
-
-  if (Number.isNaN(parsed) || parsed < 1) {
-    return fallback;
-  }
-
-  return parsed;
-}
-
-function isWithinLastWeek(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return false;
-  }
-
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-  return date >= sevenDaysAgo;
-}
-
-function buildActionItemsFilter(tab: ActionItemsTab, firstName: string) {
-  const normalizedFirstName = firstName.trim().toLowerCase();
-
-  return (item: ActionItemRecord) => {
-    switch (tab) {
-      case "high_priority":
-        return item.priority.toLowerCase() === "high";
-      case "my_items":
-        return normalizedFirstName ? item.owner.toLowerCase().includes(normalizedFirstName) : false;
-      case "this_week":
-        return isWithinLastWeek(item.createdAt);
-      default:
-        return true;
-    }
-  };
+function getDbOrThrow() {
+  if (!db) throw new Error("DATABASE_URL is not configured.");
+  return db;
 }
 
 export async function GET(request: Request) {
@@ -91,46 +33,74 @@ export async function GET(request: Request) {
       });
     }
 
+    const database = getDbOrThrow();
     const { searchParams } = new URL(request.url);
-    const page = normalizePositiveInteger(searchParams.get("page"), 1);
-    const limit = normalizePositiveInteger(searchParams.get("limit"), 10);
-    const tab = normalizeTab(searchParams.get("tab"));
-    const firstName = searchParams.get("firstName") ?? "";
+    const page = Math.max(Number.parseInt(searchParams.get("page") ?? "1", 10) || 1, 1);
+    const limit = Math.min(Math.max(Number.parseInt(searchParams.get("limit") ?? "10", 10) || 10, 1), 50);
+    const tab = searchParams.get("tab") ?? "all";
+    const firstName = (searchParams.get("firstName") ?? "").trim().toLowerCase();
+    const source = searchParams.get("source") ?? "all";
 
-    const meetings = await listMeetingSessionsByUser(user.id, {
-      completedOnly: true
-    });
+    const conditions = [eq(actionItems.userId, user.id)];
 
-    const items = meetings
-      .flatMap((meeting) =>
-        (Array.isArray(meeting.actionItems) ? meeting.actionItems : []).map((item, index) => ({
-          id: `${meeting.id}-${index}`,
-          task: item.task,
-          owner: item.owner || "Unassigned",
-          dueDate: item.dueDate || item.deadline || "Not specified",
-          priority: item.priority || "Medium",
-          completed: item.completed ?? false,
-          meetingId: meeting.id,
-          meetingTitle: meeting.title,
-          createdAt: meeting.updatedAt.toISOString()
-        }))
-      )
-      .filter(buildActionItemsFilter(tab, firstName))
-      .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime());
+    // Tab filters
+    if (tab === "high_priority") {
+      conditions.push(eq(actionItems.priority, "High"));
+    } else if (tab === "my_items" && firstName) {
+      conditions.push(ilike(actionItems.owner, `%${firstName}%`));
+    } else if (tab === "this_week") {
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      conditions.push(gte(actionItems.createdAt, sevenDaysAgo));
+    }
 
-    const total = items.length;
-    const totalPages = Math.max(Math.ceil(total / limit), 1);
-    const currentPage = Math.min(page, totalPages);
-    const startIndex = (currentPage - 1) * limit;
+    // Source filter
+    if (source === "meeting") {
+      conditions.push(eq(actionItems.source, "meeting"));
+    } else if (source === "task-generator") {
+      conditions.push(eq(actionItems.source, "task-generator"));
+    } else if (source === "document") {
+      conditions.push(eq(actionItems.source, "document"));
+    }
+
+    const where = and(...conditions);
+
+    const [rows, totalRows] = await Promise.all([
+      database
+        .select()
+        .from(actionItems)
+        .where(where)
+        .orderBy(desc(actionItems.createdAt))
+        .limit(limit)
+        .offset((page - 1) * limit),
+      database
+        .select({ count: count() })
+        .from(actionItems)
+        .where(where)
+    ]);
+
+    const total = totalRows[0]?.count ?? 0;
 
     return apiSuccess({
       success: true,
-      items: items.slice(startIndex, startIndex + limit),
+      items: rows.map((item) => ({
+        id: item.id,
+        task: item.task,
+        owner: item.owner,
+        dueDate: item.dueDate,
+        priority: item.priority,
+        completed: item.completed,
+        status: item.status,
+        source: item.source,
+        meetingId: item.meetingId ?? null,
+        meetingTitle: item.meetingTitle ?? null,
+        createdAt: item.createdAt.toISOString()
+      })),
       pagination: {
         total,
-        page: currentPage,
+        page,
         limit,
-        totalPages
+        totalPages: Math.max(Math.ceil(total / limit), 1)
       }
     });
   } catch (error) {
@@ -140,7 +110,6 @@ export async function GET(request: Request) {
         503
       );
     }
-
     return apiError(error instanceof Error ? error.message : "Failed to load action items.", 500);
   }
 }

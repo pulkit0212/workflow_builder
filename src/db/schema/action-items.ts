@@ -9,7 +9,9 @@ export const actionItems = pgTable("action_items", {
   dueDate: text("due_date").notNull().default("Not specified"),
   priority: varchar("priority", { length: 20 }).notNull().default("Medium"),
   completed: boolean("completed").notNull().default(false),
+  status: varchar("status", { length: 50 }).notNull().default("pending"),
   meetingId: uuid("meeting_id").references(() => meetingSessions.id, { onDelete: "cascade" }),
+  meetingTitle: text("meeting_title"),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),

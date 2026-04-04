@@ -60,6 +60,14 @@ function normalizeSummaryPayload(payload) {
       ? payload.meeting_sentiment
       : "Neutral",
     follow_up_meeting_needed: Boolean(payload.follow_up_meeting_needed),
+    participants: Array.isArray(payload.participants)
+      ? payload.participants
+          .map((p) => ({
+            name: normalizeText(p.name) || "Participant",
+            talkTimePercent: typeof p.talkTimePercent === "number" ? p.talkTimePercent : 0,
+          }))
+          .filter((p) => p.name)
+      : [],
   };
 }
 
@@ -68,6 +76,8 @@ function getPrompt(transcript) {
 
 Analyze this meeting transcript and extract structured information.
 Be specific and actionable. Never be vague.
+Focus on actionable tasks only. Skip vague statements like "we should think about X".
+Only include concrete tasks with a clear action verb.
 
 Transcript:
 ${transcript}
@@ -82,10 +92,10 @@ Use this exact format:
   ],
   "action_items": [
     {
-      "task": "Specific task to be done",
-      "owner": "Person's name or 'Unassigned'",
-      "due_date": "Mentioned deadline or 'Not specified'",
-      "priority": "High / Medium / Low"
+      "task": "Specific actionable task starting with a verb",
+      "owner": "Extract owner using these rules in order: 1) Explicit assignment: 'John will do X' → John 2) Implicit: 'John, can you do X' → John 3) Self-assignment: 'I will do X' → use speaker name if known 4) Group: 'We will do X' → Team 5) Unclear → Unassigned. Always use first name only if full name mentioned.",
+      "due_date": "Extract deadline: 1) Explicit: 'by Friday' → Friday 2) Relative: 'next week' → Next week 3) Urgent: 'ASAP' or 'urgent' → ASAP 4) None mentioned → Not specified",
+      "priority": "Infer from language: 1) 'urgent', 'ASAP', 'critical', 'blocking' → High 2) 'soon', 'this week', 'important' → Medium 3) 'eventually', 'low priority', 'nice to have' → Low 4) Default → Medium"
     }
   ],
   "risks_and_blockers": [
@@ -93,16 +103,23 @@ Use this exact format:
   ],
   "key_topics": ["topic1", "topic2", "topic3"],
   "meeting_sentiment": "Positive / Neutral / Mixed / Negative",
-  "follow_up_meeting_needed": true
+  "follow_up_meeting_needed": true,
+  "participants": [
+    {
+      "name": "First name or full name as mentioned in conversation. If unclear use Participant 1, Participant 2 etc.",
+      "talkTimePercent": 50
+    }
+  ]
 }
 
 Rules:
-- action_items must be specific tasks, not vague notes
+- action_items must be specific tasks with clear action verbs, not vague notes
 - owner must be a real name from the transcript if mentioned
 - If nothing was decided, key_decisions should be empty array []
 - If no blockers, risks_and_blockers should be empty array []
 - meeting_sentiment based on tone of conversation
-- follow_up_meeting_needed: true if someone said "let's meet again" or similar`;
+- follow_up_meeting_needed: true if someone said "let's meet again" or similar
+- participants: only include people who SPOKE (not just mentioned). talkTimePercent values should sum to approximately 100`;
 }
 
 function extractText(payload) {
@@ -172,4 +189,25 @@ async function summarizeMeeting(transcript) {
   }
 }
 
-module.exports = { summarizeMeeting };
+module.exports = { summarizeMeeting, summarizeWithRetry };
+
+async function summarizeWithRetry(transcript, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[Summary] Attempt ${attempt}/${maxRetries}`);
+      const result = await summarizeMeeting(transcript);
+      if (typeof result === "object" && result.summary) {
+        return result;
+      }
+      throw new Error("Invalid summary response");
+    } catch (e) {
+      console.error(`[Summary] Attempt ${attempt} failed:`, e instanceof Error ? e.message : e);
+      if (attempt === maxRetries) {
+        throw new Error(`Summary failed after ${maxRetries} attempts: ${e instanceof Error ? e.message : e}`);
+      }
+      const delay = Math.pow(2, attempt) * 1000;
+      console.log(`[Summary] Retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
