@@ -1,3 +1,4 @@
+import type { Route } from "next";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
@@ -17,7 +18,7 @@ export function Breadcrumbs({ items }: BreadcrumbsProps) {
         return (
           <div key={`${item.label}-${index}`} className="flex items-center gap-2">
             {item.href && !isLast ? (
-              <Link href={item.href} className="font-medium text-slate-600 hover:text-[#6c63ff]">
+              <Link href={item.href as Route} className="font-medium text-slate-600 hover:text-[#6c63ff]">
                 {item.label}
               </Link>
             ) : (

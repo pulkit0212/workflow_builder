@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { ArrowRight, FileText, LoaderCircle, Search } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
@@ -169,11 +170,11 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
       <div className="mt-6 flex items-center justify-end">
         {meeting.status === "completed" || (meeting.summary?.trim() || meeting.transcript?.trim()) ? (
           <Button asChild>
-            <Link href={`/dashboard/meetings/${meeting.id}`}>View Report</Link>
+            <Link href={`/dashboard/meetings/${meeting.id}` as Route}>View Report</Link>
           </Button>
         ) : meeting.status === "failed" ? (
           <Button asChild variant="secondary">
-            <Link href={`/dashboard/meetings/${meeting.id}`}>Retry</Link>
+            <Link href={`/dashboard/meetings/${meeting.id}` as Route}>Retry</Link>
           </Button>
         ) : null}
       </div>

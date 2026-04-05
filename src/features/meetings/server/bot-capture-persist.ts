@@ -107,7 +107,7 @@ export async function persistBotCaptureStatusUpdate(
 
     await updateMeetingSession(meetingSessionId, ownerUserId, {
       status: "completed",
-      transcript: payload.transcript,
+      transcript: payload.transcript ?? undefined,
       ...mapped,
       errorCode: null,
       failureReason: null,
@@ -161,7 +161,7 @@ export async function persistBotCaptureStatusUpdate(
       recordingEndedAt: payload?.recordingEndedAt
     };
     if (payload && Object.prototype.hasOwnProperty.call(payload, "transcript")) {
-      failedPatch.transcript = payload.transcript ?? null;
+      failedPatch.transcript = payload.transcript ?? undefined;
     }
     await updateMeetingSession(meetingSessionId, ownerUserId, failedPatch);
     console.log("[DB] Saved successfully (failed)");

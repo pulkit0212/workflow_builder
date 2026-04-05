@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -505,7 +506,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         const started = await startMeetingCapture(meeting.id, meeting.meetingLink);
         setMeeting(started.meeting);
         if (started.status === "already_recording" && started.meeting.id !== meetingId) {
-          router.replace(`/dashboard/meetings/${started.meeting.id}`);
+          router.replace(`/dashboard/meetings/${started.meeting.id}` as Route);
         }
       } catch (startError) {
         const errorWithMeta = startError as Error & { status?: number; code?: string };

@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { subscriptions, subscriptionPayments } from "@/db/schema";
 import { db } from "@/lib/db/client";
-import type { SubscriptionRecord } from "@/lib/subscription";
+import type { PlanId, SubscriptionRecord } from "@/lib/subscription";
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -16,6 +16,15 @@ function getDbOrThrow() {
 
 function monthHasRolledOver(lastResetDate: Date, now: Date) {
   return lastResetDate.getUTCFullYear() !== now.getUTCFullYear() || lastResetDate.getUTCMonth() !== now.getUTCMonth();
+}
+
+/** Drizzle infers `plan` / `status` as string; narrow to app `SubscriptionRecord`. */
+function toSubscriptionRecord(row: typeof subscriptions.$inferSelect): SubscriptionRecord {
+  return {
+    ...row,
+    plan: row.plan as PlanId,
+    status: row.status as SubscriptionRecord["status"]
+  };
 }
 
 async function createSubscription(userId: string) {
@@ -94,10 +103,10 @@ export async function getUserSubscription(userId: string): Promise<SubscriptionR
       throw new Error("Failed to refresh subscription.");
     }
 
-    return updatedSubscription;
+    return toSubscriptionRecord(updatedSubscription);
   }
 
-  return subscription;
+  return toSubscriptionRecord(subscription);
 }
 
 export async function getPaymentHistory(userId: string) {

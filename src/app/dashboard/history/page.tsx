@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import { ArrowRight, History } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -150,7 +151,7 @@ export default function HistoryPage() {
             {paginatedRuns.map((run) => (
               <Link
                 key={run.id}
-                href={`/dashboard/history/${run.id}`}
+                href={`/dashboard/history/${run.id}` as Route}
                 className="grid gap-4 rounded-3xl border border-slate-200 bg-white/80 p-5 transition-all hover:-translate-y-[1px] hover:border-sky-200 hover:bg-white md:grid-cols-[160px_minmax(0,1fr)_180px_120px] md:items-start"
               >
                 <div>

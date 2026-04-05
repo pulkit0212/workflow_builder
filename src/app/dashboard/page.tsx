@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useUser } from "@clerk/nextjs";
+import type { Route } from "next";
 import Link from "next/link";
 import { CalendarDays, CheckCircle2, ClipboardList, Video } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
@@ -397,7 +398,7 @@ export default function DashboardPage() {
 
                       {/* Action */}
                       <Button asChild variant="secondary" size="sm" className="shrink-0">
-                        <Link href={`/dashboard/meetings/${meeting.id}`}>View</Link>
+                        <Link href={`/dashboard/meetings/${meeting.id}` as Route}>View</Link>
                       </Button>
                     </div>
                   );

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
+import type { Route } from "next";
 import Link from "next/link";
 import { ArrowRight, CheckSquare, Download, ListChecks, X } from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -326,7 +327,7 @@ function ActionItemsContent() {
                       </td>
                       <td className="px-4 py-4 text-slate-600">
                         {row.meetingId && row.meetingTitle ? (
-                          <Link href={`/dashboard/meetings/${row.meetingId}`} className="font-medium text-[#111827] hover:text-[#6c63ff]">{row.meetingTitle}</Link>
+                          <Link href={`/dashboard/meetings/${row.meetingId}` as Route} className="font-medium text-[#111827] hover:text-[#6c63ff]">{row.meetingTitle}</Link>
                         ) : <span className="text-[#9ca3af]">—</span>}
                       </td>
                       <td className="px-4 py-4 text-slate-600">{formatDate(row.createdAt)}</td>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import type { Route } from "next";
 import Link from "next/link";
 import {
   CalendarDays,
@@ -865,12 +866,12 @@ export function MeetingAssistantWorkspace({
                 </Button>
                 {meetingSession?.status === "completed" ? (
                   <Button asChild>
-                    <Link href={`/dashboard/meetings/${meetingSession.id}`}>Open Meeting</Link>
+                    <Link href={`/dashboard/meetings/${meetingSession.id}` as Route}>Open Meeting</Link>
                   </Button>
                 ) : null}
                 {latestRun?.id ? (
                   <Button asChild variant="ghost">
-                    <Link href={`/dashboard/history/${latestRun.id}`}>Open latest run</Link>
+                    <Link href={`/dashboard/history/${latestRun.id}` as Route}>Open latest run</Link>
                   </Button>
                 ) : null}
               </div>

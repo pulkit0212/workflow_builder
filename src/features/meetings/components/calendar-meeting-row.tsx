@@ -130,7 +130,7 @@ type ToastState = {
             type="button"
             size="sm"
             variant="danger"
-            onClick={() => router.push(`/dashboard/meetings/${session.id}`)}
+            onClick={() => router.push(`/dashboard/meetings/${session.id}` as Route)}
           >
             Stop Recording
           </Button>
@@ -140,7 +140,7 @@ type ToastState = {
           <Button
             type="button"
             size="sm"
-            onClick={() => router.push(`/dashboard/meetings/${session.id}`)}
+            onClick={() => router.push(`/dashboard/meetings/${session.id}` as Route)}
           >
             View Report
           </Button>

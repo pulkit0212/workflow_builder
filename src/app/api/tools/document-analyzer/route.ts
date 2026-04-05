@@ -6,7 +6,13 @@ import { handleUserSafeAIError } from "@/lib/ai/errorHandler";
 
 export const runtime = "nodejs";
 
-type ExtractOption = "summary" | "actionItems" | "keyPoints" | "decisions" | "risks" | "rawInsights";
+type ExtractOption =
+  | "summary"
+  | "actionItems"
+  | "keyPoints"
+  | "decisions"
+  | "risks"
+  | "rawInsights";
 
 type DocumentAnalyzerOutput = {
   summary: string | null;
@@ -22,17 +28,28 @@ type DocumentAnalyzerOutput = {
   raw_insights: string | null;
 };
 
-const defaultExtractOptions: ExtractOption[] = ["summary", "actionItems", "keyPoints", "decisions", "risks"];
+const defaultExtractOptions: ExtractOption[] = [
+  "summary",
+  "actionItems",
+  "keyPoints",
+  "decisions",
+  "risks"
+];
+
 const logPrefix = "[DocAnalyzer]";
 
-function getExtractOptions(rawValue: FormDataEntryValue | string | null | undefined) {
+function getExtractOptions(
+  rawValue: FormDataEntryValue | string | null | undefined
+) {
   if (typeof rawValue !== "string" || rawValue.trim().length === 0) {
     return defaultExtractOptions;
   }
 
   try {
     const parsed = JSON.parse(rawValue);
-    return Array.isArray(parsed) && parsed.length > 0 ? (parsed as ExtractOption[]) : defaultExtractOptions;
+    return Array.isArray(parsed) && parsed.length > 0
+      ? (parsed as ExtractOption[])
+      : defaultExtractOptions;
   } catch {
     return defaultExtractOptions;
   }
@@ -53,49 +70,55 @@ ${extractOptions.includes("rawInsights") ? "Add extra observations in raw_insigh
 Document content:
 ${documentText.substring(0, 15000)}
 
-Return ONLY valid JSON, no markdown, no backticks:
+Return ONLY valid JSON:
 {
-  "summary": "2-4 sentence overview of the document",
+  "summary": "2-4 sentence overview",
   "action_items": [
     {
-      "task": "Specific task or action item",
-      "owner": "Person responsible or Unassigned",
+      "task": "Task",
+      "owner": "Person or Unassigned",
       "due_date": "Deadline or Not specified",
       "priority": "High or Medium or Low"
     }
   ],
-  "key_points": ["Important point 1", "Important point 2", "Important point 3"],
-  "decisions": ["Decision made 1", "Decision made 2"],
-  "risks": ["Risk or concern 1"],
-  "raw_insights": "Extra observations or null"
+  "key_points": ["Point 1"],
+  "decisions": [],
+  "risks": [],
+  "raw_insights": null
+}`;
 }
 
-Rules:
-- If no action items found: action_items = []
-- If no decisions found: decisions = []
-- If no risks found: risks = []
-- If raw insights are not needed: raw_insights = null
-- Be specific, not vague`;
-}
-
-function normalizeOutput(parsed: Partial<DocumentAnalyzerOutput>): DocumentAnalyzerOutput {
+function normalizeOutput(
+  parsed: Partial<DocumentAnalyzerOutput>
+): DocumentAnalyzerOutput {
   return {
     summary: typeof parsed.summary === "string" ? parsed.summary : null,
     action_items: Array.isArray(parsed.action_items)
-      ? parsed.action_items.map((item) => ({
-          task: typeof item?.task === "string" ? item.task : "",
-          owner: typeof item?.owner === "string" ? item.owner : "",
-          due_date: typeof item?.due_date === "string" ? item.due_date : "",
-          priority:
-            item?.priority === "High" || item?.priority === "Low" || item?.priority === "Medium"
-              ? item.priority
-              : "Medium"
-        })).filter((item) => item.task.trim().length > 0)
+      ? parsed.action_items
+          .map((item) => ({
+            task: item?.task || "",
+            owner: item?.owner || "",
+            due_date: item?.due_date || "",
+            priority:
+              item?.priority === "High" ||
+              item?.priority === "Low" ||
+              item?.priority === "Medium"
+                ? item.priority
+                : "Medium"
+          }))
+          .filter((i) => i.task.trim().length > 0)
       : [],
-    key_points: Array.isArray(parsed.key_points) ? parsed.key_points.filter((item): item is string => typeof item === "string") : [],
-    decisions: Array.isArray(parsed.decisions) ? parsed.decisions.filter((item): item is string => typeof item === "string") : [],
-    risks: Array.isArray(parsed.risks) ? parsed.risks.filter((item): item is string => typeof item === "string") : [],
-    raw_insights: typeof parsed.raw_insights === "string" ? parsed.raw_insights : null
+    key_points: Array.isArray(parsed.key_points)
+      ? parsed.key_points.filter((i): i is string => typeof i === "string")
+      : [],
+    decisions: Array.isArray(parsed.decisions)
+      ? parsed.decisions.filter((i): i is string => typeof i === "string")
+      : [],
+    risks: Array.isArray(parsed.risks)
+      ? parsed.risks.filter((i): i is string => typeof i === "string")
+      : [],
+    raw_insights:
+      typeof parsed.raw_insights === "string" ? parsed.raw_insights : null
   };
 }
 
@@ -103,7 +126,10 @@ export async function POST(req: Request) {
   const { userId } = await auth();
 
   if (!userId) {
-    return NextResponse.json({ success: false, message: "Unauthorized." }, { status: 401 });
+    return NextResponse.json(
+      { success: false, message: "Unauthorized." },
+      { status: 401 }
+    );
   }
 
   try {
@@ -111,6 +137,7 @@ export async function POST(req: Request) {
     let documentText = "";
     let extractOptions: ExtractOption[] = defaultExtractOptions;
 
+    // ================= FILE FLOW =================
     if (contentType.includes("multipart/form-data")) {
       const formData = await req.formData();
       const file = formData.get("file");
@@ -118,20 +145,14 @@ export async function POST(req: Request) {
 
       if (!(file instanceof File)) {
         return NextResponse.json(
-          {
-            success: false,
-            message: "No file provided"
-          },
+          { success: false, message: "No file provided" },
           { status: 400 }
         );
       }
 
       if (file.size > 10 * 1024 * 1024) {
         return NextResponse.json(
-          {
-            success: false,
-            message: "Files must be 10MB or smaller."
-          },
+          { success: false, message: "Max 10MB allowed" },
           { status: 400 }
         );
       }
@@ -139,126 +160,117 @@ export async function POST(req: Request) {
       const fileType = file.type;
       const fileName = file.name.toLowerCase();
 
-      console.log(logPrefix, "File:", fileName, "Type:", fileType);
-
       if (fileType === "text/plain" || fileName.endsWith(".txt")) {
         documentText = await file.text();
-      } else if (
-        fileType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      }
+
+      // DOCX
+      else if (
+        fileType.includes("wordprocessingml") ||
         fileName.endsWith(".docx")
       ) {
         const mammoth = await import("mammoth");
-        const arrayBuffer = await file.arrayBuffer();
-        const buffer = Buffer.from(arrayBuffer);
+        const buffer = Buffer.from(await file.arrayBuffer());
         const result = await mammoth.extractRawText({ buffer });
         documentText = result.value;
-        console.log(logPrefix, "DOCX extracted, length:", documentText.length);
-      } else if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
-        try {
-          const pdfParse = await import("pdf-parse");
-          const arrayBuffer = await file.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          const pdfData = await pdfParse.default(buffer);
-          documentText = pdfData.text;
-          console.log(logPrefix, "PDF extracted, length:", documentText.length);
-        } catch (pdfError) {
-          console.log(logPrefix, "PDF parse failed, using Gemini Vision", pdfError);
-          const arrayBuffer = await file.arrayBuffer();
-          const base64 = Buffer.from(arrayBuffer).toString("base64");
+      }
 
-          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      // PDF
+      else if (fileType === "application/pdf" || fileName.endsWith(".pdf")) {
+        try {
+          const { PDFParse } = await import("pdf-parse");
+          const buffer = Buffer.from(await file.arrayBuffer());
+          const parser = new PDFParse({ data: buffer });
+          try {
+            const textResult = await parser.getText();
+            documentText = textResult.text;
+          } finally {
+            await parser.destroy();
+          }
+        } catch {
+          // fallback Gemini Vision
+          const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
           const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-          const result = await model.generateContent([
+          const res = await model.generateContent([
             {
-              inlineData: {
-                mimeType: "application/pdf",
-                data: base64
-              }
+              inlineData: { mimeType: "application/pdf", data: base64 }
             },
-            { text: "Extract all text content from this PDF document." }
+            { text: "Extract text from PDF" }
           ]);
-          documentText = result.response.text();
-        }
-      } else if (
-        fileType.startsWith("image/") ||
-        fileName.endsWith(".png") ||
-        fileName.endsWith(".jpg") ||
-        fileName.endsWith(".jpeg")
-      ) {
-        const arrayBuffer = await file.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString("base64");
-        const mimeType = fileType || "image/jpeg";
 
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+          documentText = res.response.text();
+        }
+      }
+
+      // IMAGE
+      else if (fileType.startsWith("image/")) {
+        const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
         const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-        const result = await model.generateContent([
-          {
-            inlineData: { mimeType, data: base64 }
-          },
-          { text: "Extract all text and content from this image." }
+        const res = await model.generateContent([
+          { inlineData: { mimeType: fileType, data: base64 } },
+          { text: "Extract text from image" }
         ]);
-        documentText = result.response.text();
+
+        documentText = res.response.text();
       } else {
         return NextResponse.json(
-          {
-            success: false,
-            message: `Unsupported file type: ${fileType}. Please upload PDF, DOCX, TXT, PNG, or JPG.`
-          },
+          { success: false, message: "Unsupported file" },
           { status: 400 }
         );
       }
-    } else {
-      const body = (await req.json()) as {
-        text?: string;
-        extractOptions?: ExtractOption[];
-      };
-      documentText = body.text || "";
-      extractOptions = Array.isArray(body.extractOptions) && body.extractOptions.length > 0
-        ? body.extractOptions
-        : defaultExtractOptions;
     }
 
-    if (!documentText || documentText.trim().length < 10) {
+    // ================= TEXT FLOW =================
+    else {
+      const body = await req.json();
+      documentText = body.text || "";
+      extractOptions = body.extractOptions || defaultExtractOptions;
+    }
+
+    if (documentText.trim().length < 10) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "Could not extract text from document. Please try a different file."
-        },
+        { success: false, message: "Invalid content" },
         { status: 400 }
       );
     }
 
-    console.log(logPrefix, "Analyzing text, length:", documentText.length);
+    // ================= AI CALL =================
+    let aiResponse: string;
 
-    let text: string;
     try {
-      text = await callAI(buildPrompt(documentText, extractOptions));
-    } catch (aiError) {
+      aiResponse = await callAI(
+        buildPrompt(documentText, extractOptions)
+      );
+    } catch (err) {
       try {
-        handleUserSafeAIError(aiError);
+        handleUserSafeAIError(err);
       } catch (safeError) {
-        console.error(logPrefix, "AI error:", aiError instanceof Error ? aiError.message : aiError);
         return NextResponse.json(
-          { success: false, message: safeError instanceof Error ? safeError.message : "Something went wrong." },
+          {
+            success: false,
+            message:
+              safeError instanceof Error
+                ? safeError.message
+                : "AI error"
+          },
           { status: 500 }
         );
       }
+      return;
     }
 
-    const cleaned = text!.replace(/```json/g, "").replace(/```/g, "").trim();
+    const cleaned = aiResponse.replace(/```/g, "").trim();
 
-    let parsed: Partial<DocumentAnalyzerOutput>;
+    let parsed;
     try {
-      parsed = JSON.parse(cleaned) as Partial<DocumentAnalyzerOutput>;
+      parsed = JSON.parse(cleaned);
     } catch {
-      console.error(logPrefix, "JSON parse failed:", cleaned.substring(0, 200));
       return NextResponse.json(
-        {
-          success: false,
-          message: "Failed to parse AI response. Please try again."
-        },
+        { success: false, message: "Parse failed" },
         { status: 500 }
       );
     }
@@ -267,13 +279,9 @@ export async function POST(req: Request) {
       success: true,
       result: normalizeOutput(parsed)
     });
-  } catch (error: unknown) {
-    console.error(logPrefix, "Error:", error instanceof Error ? error.message : error);
+  } catch (err) {
     return NextResponse.json(
-      {
-        success: false,
-        message: "Something went wrong. Please try again."
-      },
+      { success: false, message: "Server error" },
       { status: 500 }
     );
   }

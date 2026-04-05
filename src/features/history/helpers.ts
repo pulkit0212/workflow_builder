@@ -29,16 +29,29 @@ export function formatHistoryDate(value: string) {
 }
 
 export function formatPreview(run: {
-  outputJson: Record<string, unknown> | null;
-  inputJson: Record<string, unknown> | null;
+  outputJson: unknown;
+  inputJson: unknown;
 }) {
-  const summary = run.outputJson?.summary;
+  const outputJson =
+    run.outputJson !== null &&
+    typeof run.outputJson === "object" &&
+    !Array.isArray(run.outputJson)
+      ? (run.outputJson as Record<string, unknown>)
+      : null;
+  const inputJson =
+    run.inputJson !== null &&
+    typeof run.inputJson === "object" &&
+    !Array.isArray(run.inputJson)
+      ? (run.inputJson as Record<string, unknown>)
+      : null;
+
+  const summary = outputJson?.summary;
 
   if (typeof summary === "string" && summary.trim()) {
     return summary.length > 140 ? `${summary.slice(0, 137).trimEnd()}...` : summary;
   }
 
-  const transcript = run.inputJson?.transcript;
+  const transcript = inputJson?.transcript;
 
   if (typeof transcript === "string" && transcript.trim()) {
     const compact = transcript.replace(/\s+/g, " ").trim();
