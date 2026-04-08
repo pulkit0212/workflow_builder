@@ -7,16 +7,12 @@ import { usePathname } from "next/navigation";
 import {
   CalendarDays,
   CheckSquare,
-  ClipboardList,
   Clock3,
   CreditCard,
   FileText,
   Grid2x2,
-  LayoutDashboard,
   Link2,
-  Plus,
   Settings,
-  Users,
   UsersRound,
   Video,
   Wrench,
@@ -25,29 +21,15 @@ import {
 import { cn } from "@/lib/utils";
 import type { DashboardProfile } from "@/components/layout/dashboard-account";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
 
 type DashboardNavItem = {
   href: Route;
   label: string;
   icon: LucideIcon;
   section: "primary" | "secondary";
+  personalOnly?: boolean;
 };
-
-type WorkspaceSubNavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  adminOnly?: boolean;
-};
-
-const workspaceSubNav: WorkspaceSubNavItem[] = [
-  { href: "", label: "Overview", icon: LayoutDashboard },
-  { href: "/meetings", label: "Meetings", icon: Video },
-  { href: "/action-items", label: "Action Items", icon: CheckSquare },
-  { href: "/members", label: "Members", icon: Users },
-  { href: "/requests", label: "Requests", icon: ClipboardList, adminOnly: true },
-  { href: "/settings", label: "Settings", icon: Settings },
-];
 
 const navigation: DashboardNavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Grid2x2, section: "primary" },
@@ -55,9 +37,9 @@ const navigation: DashboardNavItem[] = [
   { href: "/dashboard/reports", label: "Reports", icon: FileText, section: "primary" },
   { href: "/dashboard/action-items", label: "Action Items", icon: CheckSquare, section: "primary" },
   { href: "/dashboard/integrations", label: "Integrations", icon: Link2, section: "primary" },
-  { href: "/dashboard/history", label: "History", icon: Clock3, section: "primary" },
-  { href: "/dashboard/workspaces", label: "Workspace", icon: UsersRound, section: "primary" },
-  { href: "/dashboard/tools", label: "Tools", icon: Wrench, section: "secondary" },
+  { href: "/dashboard/history", label: "History", icon: Clock3, section: "primary", personalOnly: true },
+  { href: "/dashboard/workspaces", label: "Workspace", icon: UsersRound, section: "primary", personalOnly: true },
+  { href: "/dashboard/tools", label: "Tools", icon: Wrench, section: "secondary", personalOnly: true },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, section: "secondary" },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard, section: "secondary" }
 ];
@@ -88,104 +70,21 @@ function getInitials(value: string | null, email: string) {
     .join("");
 }
 
-type WorkspaceSubNavState = {
-  isAdmin: boolean;
-  pendingCount: number;
-};
-
-function WorkspaceSubNav({ workspaceId, pathname }: { workspaceId: string; pathname: string }) {
-  const [state, setState] = useState<WorkspaceSubNavState>({ isAdmin: false, pendingCount: 0 });
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadWorkspaceData() {
-      try {
-        // Fetch workspace details including current user's role
-        const wsRes = await fetch(`/api/workspaces/${workspaceId}`, { cache: "no-store" });
-        if (!wsRes.ok) return;
-
-        const wsData = (await wsRes.json()) as { workspace?: { currentUserRole?: string } };
-        const role = wsData.workspace?.currentUserRole ?? "";
-        const isAdmin = ["admin", "owner"].includes(role);
-
-        if (isAdmin) {
-          // Fetch pending requests count
-          const reqRes = await fetch(`/api/workspace/${workspaceId}/move-requests`, { cache: "no-store" });
-          if (reqRes.ok) {
-            const reqData = (await reqRes.json()) as { moveRequests?: unknown[] };
-            const pendingCount = reqData.moveRequests?.length ?? 0;
-            if (isMounted) setState({ isAdmin: true, pendingCount });
-          } else if (isMounted) {
-            setState({ isAdmin: true, pendingCount: 0 });
-          }
-        } else if (isMounted) {
-          setState({ isAdmin: false, pendingCount: 0 });
-        }
-      } catch {
-        // silently ignore
-      }
-    }
-
-    void loadWorkspaceData();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [workspaceId]);
-
-  const baseHref = `/dashboard/workspace/${workspaceId}`;
-
-  return (
-    <div className="mt-4">
-      <p className="mb-2 px-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-        Workspace
-      </p>
-      <nav className="space-y-1">
-        {workspaceSubNav.map((item) => {
-          if (item.adminOnly && !state.isAdmin) return null;
-
-          const href = `${baseHref}${item.href}` as Route;
-          const isActive = item.href === ""
-            ? pathname === baseHref || pathname === `${baseHref}/`
-            : pathname === href || pathname.startsWith(`${href}/`);
-          const Icon = item.icon;
-          const showBadge = item.label === "Requests" && state.isAdmin && state.pendingCount > 0;
-
-          return (
-            <Link
-              key={item.label}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium text-[#e2e8f0] transition-colors hover:bg-white/10",
-                isActive && "bg-[#6c63ff] text-white hover:bg-[#6c63ff]"
-              )}
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{item.label}</span>
-              {showBadge && (
-                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
-                  {state.pendingCount > 99 ? "99+" : state.pendingCount}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="my-4 h-px bg-white/10" />
-    </div>
-  );
-}
-
 export function DashboardSidebar({ profile }: DashboardSidebarProps) {
   const pathname = usePathname();
+  const { activeWorkspace, activeWorkspaceId } = useWorkspaceContext();
   const [subscription, setSubscription] = useState<SubscriptionBadgeState>({ plan: profile.plan, trialDaysLeft: 0 });
-  const primaryItems = navigation.filter((item) => item.section === "primary");
-  const secondaryItems = navigation.filter((item) => item.section === "secondary");
 
-  // Detect workspace context: /dashboard/workspace/[workspaceId]/*
-  const workspaceMatch = pathname.match(/^\/dashboard\/workspace\/([^/]+)/);
-  const activeWorkspaceId = workspaceMatch?.[1] ?? null;
+  // Show personal-only items when workspace type is 'personal' or no workspace is active
+  const showPersonalItems = activeWorkspace === null || activeWorkspace.type === "personal";
+
+  const visibleItems = navigation.filter((item) => {
+    if (item.personalOnly && !showPersonalItems) return false;
+    return true;
+  });
+
+  const primaryItems = visibleItems.filter((item) => item.section === "primary");
+  const secondaryItems = visibleItems.filter((item) => item.section === "secondary");
 
   useEffect(() => {
     let isMounted = true;
@@ -264,13 +163,9 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
         <WorkspaceSwitcher />
       </div>
 
-      {activeWorkspaceId && (
-        <WorkspaceSubNav workspaceId={activeWorkspaceId} pathname={pathname} />
-      )}
-
-      <nav className="space-y-1">
+      <nav className="mt-4 space-y-1">
         <p className="mb-2 px-4 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-          Personal
+          Navigation
         </p>
         {primaryItems.map((item) => {
           const Icon = item.icon;
@@ -290,6 +185,19 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
             </Link>
           );
         })}
+
+        {activeWorkspaceId !== null && (
+          <Link
+            href={"/dashboard/workspace" as Route}
+            className={cn(
+              "flex items-center gap-3 rounded-full px-4 py-3 text-sm font-medium text-[#e2e8f0] transition-colors hover:bg-white/10",
+              (pathname === "/dashboard/workspace" || pathname.startsWith("/dashboard/workspace/")) && "bg-[#6c63ff] text-white hover:bg-[#6c63ff]"
+            )}
+          >
+            <UsersRound className="h-4 w-4" />
+            Manage Workspace
+          </Link>
+        )}
       </nav>
 
       <nav className="space-y-1">

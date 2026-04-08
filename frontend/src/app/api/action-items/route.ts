@@ -1,11 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
-import { and, count, desc, eq, gte, ilike } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, inArray, or } from "drizzle-orm";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { db } from "@/lib/db/client";
-import { actionItems } from "@/db/schema";
+import { actionItems, workspaceMembers } from "@/db/schema";
+import { meetingSessions } from "@/db/schema/meeting-sessions";
 import { canUseActionItems } from "@/lib/subscription";
 import { getUserSubscription } from "@/lib/subscription.server";
 import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
@@ -43,19 +44,76 @@ export async function GET(request: Request) {
     const firstName = (searchParams.get("firstName") ?? "").trim().toLowerCase();
     const source = searchParams.get("source") ?? "all";
 
-    const conditions = workspaceId
-      ? [eq(actionItems.workspaceId, workspaceId), eq(actionItems.userId, user.id)]
-      : [eq(actionItems.userId, user.id)];
+    // Build ownership conditions based on mode
+    let ownershipCondition;
+    if (workspaceId) {
+      // Workspace mode: check user's role to determine visibility scope
+      const [membership] = await database
+        .select({ role: workspaceMembers.role })
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, workspaceId),
+            eq(workspaceMembers.userId, user.id),
+            eq(workspaceMembers.status, "active")
+          )
+        )
+        .limit(1);
+
+      const role = membership?.role ?? "member";
+      const isAdminOrOwner = role === "admin" || role === "owner";
+
+      if (isAdminOrOwner) {
+        // Admin/owner: all items in the workspace
+        ownershipCondition = eq(actionItems.workspaceId, workspaceId);
+      } else {
+        // Member: items they own, or from meetings they participated in (via meetingSessions.userId)
+        const participatedMeetingIds = await database
+          .select({ id: meetingSessions.id })
+          .from(meetingSessions)
+          .where(eq(meetingSessions.userId, user.id));
+        const meetingIdList = participatedMeetingIds.map((m) => m.id);
+
+        ownershipCondition = and(
+          eq(actionItems.workspaceId, workspaceId),
+          meetingIdList.length > 0
+            ? or(
+                eq(actionItems.userId, user.id),
+                inArray(actionItems.meetingId, meetingIdList)
+              )
+            : eq(actionItems.userId, user.id)
+        );
+      }
+    } else {
+      // Personal mode: items owned by the user, or from meetings they participated in
+      const participatedMeetingIds = await database
+        .select({ id: meetingSessions.id })
+        .from(meetingSessions)
+        .where(eq(meetingSessions.userId, user.id));
+      const meetingIdList = participatedMeetingIds.map((m) => m.id);
+
+      ownershipCondition = meetingIdList.length > 0
+        ? or(
+            eq(actionItems.userId, user.id),
+            inArray(actionItems.meetingId, meetingIdList)
+          )
+        : eq(actionItems.userId, user.id);
+    }
+
+    const conditions = [ownershipCondition];
 
     // Tab filters
     if (tab === "high_priority") {
       conditions.push(eq(actionItems.priority, "High"));
-    } else if (tab === "my_items" && firstName) {
-      conditions.push(ilike(actionItems.owner, `%${firstName}%`));
     } else if (tab === "this_week") {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       conditions.push(gte(actionItems.createdAt, sevenDaysAgo));
+    }
+
+    // Apply firstName filter independently of tab
+    if (firstName) {
+      conditions.push(ilike(actionItems.owner, `%${firstName}%`));
     }
 
     // Source filter
@@ -108,6 +166,7 @@ export async function GET(request: Request) {
       }
     });
   } catch (error) {
+    console.error("[action-items GET] Error:", error);
     if (isMissingDatabaseRelationError(error)) {
       return apiError(
         "Your database tables are not set up yet. Run your database migrations, then try again.",

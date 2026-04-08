@@ -34,33 +34,33 @@ export async function resolveWorkspaceIdForRequest(
   userId: string
 ) {
   if (!request) {
-    return "test-workspace";
+    return null;
   }
 
   const requestedWorkspaceId = request.headers.get("x-workspace-id")?.trim() ?? "";
 
-  if (requestedWorkspaceId) {
-    const database = getDbOrThrow();
-    const [membership] = await database
-      .select({
-        workspaceId: workspaceMembers.workspaceId
-      })
-      .from(workspaceMembers)
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, requestedWorkspaceId),
-          eq(workspaceMembers.userId, userId),
-          eq(workspaceMembers.status, "active")
-        )
-      )
-      .limit(1);
-
-    if (!membership) {
-      return null;
-    }
-
-    return requestedWorkspaceId;
+  if (!requestedWorkspaceId) {
+    return null;
   }
 
-  return getFirstActiveWorkspaceIdForUser(userId);
+  const database = getDbOrThrow();
+  const [membership] = await database
+    .select({
+      workspaceId: workspaceMembers.workspaceId
+    })
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, requestedWorkspaceId),
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.status, "active")
+      )
+    )
+    .limit(1);
+
+  if (!membership) {
+    return null;
+  }
+
+  return requestedWorkspaceId;
 }

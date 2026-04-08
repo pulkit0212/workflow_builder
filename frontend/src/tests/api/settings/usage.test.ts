@@ -56,6 +56,11 @@ vi.mock("@/lib/subscription", () => ({
   }),
 }));
 
+// Mock workspace resolver
+vi.mock("@/lib/workspaces/server", () => ({
+  resolveWorkspaceIdForRequest: vi.fn().mockResolvedValue(null),
+}));
+
 describe("GET /api/settings/usage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -69,12 +74,13 @@ describe("GET /api/settings/usage", () => {
       const { auth } = await import("@clerk/nextjs/server");
       vi.mocked(auth).mockResolvedValue({ userId: null } as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       expect(response.status).toBe(401);
       
       const data = await response.json();
       expect(data.success).toBe(false);
-      expect(data.error).toBe("Unauthorized.");
+      expect(data.message).toBe("Unauthorized.");
     });
   });
 
@@ -100,7 +106,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       expect(response.status).toBe(200);
       
       const data = await response.json();
@@ -138,7 +145,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(data.meetingsThisMonth).toBeGreaterThanOrEqual(0);
@@ -169,7 +177,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(data.meetingsThisMonth).toBeLessThanOrEqual(data.meetingsAllTime);
@@ -190,7 +199,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(typeof data.memberSince).toBe("string");
@@ -216,7 +226,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(typeof data.meetingsThisMonth).toBe("number");
@@ -237,7 +248,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(typeof data.meetingsAllTime).toBe("number");
@@ -262,7 +274,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(typeof data.transcriptsGenerated).toBe("number");
@@ -287,7 +300,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(typeof data.actionItemsCreated).toBe("number");
@@ -312,7 +326,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(typeof data.documentsAnalyzed).toBe("number");
@@ -337,7 +352,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       const data = await response.json();
       
       expect(data.limits).toBeDefined();
@@ -367,7 +383,8 @@ describe("GET /api/settings/usage", () => {
       });
       vi.mocked(db.select).mockImplementation(mockSelect as any);
 
-      const response = await GET();
+      const mockReq = new Request("http://localhost/api/settings/usage");
+      const response = await GET(mockReq);
       expect(response.status).toBe(500);
       
       const data = await response.json();

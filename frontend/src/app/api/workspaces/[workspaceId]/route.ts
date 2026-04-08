@@ -9,6 +9,10 @@ import {
   listWorkspaceMeetings,
   listWorkspaceMembers
 } from "@/lib/db/queries/workspaces";
+import { db } from "@/lib/db/client";
+import { workspaces, workspaceMembers } from "@/db/schema";
+import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 
 export async function GET(
   _request: Request,
@@ -72,5 +76,91 @@ export async function GET(
     });
   } catch (error) {
     return apiError(error instanceof Error ? error.message : "Failed to load workspace.", 500);
+  }
+}
+
+const updateWorkspaceSchema = z.object({
+  name: z.string().min(1).max(255)
+});
+
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ workspaceId: string }> }
+) {
+  const { userId } = await auth();
+
+  if (!userId) {
+    return apiError("Unauthorized.", 401);
+  }
+
+  const { workspaceId } = await context.params;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return apiError("Request body must be valid JSON.", 400);
+  }
+
+  const parsed = updateWorkspaceSchema.safeParse(body);
+  if (!parsed.success) {
+    return apiError("Invalid workspace input.", 400, parsed.error.flatten());
+  }
+
+  try {
+    await ensureDatabaseReady();
+    const user = await syncCurrentUserToDatabase(userId);
+    const membership = await getWorkspaceMembership(workspaceId, user.id);
+
+    if (!membership || membership.role !== "owner") {
+      return apiError("Only the workspace owner can update the workspace name.", 403);
+    }
+
+    if (!db) throw new Error("DATABASE_URL is not configured.");
+
+    const [updated] = await db
+      .update(workspaces)
+      .set({ name: parsed.data.name, updatedAt: new Date() })
+      .where(eq(workspaces.id, workspaceId))
+      .returning();
+
+    if (!updated) {
+      return apiError("Workspace not found.", 404);
+    }
+
+    return apiSuccess({ success: true, workspace: { id: updated.id, name: updated.name } });
+  } catch (error) {
+    return apiError(error instanceof Error ? error.message : "Failed to update workspace.", 500);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ workspaceId: string }> }
+) {
+  const { userId } = await auth();
+
+  if (!userId) {
+    return apiError("Unauthorized.", 401);
+  }
+
+  const { workspaceId } = await context.params;
+
+  try {
+    await ensureDatabaseReady();
+    const user = await syncCurrentUserToDatabase(userId);
+    const membership = await getWorkspaceMembership(workspaceId, user.id);
+
+    if (!membership || membership.role !== "owner") {
+      return apiError("Only the workspace owner can delete the workspace.", 403);
+    }
+
+    if (!db) throw new Error("DATABASE_URL is not configured.");
+
+    await db.delete(workspaces).where(eq(workspaces.id, workspaceId));
+
+    return apiSuccess({ success: true });
+  } catch (error) {
+    return apiError(error instanceof Error ? error.message : "Failed to delete workspace.", 500);
   }
 }

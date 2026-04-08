@@ -118,6 +118,7 @@ export async function listWorkspacesForUser(userId: string) {
       return {
         id: workspace.id,
         name: workspace.name,
+        type: workspace.type,
         ownerId: workspace.ownerId,
         createdAt: workspace.createdAt,
         role: membership.role,

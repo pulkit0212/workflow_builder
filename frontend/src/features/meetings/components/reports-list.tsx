@@ -12,8 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import { getMeetingSessionProviderLabel, getMeetingSessionStatusLabel } from "@/features/meeting-assistant/helpers";
-import { fetchMeetingReports } from "@/features/meetings/api";
+import type { ReportsResponse } from "@/features/meetings/api";
 import { formatMeetingDateTime, formatMeetingDuration, getMeetingSummaryPreview } from "@/features/meetings/helpers";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
 
 type StatusFilter = "all" | "completed" | "recording" | "failed";
 type DateFilter = "all" | "week" | "month";
@@ -183,6 +185,8 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
 }
 
 export function ReportsList() {
+  const { activeWorkspaceId } = useWorkspaceContext();
+  const workspaceFetch = useWorkspaceFetch();
   const [reports, setReports] = useState<MeetingSessionRecord[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -207,12 +211,36 @@ export function ReportsList() {
     date: DateFilter;
     search: string;
   }) {
-    return fetchMeetingReports(params);
+    const query = new URLSearchParams({
+      page: String(params.page),
+      limit: String(params.limit),
+      status: params.status,
+      date: params.date,
+      search: params.search,
+    });
+    const response = await workspaceFetch(`/api/meetings/reports?${query.toString()}`, {
+      cache: "no-store",
+    });
+    const payload = (await response.json()) as ReportsResponse | { success: false; message: string; details?: { error?: string } };
+
+    if (!response.ok) {
+      const error = new Error("message" in payload ? payload.message : "Failed to load meeting reports.");
+      (error as Error & { status?: number }).status = response.status;
+      if (payload && typeof payload === "object" && "details" in payload && payload.details && typeof payload.details === "object") {
+        const details = payload.details as { error?: string };
+        if (details.error) {
+          (error as Error & { code?: string }).code = details.error;
+        }
+      }
+      throw error;
+    }
+
+    return payload as ReportsResponse;
   }
 
   useEffect(() => {
     setPage(1);
-  }, [normalizedSearch, status, date]);
+  }, [normalizedSearch, status, date, activeWorkspaceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,7 +285,9 @@ export function ReportsList() {
     return () => {
       cancelled = true;
     };
-  }, [date, normalizedSearch, page, status]);
+    // Re-fetch when activeWorkspaceId changes (Req 5.4)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [date, normalizedSearch, page, status, activeWorkspaceId]);
 
   async function handleRetry() {
     setIsLoading(true);

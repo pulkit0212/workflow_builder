@@ -27,6 +27,7 @@ import type { MeetingDetailRecord } from "@/features/meetings/types";
 import { useSessionPolling } from "@/hooks/useSessionPolling";
 import { cn } from "@/lib/utils";
 import { ShareToWorkspaceButton } from "@/features/meetings/components/share-to-workspace-button";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
 
 type MeetingDetailProps = {
   meetingId: string;
@@ -354,7 +355,10 @@ function getPlatformConfig(platform: string) {
 
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const router = useRouter();
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const [meeting, setMeeting] = useState<MeetingDetailRecord | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [isMoveLoading, startMoveTransition] = useTransition();
   const [activeTab, setActiveTab] = useState<DetailTab>("notes");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -596,6 +600,28 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     }
   }
 
+  function handleMoveToWorkspace() {
+    if (!activeWorkspaceId) return;
+    setMoveError(null);
+
+    startMoveTransition(async () => {
+      try {
+        const res = await fetch(`/api/meetings/${meetingId}/request-move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ workspaceId: activeWorkspaceId }),
+        });
+
+        if (!res.ok) {
+          const data = (await res.json()) as { message?: string };
+          setMoveError(data.message ?? "Failed to submit move request.");
+        }
+      } catch {
+        setMoveError("Failed to submit move request. Please try again.");
+      }
+    });
+  }
+
   if (isLoading) {
     return <MeetingDetailSkeleton />;
   }
@@ -666,12 +692,29 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         description="From meetings to meaningful work."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <ShareToWorkspaceButton
-              meetingId={meeting.meetingSessionId ?? meeting.id}
-              workspaceMoveStatus={meeting.workspaceMoveStatus}
-              workspaceId={meeting.workspaceId}
-              isOwner={meeting.isOwner}
-            />
+            {/* Workspace controls — driven by WorkspaceContext (Req 10.1, 10.2, 10.5) */}
+            {activeWorkspaceId !== null && meeting.workspaceId === activeWorkspaceId ? (
+              /* Meeting belongs to the active workspace — show badge */
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f3ff] px-3 py-1 text-sm font-medium text-[#6c63ff]">
+                {activeWorkspace?.name ?? "Workspace"}
+              </span>
+            ) : activeWorkspaceId !== null && meeting.workspaceId !== activeWorkspaceId ? (
+              /* Personal meeting in workspace mode — show move button */
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={handleMoveToWorkspace}
+                  disabled={isMoveLoading}
+                >
+                  {isMoveLoading ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
+                  Move to workspace
+                </Button>
+                {moveError ? (
+                  <span className="text-sm text-[#dc2626]">{moveError}</span>
+                ) : null}
+              </>
+            ) : null /* activeWorkspaceId is null — show no workspace controls */}
             <Button asChild variant="ghost">
               <Link href="/dashboard/meetings">
                 <ArrowLeft className="h-4 w-4" />

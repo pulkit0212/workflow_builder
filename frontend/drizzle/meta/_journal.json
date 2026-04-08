@@ -15,6 +15,20 @@
       "when": 1775543651317,
       "tag": "0001_chilly_champions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775630000000,
+      "tag": "0002_add_workspace_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775664411471,
+      "tag": "0003_safe_ronan",
+      "breakpoints": true
     }
   ]
 }

@@ -9,12 +9,15 @@ import { CalendarDays, CheckCircle2, ClipboardList, Video } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { fetchJoinedMeetings, fetchTodayMeetings } from "@/features/meetings/api";
+import { fetchTodayMeetings } from "@/features/meetings/api";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
 import { getMeetingDisplayStatus, findSessionForMeeting } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 import { cn } from "@/lib/utils";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
+import type { MeetingSessionListResponse, MeetingSessionErrorResponse } from "@/features/meeting-assistant/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -169,17 +172,28 @@ function StatCard({
 
 export default function DashboardPage() {
   const { user } = useUser();
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
+  const workspaceFetch = useWorkspaceFetch();
   const [reports, setReports] = useState<MeetingSessionRecord[]>([]);
   const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  async function fetchJoinedMeetingsWithContext(): Promise<MeetingSessionRecord[]> {
+    const response = await workspaceFetch("/api/meetings/joined", { cache: "no-store" });
+    const payload = (await response.json()) as MeetingSessionListResponse | MeetingSessionErrorResponse;
+    if (!response.ok || !payload.success) {
+      throw new Error("message" in payload ? payload.message : "Failed to load joined meetings.");
+    }
+    return payload.meetings;
+  }
 
   async function loadDashboard() {
     setIsLoading(true);
     setError(null);
     try {
       const [joined, todayRes] = await Promise.all([
-        fetchJoinedMeetings(),
+        fetchJoinedMeetingsWithContext(),
         fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
       ]);
       setReports(joined);
@@ -204,7 +218,7 @@ export default function DashboardPage() {
       setError(null);
       try {
         const [joined, todayRes] = await Promise.all([
-          fetchJoinedMeetings(),
+          fetchJoinedMeetingsWithContext(),
           fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
         ]);
         if (!mounted) return;
@@ -224,7 +238,9 @@ export default function DashboardPage() {
       }
     })();
     return () => { mounted = false; };
-  }, []);
+    // Re-fetch when activeWorkspaceId changes (Req 4.4)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
 
   const greeting = useMemo(() => getGreeting(), []);
 
@@ -309,6 +325,11 @@ export default function DashboardPage() {
           <h1 className="text-[24px] font-bold text-gray-900">
             {greeting}, {user?.firstName || "there"} 👋
           </h1>
+          {activeWorkspaceId && activeWorkspace ? (
+            <p className="text-sm font-medium text-[#6c63ff]">
+              {activeWorkspace.name}
+            </p>
+          ) : null}
           <p className="text-sm text-gray-500">Here&apos;s your meeting intelligence overview.</p>
         </div>
 

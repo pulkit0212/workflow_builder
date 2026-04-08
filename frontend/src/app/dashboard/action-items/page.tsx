@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -124,6 +126,8 @@ function StatusDropdown({ itemId, current, onUpdate }: { itemId: string; current
 
 function ActionItemsContent() {
   const { user } = useUser();
+  const { activeWorkspaceId } = useWorkspaceContext();
+  const workspaceFetch = useWorkspaceFetch();
   const [items, setItems] = useState<ActionItemRow[]>([]);
   const [activeTab, setActiveTab] = useState<ActionItemTab>("all");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -142,7 +146,7 @@ function ActionItemsContent() {
     setUpgradeRequired(false);
     try {
       const params = new URLSearchParams({ tab, page: String(page), limit: String(ITEMS_PER_PAGE), firstName: user.firstName || "", source: src });
-      const res = await fetch(`/api/action-items?${params}`, { cache: "no-store" });
+      const res = await workspaceFetch(`/api/action-items?${params}`, { cache: "no-store" });
       const payload = await res.json() as { success: boolean; items: ActionItemRow[]; pagination: typeof pagination; message?: string };
       if (!res.ok || !payload.success) {
         if (res.status === 403) { setUpgradeRequired(true); return; }
@@ -159,7 +163,7 @@ function ActionItemsContent() {
     }
   }
 
-  useEffect(() => { void loadItems(); }, [activeTab, currentPage, sourceFilter, user]);
+  useEffect(() => { void loadItems(); }, [activeTab, currentPage, sourceFilter, user, activeWorkspaceId]);
 
   function handleTabChange(tab: ActionItemTab) { setActiveTab(tab); setCurrentPage(1); }
   function handleSourceChange(src: SourceFilter) { setSourceFilter(src); setCurrentPage(1); }

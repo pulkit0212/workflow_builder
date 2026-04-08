@@ -192,13 +192,27 @@ describe("Property 2c: Personal routes with valid x-workspace-id return 200 work
   it("PRESERVE 3.9 - GET /api/action-items with valid x-workspace-id returns 200 workspace-scoped", async () => {
     mockResolveWorkspaceId.mockResolvedValue(VALID_WORKSPACE_ID);
     mockGetSubscription.mockResolvedValue({ plan: "pro" });
+    // Route makes multiple db.select() calls for workspace mode (admin):
+    // 1. Membership role check -> [{ role: "admin" }]
+    // 2+3. Promise.all: main items query + count query (awaited directly)
+    let callCount = 0;
     mockDbSelect.mockImplementation(() => ({
       from: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          orderBy: vi.fn().mockReturnValue({
-            limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([]) }),
-          }),
-          limit: vi.fn().mockResolvedValue([{ count: 0 }]),
+        where: vi.fn().mockImplementation(() => {
+          callCount++;
+          if (callCount === 1) {
+            // Membership check: .where().limit()
+            return { limit: vi.fn().mockResolvedValue([{ role: "admin" }]) };
+          }
+          // Main items query (.where().orderBy().limit().offset()) and
+          // count query (.where() awaited directly) - support both patterns
+          const directResult = Promise.resolve([{ count: 0 }]);
+          return Object.assign(directResult, {
+            orderBy: vi.fn().mockReturnValue({
+              limit: vi.fn().mockReturnValue({ offset: vi.fn().mockResolvedValue([]) }),
+            }),
+            limit: vi.fn().mockResolvedValue([{ count: 0 }]),
+          });
         }),
       }),
     }));

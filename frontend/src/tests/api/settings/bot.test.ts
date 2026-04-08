@@ -63,7 +63,7 @@ describe("POST /api/settings/bot", () => {
       
       const data = await response.json();
       expect(data.success).toBe(false);
-      expect(data.error).toBe("Unauthorized.");
+      expect(data.message).toBe("Unauthorized.");
     });
   });
 
@@ -89,7 +89,7 @@ describe("POST /api/settings/bot", () => {
       
       const data = await response.json();
       expect(data.success).toBe(false);
-      expect(data.error).toContain("Bot display name cannot be empty");
+      expect(data.message).toContain("Bot display name cannot be empty");
     });
 
     it("should reject null botDisplayName", async () => {

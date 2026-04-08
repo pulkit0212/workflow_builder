@@ -27,6 +27,42 @@ const nextConfig: NextConfig = {
   // Monorepo: lockfile at repo root + frontend — pin tracing to repo root to silence warnings.
   outputFileTracingRoot: path.join(__dirname, ".."),
   typedRoutes: true,
+  async redirects() {
+    return [
+      // Removed workspace-specific sub-pages → unified pages (Req 9.9)
+      // Static paths must come before dynamic :workspaceId patterns
+      {
+        source: "/dashboard/workspace/action-items",
+        destination: "/dashboard/action-items",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/workspaces",
+        destination: "/dashboard/workspace",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/workspace/:workspaceId/meetings",
+        destination: "/dashboard/meetings",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/workspace/:workspaceId/action-items",
+        destination: "/dashboard/action-items",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/workspace/:workspaceId/overview",
+        destination: "/dashboard",
+        permanent: true,
+      },
+      {
+        source: "/dashboard/workspace/:workspaceId",
+        destination: "/dashboard/workspace",
+        permanent: true,
+      },
+    ];
+  },
   serverExternalPackages: [
     "playwright",
     "playwright-core",
