@@ -13,6 +13,7 @@ const pageTitles: Array<{ match: (pathname: string) => boolean; title: string }>
   { match: (pathname) => pathname.startsWith("/dashboard/action-items"), title: "Action Items" },
   { match: (pathname) => pathname.startsWith("/dashboard/history"), title: "History" },
   { match: (pathname) => pathname.startsWith("/dashboard/tools"), title: "Tools" },
+  { match: (pathname) => pathname.startsWith("/dashboard/workspaces"), title: "Workspaces" },
   { match: (pathname) => pathname.startsWith("/dashboard/settings"), title: "Settings" },
   { match: (pathname) => pathname.startsWith("/dashboard/billing"), title: "Billing" },
   { match: (pathname) => pathname.startsWith("/dashboard/meeting-assistant"), title: "Meeting Assistant" }

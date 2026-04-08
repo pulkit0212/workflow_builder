@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, ilike, or, sql } from "drizzle-orm";
 import { users } from "@/db/schema";
 import { db } from "@/lib/db/client";
 
@@ -47,6 +47,36 @@ export async function getUserByEmail(email: string) {
   });
 
   return user ?? null;
+}
+
+export async function searchUsers(query: string, options?: { excludeUserIds?: string[]; limit?: number }) {
+  const database = getDbOrThrow();
+  const normalizedQuery = query.trim();
+
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const searchTerm = `%${normalizedQuery}%`;
+  const limit = Math.min(options?.limit ?? 8, 20);
+
+  const rows = await database
+    .select({
+      id: users.id,
+      name: sql<string>`COALESCE(${users.fullName}, ${users.email})`,
+      email: users.email
+    })
+    .from(users)
+    .where(
+      or(
+        ilike(users.fullName, searchTerm),
+        ilike(users.email, searchTerm)
+      )
+    )
+    .limit(limit);
+
+  const excluded = new Set(options?.excludeUserIds ?? []);
+  return rows.filter((user) => !excluded.has(user.id));
 }
 
 export async function upsertUserByClerkIdentity({

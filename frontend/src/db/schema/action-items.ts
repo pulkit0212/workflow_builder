@@ -1,6 +1,7 @@
 import { boolean, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { meetingSessions } from "@/db/schema/meeting-sessions";
 import { users } from "@/db/schema/users";
+import { workspaces } from "@/db/schema/workspaces";
 
 export const actionItems = pgTable("action_items", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -12,10 +13,12 @@ export const actionItems = pgTable("action_items", {
   status: varchar("status", { length: 50 }).notNull().default("pending"),
   meetingId: uuid("meeting_id").references(() => meetingSessions.id, { onDelete: "cascade" }),
   meetingTitle: text("meeting_title"),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   source: varchar("source", { length: 50 }).notNull().default("meeting"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });

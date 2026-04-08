@@ -30,6 +30,7 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { meetingSessions } from "@/db/schema";
 import { db } from "@/lib/db/client";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 type RouteContext = {
   params: Promise<{
@@ -70,6 +71,7 @@ type AtomicDedupResult =
 
 type AtomicInsertValues = {
   userId: string;
+  workspaceId: string | null;
   provider: "google_meet" | "zoom_web" | "teams_web";
   title: string;
   meetingLink: string;
@@ -83,6 +85,7 @@ type AtomicInsertValues = {
 };
 
 type AtomicUpdateValues = {
+  workspaceId?: string | null;
   externalCalendarEventId?: string | null;
   title?: string;
   meetingLink?: string;
@@ -103,6 +106,7 @@ async function startMeetingSessionAtomic(params: {
   normalizedUrl: string;
   currentSessionId: string | null;
   userId: string;
+  workspaceId: string | null;
   insertValues: AtomicInsertValues;
   updateSessionId?: string;
   updateValues?: AtomicUpdateValues;
@@ -122,10 +126,16 @@ async function startMeetingSessionAtomic(params: {
       .select()
       .from(meetingSessions)
       .where(
-        and(
-          eq(meetingSessions.normalizedMeetingUrl, params.normalizedUrl),
-          inArray(meetingSessions.status, [...ACTIVE_SESSION_STATUSES])
-        )
+        params.workspaceId
+          ? and(
+              eq(meetingSessions.workspaceId, params.workspaceId),
+              eq(meetingSessions.normalizedMeetingUrl, params.normalizedUrl),
+              inArray(meetingSessions.status, [...ACTIVE_SESSION_STATUSES])
+            )
+          : and(
+              eq(meetingSessions.normalizedMeetingUrl, params.normalizedUrl),
+              inArray(meetingSessions.status, [...ACTIVE_SESSION_STATUSES])
+            )
       )
       .limit(1);
 
@@ -137,6 +147,7 @@ async function startMeetingSessionAtomic(params: {
         const [updated] = await tx
           .update(meetingSessions)
           .set({
+            workspaceId: params.workspaceId,
             sharedWithUserIds: [...current, params.userId],
             updatedAt: new Date()
           })
@@ -154,6 +165,7 @@ async function startMeetingSessionAtomic(params: {
       const [updated] = await tx
         .update(meetingSessions)
         .set({
+          ...(uv.workspaceId !== undefined && { workspaceId: uv.workspaceId }),
           ...(uv.externalCalendarEventId !== undefined && { externalCalendarEventId: uv.externalCalendarEventId }),
           ...(uv.title !== undefined && { title: uv.title }),
           ...(uv.meetingLink !== undefined && { meetingLink: uv.meetingLink }),
@@ -182,6 +194,7 @@ async function startMeetingSessionAtomic(params: {
         .insert(meetingSessions)
         .values({
           userId: params.insertValues.userId,
+          workspaceId: params.insertValues.workspaceId,
           provider: params.insertValues.provider,
           title: params.insertValues.title,
           meetingLink: params.insertValues.meetingLink,
@@ -247,22 +260,28 @@ async function resolveGoogleCalendarMeeting(userId: string, meetingId: string) {
 
 async function findLinkedMeetingSessionForCalendarMeeting(params: {
   userId: string;
+  workspaceId: string | null;
   calendarEventId: string;
   meetLink: string;
 }) {
   const byCalendarEventId = await getLatestMeetingSessionByCalendarEventIdForUser(
     params.calendarEventId,
-    params.userId
+    params.userId,
+    params.workspaceId
   );
 
   if (byCalendarEventId) {
     return byCalendarEventId;
   }
 
-  return getLatestMeetingSessionByLinkForUser(params.meetLink, params.userId);
+  return getLatestMeetingSessionByLinkForUser(
+    params.meetLink,
+    params.userId,
+    params.workspaceId
+  );
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { userId } = await auth();
 
   if (!userId) {
@@ -272,6 +291,7 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const { id } = await context.params;
 
     if (isCalendarMeetingId(id)) {
@@ -284,6 +304,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
       const matchedSession = await findLinkedMeetingSessionForCalendarMeeting({
         userId: user.id,
+        workspaceId,
         calendarEventId: calendarMeeting.id,
         meetLink: calendarMeeting.meetLink
       });
@@ -294,13 +315,14 @@ export async function GET(_request: Request, context: RouteContext) {
           ? buildMeetingDetailFromSession({
               routeId: encodeCalendarMeetingId(calendarMeeting.id),
               session: matchedSession,
-              calendarMeeting
+              calendarMeeting,
+              currentUserId: user.id
             })
           : buildMeetingDetailFromCalendarMeeting(calendarMeeting)
       });
     }
 
-    const meeting = await getMeetingSessionByIdForUser(id, user.id);
+    const meeting = await getMeetingSessionByIdForUser(id, user.id, workspaceId);
 
     if (!meeting) {
       return apiError("Meeting not found.", 404);
@@ -309,7 +331,8 @@ export async function GET(_request: Request, context: RouteContext) {
     return apiSuccess({
       success: true,
       meeting: buildMeetingDetailFromSession({
-        session: meeting
+        session: meeting,
+        currentUserId: user.id
       })
     });
   } catch (error) {
@@ -341,6 +364,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const subscription = await getUserSubscription(user.clerkUserId);
     const limits = getPlanLimits(subscription.plan);
     const { id } = await context.params;
@@ -376,6 +400,7 @@ export async function POST(request: Request, context: RouteContext) {
 
       const existingSession = await findLinkedMeetingSessionForCalendarMeeting({
         userId: user.id,
+        workspaceId,
         calendarEventId: calendarMeeting.id,
         meetLink: calendarMeeting.meetLink
       });
@@ -397,8 +422,10 @@ export async function POST(request: Request, context: RouteContext) {
         normalizedUrl: normalizedMeetingUrl ?? meetingUrl,
         currentSessionId: existingSession?.id ?? null,
         userId: user.id,
+        workspaceId,
         insertValues: {
           userId: user.id,
+          workspaceId,
           provider: calendarMeeting.provider,
           externalCalendarEventId: calendarMeeting.id,
           title: calendarMeeting.title,
@@ -412,6 +439,7 @@ export async function POST(request: Request, context: RouteContext) {
         updateSessionId: existingSession?.id,
         updateValues: existingSession
           ? {
+              workspaceId,
               externalCalendarEventId: calendarMeeting.id,
               title: calendarMeeting.title,
               meetingLink: meetingUrl,
@@ -430,7 +458,8 @@ export async function POST(request: Request, context: RouteContext) {
           meeting: buildMeetingDetailFromSession({
             routeId: encodeCalendarMeetingId(calendarMeeting.id),
             session: dedup.session,
-            calendarMeeting
+            calendarMeeting,
+            currentUserId: user.id
           }),
           status: "already_recording",
           message: "This meeting is already being recorded. You will receive the summary when complete."
@@ -450,7 +479,8 @@ export async function POST(request: Request, context: RouteContext) {
         meeting: buildMeetingDetailFromSession({
           routeId: encodeCalendarMeetingId(calendarMeeting.id),
           session,
-          calendarMeeting
+          calendarMeeting,
+          currentUserId: user.id
         }),
         status: "bot_starting",
         message: "Artivaa is joining the meeting."
@@ -462,7 +492,7 @@ export async function POST(request: Request, context: RouteContext) {
       return response;
     }
 
-    const meeting = await getMeetingSessionByIdForUser(id, user.id);
+    const meeting = await getMeetingSessionByIdForUser(id, user.id, workspaceId);
 
     if (!meeting) {
       return apiError("Meeting not found.", 404);
@@ -486,8 +516,10 @@ export async function POST(request: Request, context: RouteContext) {
       normalizedUrl: normalizedMeetingUrl ?? meetingUrl,
       currentSessionId: meeting.id,
       userId: user.id,
+      workspaceId,
       insertValues: {
         userId: user.id,
+        workspaceId,
         provider: meeting.provider as "google_meet" | "zoom_web" | "teams_web",
         title: meeting.title,
         meetingLink: meetingUrl,
@@ -496,6 +528,7 @@ export async function POST(request: Request, context: RouteContext) {
       },
       updateSessionId: meeting.id,
       updateValues: {
+        workspaceId,
         meetingLink: meetingUrl,
         normalizedMeetingUrl,
         claimToken: null,
@@ -507,7 +540,8 @@ export async function POST(request: Request, context: RouteContext) {
       return apiSuccess({
         success: true,
         meeting: buildMeetingDetailFromSession({
-          session: dedup.session
+          session: dedup.session,
+          currentUserId: user.id
         }),
         status: "already_recording",
         message: "This meeting is already being recorded. You will receive the summary when complete."
@@ -525,7 +559,8 @@ export async function POST(request: Request, context: RouteContext) {
     const response = apiSuccess({
       success: true,
       meeting: buildMeetingDetailFromSession({
-        session
+        session,
+        currentUserId: user.id
       }),
       status: "bot_starting",
       message: "Artivaa is joining the meeting."
@@ -571,19 +606,23 @@ export async function PATCH(request: Request, context: RouteContext) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const { id } = await context.params;
 
     if (isCalendarMeetingId(id)) {
       return apiError("Calendar-backed meetings cannot be patched directly.", 400);
     }
 
-    const existingSession = await getMeetingSessionByIdForUser(id, user.id);
+    const existingSession = await getMeetingSessionByIdForUser(id, user.id, workspaceId);
 
     if (!existingSession) {
       return apiError("Meeting not found.", 404);
     }
 
-    const session = await updateMeetingSession(id, user.id, parsed.data);
+    const session = await updateMeetingSession(id, user.id, {
+      ...parsed.data,
+      workspaceId: workspaceId ?? null
+    });
     return apiSuccess({
       success: true,
       session: toMeetingSessionRecord(session)

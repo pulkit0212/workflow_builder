@@ -9,3 +9,4 @@ export * from "@/db/schema/user-integrations";
 export * from "@/db/schema/integrations";
 export * from "@/db/schema/uploaded-files";
 export * from "@/db/schema/usage-logs";
+export * from "@/db/schema/workspaces";

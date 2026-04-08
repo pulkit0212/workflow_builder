@@ -68,6 +68,7 @@ export const updateMeetingSessionSchema = z.object({
 
 export const meetingSessionRecordSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid().nullable().optional(),
   title: z.string(),
   meetingLink: z.string().url(),
   externalCalendarEventId: z.string().nullable(),

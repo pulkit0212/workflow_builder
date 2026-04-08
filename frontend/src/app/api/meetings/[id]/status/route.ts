@@ -8,6 +8,7 @@ import { getMeetingSessionByIdForUser } from "@/lib/db/queries/meeting-sessions"
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { normalizeMeetingSessionStatus } from "@/features/meetings/server/state-machine";
 import { normalizeMeetingActionItems } from "@/features/meeting-assistant/helpers";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 type RouteContext = {
   params: Promise<{
@@ -28,7 +29,7 @@ function getPlatformFromProvider(provider: string | null | undefined) {
   }
 }
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { userId } = await auth();
 
   if (!userId) {
@@ -44,8 +45,18 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
+    if (!workspaceId) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Workspace is required.",
+        },
+        { status: 400 }
+      );
+    }
     const { id } = await context.params;
-    const session = await getMeetingSessionByIdForUser(id, user.id);
+    const session = await getMeetingSessionByIdForUser(id, user.id, workspaceId);
     const sessionsFile = path.join(process.cwd(), "tmp", "bot-sessions.json");
     let botSession: Record<string, unknown> | null = null;
 

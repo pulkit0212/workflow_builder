@@ -103,6 +103,7 @@ async function createRequiredTables() {
     CREATE TABLE IF NOT EXISTS "meeting_sessions" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "workspace_id" uuid,
       "ai_run_id" uuid REFERENCES "ai_runs"("id") ON DELETE SET NULL,
       "external_calendar_event_id" varchar(255),
       "claim_token" varchar(255),
@@ -126,6 +127,55 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspaces" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "name" varchar(255) NOT NULL,
+      "owner_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      "updated_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_members" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "role" varchar(50) NOT NULL DEFAULT 'member',
+      "status" varchar(50) NOT NULL DEFAULT 'active',
+      "created_at" timestamptz NOT NULL DEFAULT now(),
+      UNIQUE ("workspace_id", "user_id")
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_meetings" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "created_by" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "title" varchar(255) NOT NULL,
+      "status" varchar(50) NOT NULL DEFAULT 'scheduled',
+      "platform" varchar(50) NOT NULL DEFAULT 'manual',
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_join_requests" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "status" varchar(50) NOT NULL DEFAULT 'pending',
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "workspace_members"
+    ADD COLUMN IF NOT EXISTS "status" varchar(50) NOT NULL DEFAULT 'active'
+  `);
+
+  await database.execute(sql`
     CREATE TABLE IF NOT EXISTS "action_items" (
       "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       "task" text NOT NULL,
@@ -134,11 +184,17 @@ async function createRequiredTables() {
       "priority" varchar(20) NOT NULL DEFAULT 'Medium',
       "completed" boolean NOT NULL DEFAULT false,
       "meeting_id" uuid REFERENCES "meeting_sessions"("id") ON DELETE CASCADE,
+      "workspace_id" uuid REFERENCES "workspaces"("id") ON DELETE SET NULL,
       "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
       "source" varchar(50) NOT NULL DEFAULT 'meeting',
       "created_at" timestamptz NOT NULL DEFAULT now(),
       "updated_at" timestamptz NOT NULL DEFAULT now()
     )
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "action_items"
+    ADD COLUMN IF NOT EXISTS "workspace_id" uuid REFERENCES "workspaces"("id") ON DELETE SET NULL
   `);
 
   await database.execute(sql`
@@ -150,8 +206,30 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    CREATE INDEX IF NOT EXISTS "action_items_workspace_id_idx" ON "action_items" ("workspace_id")
+  `);
+
+  await database.execute(sql`
     ALTER TABLE "meeting_sessions"
     ADD COLUMN IF NOT EXISTS "external_calendar_event_id" varchar(255)
+  `);
+
+  await database.execute(sql`
+    ALTER TABLE "meeting_sessions"
+    ADD COLUMN IF NOT EXISTS "workspace_id" uuid REFERENCES "workspaces"("id") ON DELETE SET NULL
+  `);
+
+  await database.execute(sql`
+    DO $$
+    BEGIN
+      ALTER TABLE "meeting_sessions"
+      ADD CONSTRAINT "meeting_sessions_workspace_id_fkey"
+      FOREIGN KEY ("workspace_id")
+      REFERENCES "workspaces"("id")
+      ON DELETE SET NULL;
+    EXCEPTION
+      WHEN duplicate_object THEN NULL;
+    END $$;
   `);
 
   await database.execute(sql`

@@ -47,6 +47,10 @@ export type MeetingDetailRecord = {
   insights: Record<string, unknown> | null;
   chapters: Array<Record<string, unknown>> | null;
   canJoinAndCapture: boolean;
+  // Workspace sharing fields
+  workspaceMoveStatus: string | null;
+  workspaceId: string | null;
+  isOwner: boolean;
 };
 
 export type MeetingDetailResponse = {

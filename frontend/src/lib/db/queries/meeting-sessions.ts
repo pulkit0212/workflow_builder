@@ -1,5 +1,5 @@
 import { and, count, desc, eq, ilike, inArray, ne, or, sql } from "drizzle-orm";
-import { meetingSessions } from "@/db/schema";
+import { meetingSessions, workspaceMembers } from "@/db/schema";
 import { db } from "@/lib/db/client";
 
 function getDbOrThrow() {
@@ -10,28 +10,85 @@ function getDbOrThrow() {
   return db;
 }
 
-export async function getMeetingSessionByIdForUser(sessionId: string, userId: string) {
+/**
+ * Retrieves a meeting session by ID, enforcing the visibility access matrix:
+ *
+ * - private  → owner (userId) OR workspace member with role admin/owner
+ * - workspace → any active workspace member
+ * - shared   → owner OR admin/owner member OR user in sharedWithUserIds
+ *
+ * Returns null if the session doesn't exist or the user is not allowed to access it.
+ * Callers should treat null as either 404 (not found) or 403 (forbidden) based on
+ * whether the raw session exists — use `getMeetingSessionById` to distinguish.
+ */
+export async function getMeetingSessionByIdForUser(
+  sessionId: string,
+  userId: string,
+  workspaceId?: string | null
+): Promise<(typeof meetingSessions.$inferSelect) | null> {
   const database = getDbOrThrow();
 
+  // Fetch the session (must belong to the given workspace if provided, otherwise just by id)
   const [session] = await database
     .select()
     .from(meetingSessions)
     .where(
+      workspaceId
+        ? and(
+            eq(meetingSessions.id, sessionId),
+            eq(meetingSessions.workspaceId, workspaceId)
+          )
+        : eq(meetingSessions.id, sessionId)
+    )
+    .limit(1);
+
+  if (!session) return null;
+
+  // Owner always has access
+  if (session.userId === userId) return session;
+
+  // Fetch the requester's membership in this workspace
+  const [membership] = await database
+    .select({ role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .where(
       and(
-        eq(meetingSessions.id, sessionId),
-        or(
-          eq(meetingSessions.userId, userId),
-          sql`EXISTS (
-            SELECT 1
-            FROM jsonb_array_elements_text(COALESCE(${meetingSessions.sharedWithUserIds}, '[]'::jsonb)) AS elem
-            WHERE elem = ${userId}::text
-          )`
-        )
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.status, "active")
       )
     )
     .limit(1);
 
-  return session ?? null;
+  const role = membership?.role ?? null;
+  const isAdminOrOwner = role === "admin" || role === "owner";
+  const isActiveMember = role !== null; // any active membership
+
+  const visibility = session.visibility as "private" | "workspace" | "shared";
+
+  if (visibility === "private") {
+    // Only owner (already handled above) and admin/owner members
+    return isAdminOrOwner ? session : null;
+  }
+
+  if (visibility === "workspace") {
+    // Any active workspace member
+    return isActiveMember ? session : null;
+  }
+
+  // visibility === "shared"
+  // Admin/owner members always have access
+  if (isAdminOrOwner) return session;
+
+  // Active members (member/viewer) have access if in sharedWithUserIds
+  const sharedWith = (session.sharedWithUserIds as string[]) ?? [];
+  if (sharedWith.includes(userId)) return session;
+
+  // Active members (member role) also have access as workspace members
+  if (role === "member") return session;
+
+  // Viewers only if explicitly in sharedWithUserIds (already checked above)
+  return null;
 }
 
 export async function getMeetingSessionById(sessionId: string) {
@@ -46,13 +103,28 @@ export async function getMeetingSessionById(sessionId: string) {
   return session ?? null;
 }
 
-export async function getLatestMeetingSessionByLinkForUser(meetingLink: string, userId: string) {
+export async function getLatestMeetingSessionByLinkForUser(
+  meetingLink: string,
+  userId: string,
+  workspaceId?: string | null
+) {
   const database = getDbOrThrow();
 
   const [session] = await database
     .select()
     .from(meetingSessions)
-    .where(and(eq(meetingSessions.userId, userId), eq(meetingSessions.meetingLink, meetingLink)))
+    .where(
+      workspaceId
+        ? and(
+            eq(meetingSessions.workspaceId, workspaceId),
+            eq(meetingSessions.userId, userId),
+            eq(meetingSessions.meetingLink, meetingLink)
+          )
+        : and(
+            eq(meetingSessions.userId, userId),
+            eq(meetingSessions.meetingLink, meetingLink)
+          )
+    )
     .orderBy(desc(meetingSessions.updatedAt))
     .limit(1);
 
@@ -61,7 +133,8 @@ export async function getLatestMeetingSessionByLinkForUser(meetingLink: string, 
 
 export async function getLatestMeetingSessionByCalendarEventIdForUser(
   externalCalendarEventId: string,
-  userId: string
+  userId: string,
+  workspaceId?: string | null
 ) {
   const database = getDbOrThrow();
 
@@ -69,10 +142,16 @@ export async function getLatestMeetingSessionByCalendarEventIdForUser(
     .select()
     .from(meetingSessions)
     .where(
-      and(
-        eq(meetingSessions.userId, userId),
-        eq(meetingSessions.externalCalendarEventId, externalCalendarEventId)
-      )
+      workspaceId
+        ? and(
+            eq(meetingSessions.userId, userId),
+            eq(meetingSessions.workspaceId, workspaceId),
+            eq(meetingSessions.externalCalendarEventId, externalCalendarEventId)
+          )
+        : and(
+            eq(meetingSessions.userId, userId),
+            eq(meetingSessions.externalCalendarEventId, externalCalendarEventId)
+          )
     )
     .orderBy(desc(meetingSessions.updatedAt))
     .limit(1);
@@ -82,6 +161,7 @@ export async function getLatestMeetingSessionByCalendarEventIdForUser(
 
 export async function listMeetingSessionsByUser(
   userId: string,
+  workspaceId?: string | null,
   options?: {
     completedOnly?: boolean;
     excludeDrafts?: boolean;
@@ -89,10 +169,30 @@ export async function listMeetingSessionsByUser(
 ) {
   const database = getDbOrThrow();
   const condition = options?.completedOnly
-    ? and(eq(meetingSessions.userId, userId), eq(meetingSessions.status, "completed"))
+    ? workspaceId
+      ? and(
+          eq(meetingSessions.workspaceId, workspaceId),
+          eq(meetingSessions.userId, userId),
+          eq(meetingSessions.status, "completed")
+        )
+      : and(
+          eq(meetingSessions.userId, userId),
+          eq(meetingSessions.status, "completed")
+        )
     : options?.excludeDrafts
-      ? and(eq(meetingSessions.userId, userId), ne(meetingSessions.status, "draft"))
-    : eq(meetingSessions.userId, userId);
+      ? workspaceId
+        ? and(
+            eq(meetingSessions.workspaceId, workspaceId),
+            eq(meetingSessions.userId, userId),
+            ne(meetingSessions.status, "draft")
+          )
+        : and(
+            eq(meetingSessions.userId, userId),
+            ne(meetingSessions.status, "draft")
+          )
+      : workspaceId
+        ? and(eq(meetingSessions.workspaceId, workspaceId), eq(meetingSessions.userId, userId))
+        : eq(meetingSessions.userId, userId);
 
   return database
     .select()
@@ -101,13 +201,28 @@ export async function listMeetingSessionsByUser(
     .orderBy(desc(meetingSessions.createdAt));
 }
 
-export async function listMeetingSessionsByStatusesForUser(userId: string, statuses: string[]) {
+export async function listMeetingSessionsByStatusesForUser(
+  userId: string,
+  workspaceId?: string | null,
+  statuses: string[] = []
+) {
   const database = getDbOrThrow();
 
   return database
     .select()
     .from(meetingSessions)
-    .where(and(eq(meetingSessions.userId, userId), inArray(meetingSessions.status, statuses)))
+    .where(
+      workspaceId
+        ? and(
+            eq(meetingSessions.workspaceId, workspaceId),
+            eq(meetingSessions.userId, userId),
+            inArray(meetingSessions.status, statuses)
+          )
+        : and(
+            eq(meetingSessions.userId, userId),
+            inArray(meetingSessions.status, statuses)
+          )
+    )
     .orderBy(desc(meetingSessions.updatedAt));
 }
 
@@ -119,17 +234,26 @@ const ACTIVE_GOOGLE_MEET_STATUSES = [
   "summarizing"
 ] as const;
 
-export async function findActiveGoogleMeetSessionByNormalizedUrl(normalizedUrl: string) {
+export async function findActiveGoogleMeetSessionByNormalizedUrl(
+  normalizedUrl: string,
+  workspaceId?: string | null
+) {
   const database = getDbOrThrow();
 
   const [session] = await database
     .select()
     .from(meetingSessions)
     .where(
-      and(
-        eq(meetingSessions.normalizedMeetingUrl, normalizedUrl),
-        inArray(meetingSessions.status, [...ACTIVE_GOOGLE_MEET_STATUSES])
-      )
+      workspaceId
+        ? and(
+            eq(meetingSessions.normalizedMeetingUrl, normalizedUrl),
+            eq(meetingSessions.workspaceId, workspaceId),
+            inArray(meetingSessions.status, [...ACTIVE_GOOGLE_MEET_STATUSES])
+          )
+        : and(
+            eq(meetingSessions.normalizedMeetingUrl, normalizedUrl),
+            inArray(meetingSessions.status, [...ACTIVE_GOOGLE_MEET_STATUSES])
+          )
     )
     .orderBy(desc(meetingSessions.updatedAt))
     .limit(1);
@@ -139,6 +263,7 @@ export async function findActiveGoogleMeetSessionByNormalizedUrl(normalizedUrl: 
 
 export async function listMeetingSessionsByUserPaginated(
   userId: string,
+  workspaceId?: string | null,
   options: {
     page: number;
     limit: number;
@@ -146,13 +271,15 @@ export async function listMeetingSessionsByUserPaginated(
     statuses?: string[];
     search?: string;
     dateFrom?: Date;
-  }
+  } = { page: 1, limit: 20 }
 ) {
   const database = getDbOrThrow();
   const { page, limit, excludeDrafts, statuses, search, dateFrom } = options;
   const offset = (page - 1) * limit;
 
-  const conditions = [eq(meetingSessions.userId, userId)];
+  const conditions = workspaceId
+    ? [eq(meetingSessions.workspaceId, workspaceId), eq(meetingSessions.userId, userId)]
+    : [eq(meetingSessions.userId, userId)];
 
   if (excludeDrafts) {
     conditions.push(ne(meetingSessions.status, "draft"));

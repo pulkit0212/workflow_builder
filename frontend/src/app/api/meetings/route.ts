@@ -7,8 +7,9 @@ import { createMeetingSession } from "@/lib/db/mutations/meeting-sessions";
 import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
 import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
 
   if (!userId) {
@@ -18,7 +19,9 @@ export async function GET() {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
-    const meetings = await listMeetingSessionsByUser(user.id, {
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
+
+    const meetings = await listMeetingSessionsByUser(user.id, workspaceId, {
       excludeDrafts: true
     });
 
@@ -62,8 +65,11 @@ export async function POST(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
+
     const session = await createMeetingSession({
       userId: user.id,
+      workspaceId: workspaceId ?? null,
       provider: parsed.data.provider,
       title: parsed.data.title,
       meetingLink: parsed.data.meetingLink,

@@ -5,6 +5,7 @@ import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { db } from "@/lib/db/client";
 import { actionItems, integrations } from "@/db/schema";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 export async function POST(request: Request) {
   const { userId } = await auth();
@@ -26,10 +27,20 @@ export async function POST(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
 
     const [items, jiraIntegrations] = await Promise.all([
       db.select().from(actionItems).where(
-        and(eq(actionItems.userId, user.id), inArray(actionItems.id, itemIds))
+        workspaceId
+          ? and(
+              eq(actionItems.workspaceId, workspaceId),
+              eq(actionItems.userId, user.id),
+              inArray(actionItems.id, itemIds)
+            )
+          : and(
+              eq(actionItems.userId, user.id),
+              inArray(actionItems.id, itemIds)
+            )
       ),
       db.select().from(integrations).where(
         and(

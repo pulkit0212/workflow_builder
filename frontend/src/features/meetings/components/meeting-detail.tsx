@@ -26,6 +26,7 @@ import { formatMeetingDate, formatMeetingDuration, formatMeetingTime, getMeeting
 import type { MeetingDetailRecord } from "@/features/meetings/types";
 import { useSessionPolling } from "@/hooks/useSessionPolling";
 import { cn } from "@/lib/utils";
+import { ShareToWorkspaceButton } from "@/features/meetings/components/share-to-workspace-button";
 
 type MeetingDetailProps = {
   meetingId: string;
@@ -664,12 +665,20 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         title={meeting.title}
         description="From meetings to meaningful work."
         action={
-          <Button asChild variant="ghost">
-            <Link href="/dashboard/meetings">
-              <ArrowLeft className="h-4 w-4" />
-              Back to meetings
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ShareToWorkspaceButton
+              meetingId={meeting.meetingSessionId ?? meeting.id}
+              workspaceMoveStatus={meeting.workspaceMoveStatus}
+              workspaceId={meeting.workspaceId}
+              isOwner={meeting.isOwner}
+            />
+            <Button asChild variant="ghost">
+              <Link href="/dashboard/meetings">
+                <ArrowLeft className="h-4 w-4" />
+                Back to meetings
+              </Link>
+            </Button>
+          </div>
         }
       />
 

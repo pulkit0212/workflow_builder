@@ -7,6 +7,7 @@ import { db } from "@/lib/db/client";
 import { actionItems, meetingSessions, uploadedFiles } from "@/db/schema";
 import { getUserSubscription } from "@/lib/subscription.server";
 import { getPlanLimits } from "@/lib/subscription";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ function getDbOrThrow() {
   return db;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
 
   if (!userId) {
@@ -27,6 +28,7 @@ export async function GET() {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const database = getDbOrThrow();
     const subscription = await getUserSubscription(userId);
 
@@ -47,29 +49,50 @@ export async function GET() {
         .select({ value: sql<number>`count(*)::int` })
         .from(meetingSessions)
         .where(
-          and(
-            eq(meetingSessions.userId, user.id),
-            gte(meetingSessions.createdAt, monthStart)
-          )
+          workspaceId
+            ? and(
+                eq(meetingSessions.workspaceId, workspaceId),
+                eq(meetingSessions.userId, user.id),
+                gte(meetingSessions.createdAt, monthStart)
+              )
+            : and(
+                eq(meetingSessions.userId, user.id),
+                gte(meetingSessions.createdAt, monthStart)
+              )
         ),
-      database
-        .select({ value: sql<number>`count(*)::int` })
-        .from(meetingSessions)
-        .where(eq(meetingSessions.userId, user.id)),
       database
         .select({ value: sql<number>`count(*)::int` })
         .from(meetingSessions)
         .where(
-          and(
-            eq(meetingSessions.userId, user.id),
-            isNotNull(meetingSessions.transcript),
-            ne(meetingSessions.transcript, "")
-          )
+          workspaceId
+            ? and(eq(meetingSessions.workspaceId, workspaceId), eq(meetingSessions.userId, user.id))
+            : eq(meetingSessions.userId, user.id)
+        ),
+      database
+        .select({ value: sql<number>`count(*)::int` })
+        .from(meetingSessions)
+        .where(
+          workspaceId
+            ? and(
+                eq(meetingSessions.workspaceId, workspaceId),
+                eq(meetingSessions.userId, user.id),
+                isNotNull(meetingSessions.transcript),
+                ne(meetingSessions.transcript, "")
+              )
+            : and(
+                eq(meetingSessions.userId, user.id),
+                isNotNull(meetingSessions.transcript),
+                ne(meetingSessions.transcript, "")
+              )
         ),
       database
         .select({ value: sql<number>`count(*)::int` })
         .from(actionItems)
-        .where(eq(actionItems.userId, user.id)),
+        .where(
+          workspaceId
+            ? and(eq(actionItems.workspaceId, workspaceId), eq(actionItems.userId, user.id))
+            : eq(actionItems.userId, user.id)
+        ),
       database
         .select({ value: sql<number>`count(*)::int` })
         .from(uploadedFiles)

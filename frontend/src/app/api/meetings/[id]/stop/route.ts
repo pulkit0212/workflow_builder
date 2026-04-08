@@ -9,6 +9,7 @@ import { persistBotCaptureStatusUpdate } from "@/features/meetings/server/bot-ca
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { stopBot } from "@/lib/bot";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 type RouteContext = {
   params: Promise<{
@@ -18,7 +19,7 @@ type RouteContext = {
 
 export const runtime = "nodejs";
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   const { userId } = await auth();
 
   if (!userId) {
@@ -33,13 +34,14 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const { id } = await context.params;
 
     if (isCalendarMeetingId(id)) {
       return apiError("Meeting session has not started yet.", 400);
     }
 
-    const meeting = await getMeetingSessionByIdForUser(id, user.id);
+    const meeting = await getMeetingSessionByIdForUser(id, user.id, workspaceId);
 
     if (!meeting) {
       return apiError("Meeting not found.", 404);
@@ -57,7 +59,7 @@ export async function POST(_request: Request, context: RouteContext) {
       );
     }
 
-    const refreshed = await getMeetingSessionByIdForUser(meeting.id, user.id);
+    const refreshed = await getMeetingSessionByIdForUser(meeting.id, user.id, workspaceId);
 
     if (!refreshed) {
       return apiError("Meeting not found.", 404);
@@ -66,7 +68,8 @@ export async function POST(_request: Request, context: RouteContext) {
     return apiSuccess({
       success: true,
       meeting: buildMeetingDetailFromSession({
-        session: refreshed
+        session: refreshed,
+        currentUserId: user.id
       })
     });
   } catch (error) {

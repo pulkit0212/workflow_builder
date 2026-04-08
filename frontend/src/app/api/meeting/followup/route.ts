@@ -8,6 +8,7 @@ import { generateMeetingFollowUpSchema } from "@/features/meeting-followup/schem
 import { generateMeetingFollowUpEmail } from "@/features/meeting-followup/server/generate-followup";
 import { normalizeMeetingActionItems } from "@/features/meeting-assistant/helpers";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 export async function POST(request: Request) {
   const { userId } = await auth();
@@ -33,7 +34,9 @@ export async function POST(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
-    const meeting = await getMeetingSessionByIdForUser(parsed.data.meetingId, user.id);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
+
+    const meeting = await getMeetingSessionByIdForUser(parsed.data.meetingId, user.id, workspaceId);
 
     if (!meeting) {
       return apiError("Meeting not found.", 404);
@@ -51,6 +54,7 @@ export async function POST(request: Request) {
     });
 
     await updateMeetingSession(meeting.id, user.id, {
+      workspaceId: workspaceId ?? null,
       followUpEmail
     });
 

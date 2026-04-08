@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { aiRuns } from "@/db/schema/ai-runs";
 import { users } from "@/db/schema/users";
+import { workspaces } from "@/db/schema/workspaces";
 import type { MeetingActionItem } from "@/features/tools/meeting-summarizer/types";
 
 export const meetingSessions = pgTable("meeting_sessions", {
@@ -9,6 +10,7 @@ export const meetingSessions = pgTable("meeting_sessions", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
+  workspaceId: uuid("workspace_id").references(() => workspaces.id, { onDelete: "set null" }),
   aiRunId: uuid("ai_run_id").references(() => aiRuns.id, { onDelete: "set null" }),
   externalCalendarEventId: varchar("external_calendar_event_id", { length: 255 }),
   claimToken: varchar("claim_token", { length: 255 }),
@@ -50,6 +52,10 @@ export const meetingSessions = pgTable("meeting_sessions", {
   emailSent: boolean("email_sent").notNull().default(false),
   emailSentAt: timestamp("email_sent_at", { withTimezone: true }),
   status: varchar("status", { length: 50 }).notNull().default("draft"),
+  visibility: varchar("visibility", { length: 20 }).notNull().default("workspace"),
+  workspaceMoveStatus: varchar("workspace_move_status", { length: 50 }),
+  workspaceMovedBy: varchar("workspace_moved_by", { length: 255 }),
+  workspaceMovedAt: timestamp("workspace_moved_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });

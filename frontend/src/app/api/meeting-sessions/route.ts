@@ -6,6 +6,7 @@ import { createMeetingSessionSchema } from "@/features/meeting-assistant/schema"
 import { createMeetingSession } from "@/lib/db/mutations/meeting-sessions";
 import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 export async function POST(request: Request) {
   const { userId } = await auth();
@@ -31,8 +32,11 @@ export async function POST(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
+
     const session = await createMeetingSession({
       userId: user.id,
+      workspaceId: workspaceId ?? null,
       provider: parsed.data.provider,
       title: parsed.data.title,
       meetingLink: parsed.data.meetingLink,

@@ -15,6 +15,7 @@ export type GoogleMeetDedupResult =
 export async function maybeResolveGoogleMeetDedup(params: {
   meetingUrl: string;
   userId: string;
+  workspaceId: string;
   /** Session row id for this start request; skip dedup when it is the same active session. */
   currentSessionId: string | null;
 }): Promise<GoogleMeetDedupResult> {
@@ -22,7 +23,10 @@ export async function maybeResolveGoogleMeetDedup(params: {
   if (!normalized) {
     return { kind: "continue" };
   }
-  const active = await findActiveGoogleMeetSessionByNormalizedUrl(normalized);
+  const active = await findActiveGoogleMeetSessionByNormalizedUrl(
+    normalized,
+    params.workspaceId
+  );
 
   if (!active) {
     return { kind: "continue" };

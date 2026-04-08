@@ -3,7 +3,7 @@
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, CheckSquare, Clock3, FileText, Grid2x2, Wrench, type LucideIcon } from "lucide-react";
+import { CalendarDays, CheckSquare, Clock3, FileText, Grid2x2, UsersRound, Wrench, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type DashboardNavItem = {
@@ -18,7 +18,8 @@ const navigation: DashboardNavItem[] = [
   { href: "/dashboard/reports", label: "Reports", icon: FileText },
   { href: "/dashboard/action-items", label: "Action Items", icon: CheckSquare },
   { href: "/dashboard/history", label: "History", icon: Clock3 },
-  { href: "/dashboard/tools", label: "Tools", icon: Wrench }
+  { href: "/dashboard/tools", label: "Tools", icon: Wrench },
+  { href: "/dashboard/workspaces", label: "Workspaces", icon: UsersRound }
 ];
 
 function isActiveRoute(pathname: string, href: Route) {

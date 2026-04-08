@@ -8,6 +8,7 @@ import { db } from "@/lib/db/client";
 import { actionItems } from "@/db/schema";
 import { canUseActionItems } from "@/lib/subscription";
 import { getUserSubscription } from "@/lib/subscription.server";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 function getDbOrThrow() {
   if (!db) throw new Error("DATABASE_URL is not configured.");
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const subscription = await getUserSubscription(user.clerkUserId);
 
     if (!canUseActionItems(subscription.plan)) {
@@ -41,7 +43,9 @@ export async function GET(request: Request) {
     const firstName = (searchParams.get("firstName") ?? "").trim().toLowerCase();
     const source = searchParams.get("source") ?? "all";
 
-    const conditions = [eq(actionItems.userId, user.id)];
+    const conditions = workspaceId
+      ? [eq(actionItems.workspaceId, workspaceId), eq(actionItems.userId, user.id)]
+      : [eq(actionItems.userId, user.id)];
 
     // Tab filters
     if (tab === "high_priority") {

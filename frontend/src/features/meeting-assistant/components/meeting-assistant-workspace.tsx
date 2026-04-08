@@ -26,6 +26,7 @@ import { SummaryCard } from "@/components/tools/summary-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getUserMediaAudioStream } from "@/lib/media/get-user-media-audio";
 import {
   createMeetingSessionRecord,
   updateMeetingSessionRecord
@@ -388,7 +389,7 @@ export function MeetingAssistantWorkspace({
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getUserMediaAudioStream();
       const supportedMimeType = [
         "audio/ogg;codecs=opus",
         "audio/ogg",

@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { updateMeetingSession } from "@/lib/db/mutations/meeting-sessions";
 import { getMeetingSessionById } from "@/lib/db/queries/meeting-sessions";
 import type { MeetingSessionStatus } from "@/features/meeting-assistant/types";
@@ -8,7 +8,7 @@ import { triggerIntegrations } from "@/lib/integrations/trigger";
 import { saveRecording, getRecordingSize } from "@/lib/storage";
 import { incrementMeetingUsage } from "@/lib/subscription.server";
 import { db } from "@/lib/db/client";
-import { users } from "@/db/schema";
+import { actionItems, users } from "@/db/schema";
 
 export type BotCaptureSummaryPayload = {
   summary?: string;
@@ -57,6 +57,61 @@ function mapSummaryToDb(summary: BotCaptureSummaryPayload) {
         completed: false
       })) ?? []
   };
+}
+
+async function syncMeetingActionItems(params: {
+  meetingId: string;
+  workspaceId: string | null;
+  meetingTitle: string;
+  ownerUserId: string;
+  sharedUserIds: string[];
+  items: Array<{
+    task: string;
+    owner?: string;
+    due_date?: string;
+    priority?: string;
+  }>;
+}) {
+  if (!db || !params.workspaceId) {
+    return;
+  }
+
+  const targetUserIds = Array.from(new Set([params.ownerUserId, ...params.sharedUserIds]));
+
+  await db
+    .delete(actionItems)
+    .where(
+      and(
+        eq(actionItems.meetingId, params.meetingId),
+        eq(actionItems.workspaceId, params.workspaceId),
+        eq(actionItems.source, "meeting")
+      )
+    );
+
+  if (params.items.length === 0 || targetUserIds.length === 0) {
+    return;
+  }
+
+  const now = new Date();
+
+  await db.insert(actionItems).values(
+    targetUserIds.flatMap((userId) =>
+      params.items.map((item) => ({
+        workspaceId: params.workspaceId,
+        meetingId: params.meetingId,
+        meetingTitle: params.meetingTitle,
+        userId,
+        task: item.task,
+        owner: item.owner?.trim() || "Unassigned",
+        dueDate: item.due_date?.trim() || "Not specified",
+        priority: item.priority?.trim() || "Medium",
+        completed: false,
+        status: "pending",
+        source: "meeting",
+        updatedAt: now
+      }))
+    )
+  );
 }
 
 /**
@@ -148,6 +203,16 @@ export async function persistBotCaptureStatusUpdate(
     );
 
     console.log("[DB] Saved successfully (completed)");
+
+    await syncMeetingActionItems({
+      meetingId: meetingSessionId,
+      workspaceId: sessionRow.workspaceId ?? null,
+      meetingTitle: title,
+      ownerUserId,
+      sharedUserIds: Array.isArray(sessionRow.sharedWithUserIds) ? sessionRow.sharedWithUserIds : [],
+      items: Array.isArray(payload.summary.action_items) ? payload.summary.action_items : []
+    });
+
     return;
   }
 

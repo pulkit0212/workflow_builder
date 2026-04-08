@@ -29,6 +29,7 @@ import type {
   MeetingTranscriptionProvider
 } from "@/features/tools/meeting-summarizer/types";
 import { toolRegistry } from "@/lib/ai/tool-registry";
+import { getUserMediaAudioStream } from "@/lib/media/get-user-media-audio";
 
 type MeetingSummarizerWorkspaceProps = {
   initialRun?: ToolRunResponse<MeetingSummarizerOutput>["run"] | null;
@@ -336,7 +337,7 @@ export function MeetingSummarizerWorkspace({
   async function handleStartRecording() {
     try {
       resetRecordingState();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await getUserMediaAudioStream();
       const supportedMimeType = [
         "audio/ogg;codecs=opus",
         "audio/ogg",

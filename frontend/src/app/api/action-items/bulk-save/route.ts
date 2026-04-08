@@ -8,6 +8,7 @@ import { db } from "@/lib/db/client";
 import { actionItems } from "@/db/schema";
 import { canUseActionItems } from "@/lib/subscription";
 import { getUserSubscription } from "@/lib/subscription.server";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 export const runtime = "nodejs";
 
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const subscription = await getUserSubscription(user.clerkUserId);
 
     if (!canUseActionItems(subscription.plan)) {
@@ -75,6 +77,7 @@ export async function POST(request: Request) {
 
     await database.insert(actionItems).values(
       parsed.data.items.map((item) => ({
+        workspaceId: workspaceId ?? null,
         task: item.task,
         owner: item.owner || "Unassigned",
         dueDate: item.dueDate || "Not specified",

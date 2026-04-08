@@ -1,5 +1,5 @@
 /**
- * Bug Condition Exploration Tests — Task 0
+ * Bug Condition Exploration Tests — Task 0 + Task 1
  *
  * These tests are EXPECTED TO FAIL on unfixed code.
  * Failure = SUCCESS: it confirms the bugs exist.
@@ -7,6 +7,10 @@
  * DO NOT fix the code to make these pass — that is done in later tasks.
  *
  * Validates: Requirements 1.1, 1.2, 1.3, 1.4, 1.6, 1.9, 1.11, 1.16, 1.17
+ *
+ * --- Task 1 additions ---
+ * Property 1: Bug Condition — Personal Routes Return 400 Without Workspace
+ * Validates: Requirements 1.1, 1.2, 1.4, 1.11, 1.18
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -489,3 +493,156 @@ function isGoogleMeetUrlUnfixed(url: string): boolean {
     return false;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Task 1 — Property 1: Bug Condition
+// Personal Routes Return 400 Without Workspace (Requirements 1.1, 1.2, 1.4, 1.11, 1.18)
+// ---------------------------------------------------------------------------
+//
+// These tests assert the EXPECTED (fixed) behavior: HTTP 200 with no workspace_required.
+// They FAIL on unfixed code because the routes return 400 workspace_required.
+// Failure = SUCCESS: it proves the bug exists.
+//
+// Approach: mock all external dependencies so the route handlers can be called
+// directly in a unit-test environment without a real DB or Clerk session.
+// resolveWorkspaceIdForRequest is mocked to return null (no workspace context).
+//
+// ---------------------------------------------------------------------------
+
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn().mockResolvedValue({ userId: "clerk-user-1" }),
+}));
+
+vi.mock("@/lib/auth/current-user", () => ({
+  syncCurrentUserToDatabase: vi.fn().mockResolvedValue({
+    id: "db-user-1",
+    clerkUserId: "clerk-user-1",
+    email: "test@example.com",
+    fullName: "Test User",
+    plan: "free",
+    createdAt: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+  }),
+}));
+
+vi.mock("@/lib/workspaces/server", () => ({
+  resolveWorkspaceIdForRequest: vi.fn().mockResolvedValue(null),
+}));
+
+vi.mock("@/lib/db/bootstrap", () => ({
+  ensureDatabaseReady: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/lib/db/queries/meeting-sessions", () => ({
+  listMeetingSessionsByUser: vi.fn().mockResolvedValue([]),
+  listMeetingSessionsByUserPaginated: vi.fn().mockResolvedValue({
+    sessions: [],
+    pagination: { total: 0, page: 1, limit: 6, totalPages: 1 },
+  }),
+}));
+
+vi.mock("@/lib/subscription.server", () => ({
+  getUserSubscription: vi.fn().mockResolvedValue({ plan: "pro" }),
+}));
+
+vi.mock("@/lib/db/client", () => ({
+  db: {
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              offset: vi.fn().mockResolvedValue([]),
+            }),
+          }),
+          limit: vi.fn().mockResolvedValue([]),
+        }),
+      }),
+    }),
+  },
+}));
+
+describe("Task 1 — Property 1: Bug Condition — Personal Routes Return 400 Without Workspace", () => {
+  /**
+   * These tests encode the EXPECTED (fixed) behavior.
+   * They FAIL on unfixed code — that failure is the proof the bug exists.
+   *
+   * Validates: Requirements 1.1, 1.2, 1.4, 1.11, 1.18
+   */
+
+  function makeRequest(url: string, method = "GET", body?: unknown): Request {
+    return new Request(`http://localhost${url}`, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        // Deliberately NO x-workspace-id header — this is the bug condition
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    });
+  }
+
+  it("BUG 1.1 — GET /api/meetings without workspace returns 400 workspace_required (expected: 200)", async () => {
+    const { GET } = await import("@/app/api/meetings/route");
+    const req = makeRequest("/api/meetings");
+    const res = await GET(req);
+    const body = await res.json();
+
+    // EXPECTED (fixed) behavior: 200 with user's meetings
+    // ACTUAL (unfixed) behavior: 400 workspace_required
+    // This assertion FAILS on unfixed code — proving the bug exists
+    expect(res.status).toBe(200); // FAILS: actual is 400
+    expect(body?.details?.error).not.toBe("workspace_required");
+  });
+
+  it("BUG 1.2 — POST /api/meetings without workspace returns 400 workspace_required (expected: 201/200)", async () => {
+    const { POST } = await import("@/app/api/meetings/route");
+    const req = makeRequest("/api/meetings", "POST", {
+      provider: "google_meet",
+      title: "Test Meeting",
+      meetingLink: "https://meet.google.com/abc-defg-hij",
+    });
+    const res = await POST(req);
+    const body = await res.json();
+
+    // EXPECTED (fixed) behavior: 200/201 with created session (workspaceId = null)
+    // ACTUAL (unfixed) behavior: 400 workspace_required
+    expect(res.status).not.toBe(400); // FAILS: actual is 400
+    expect(body?.details?.error).not.toBe("workspace_required");
+  });
+
+  it("BUG 1.4 — GET /api/meetings/reports without workspace returns 400 workspace_required (expected: 200)", async () => {
+    const { GET } = await import("@/app/api/meetings/reports/route");
+    const req = makeRequest("/api/meetings/reports");
+    const res = await GET(req);
+    const body = await res.json();
+
+    // EXPECTED (fixed) behavior: 200 with paginated meeting history
+    // ACTUAL (unfixed) behavior: 400 workspace_required
+    expect(res.status).toBe(200); // FAILS: actual is 400
+    expect(body?.details?.error).not.toBe("workspace_required");
+  });
+
+  it("BUG 1.11 — GET /api/action-items without workspace returns 400 workspace_required (expected: 200)", async () => {
+    const { GET } = await import("@/app/api/action-items/route");
+    const req = makeRequest("/api/action-items");
+    const res = await GET(req);
+    const body = await res.json();
+
+    // EXPECTED (fixed) behavior: 200 with user's action items
+    // ACTUAL (unfixed) behavior: 400 workspace_required
+    expect(res.status).toBe(200); // FAILS: actual is 400
+    expect(body?.details?.error).not.toBe("workspace_required");
+  });
+
+  it("BUG 1.18 — GET /api/settings/usage without workspace returns 400 workspace_required (expected: 200)", async () => {
+    const { GET } = await import("@/app/api/settings/usage/route");
+    const req = makeRequest("/api/settings/usage");
+    const res = await GET(req);
+    const body = await res.json();
+
+    // EXPECTED (fixed) behavior: 200 with usage stats
+    // ACTUAL (unfixed) behavior: 400 workspace_required
+    expect(res.status).toBe(200); // FAILS: actual is 400
+    expect(body?.details?.error).not.toBe("workspace_required");
+  });
+});

@@ -7,6 +7,7 @@ import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/sess
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { canUseHistory } from "@/lib/subscription";
 import { getUserSubscription } from "@/lib/subscription.server";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 type ReportStatusFilter = "all" | "completed" | "recording" | "failed";
 type ReportDateFilter = "all" | "week" | "month";
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const subscription = await getUserSubscription(user.clerkUserId);
 
     if (!canUseHistory(subscription.plan)) {
@@ -74,7 +76,7 @@ export async function GET(request: Request) {
       dateFrom = new Date(now - 30 * 24 * 60 * 60 * 1000);
     }
 
-    const result = await listMeetingSessionsByUserPaginated(user.id, {
+    const result = await listMeetingSessionsByUserPaginated(user.id, workspaceId ?? null, {
       page,
       limit,
       excludeDrafts: true,

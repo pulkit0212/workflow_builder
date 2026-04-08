@@ -11,6 +11,7 @@ export function toMeetingSessionRecord(session: DatabaseMeetingSession): Meeting
 
   return {
     id: session.id,
+    workspaceId: session.workspaceId ?? null,
     title: session.title,
     meetingLink: session.meetingLink,
     externalCalendarEventId: session.externalCalendarEventId ?? null,

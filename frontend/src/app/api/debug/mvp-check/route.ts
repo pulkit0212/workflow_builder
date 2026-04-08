@@ -8,6 +8,7 @@ import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
 import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
 import { mapMeetingSessionToDetailStatus } from "@/features/meetings/helpers";
+import { getFirstActiveWorkspaceIdForUser } from "@/lib/workspaces/server";
 
 export const runtime = "nodejs";
 
@@ -43,9 +44,12 @@ export async function GET() {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
-    const latestMeeting = await listMeetingSessionsByUser(user.id, {
-      excludeDrafts: true
-    })
+    const workspaceId = await getFirstActiveWorkspaceIdForUser(user.id);
+    const latestMeeting = await (workspaceId
+      ? listMeetingSessionsByUser(user.id, workspaceId, {
+          excludeDrafts: true
+        })
+      : Promise.resolve([]))
       .then((sessions) => sessions.map(toMeetingSessionRecord)[0] ?? null)
       .catch(() => null);
 

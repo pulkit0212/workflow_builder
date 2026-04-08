@@ -14,6 +14,7 @@ export function buildMeetingDetailFromSession(params: {
   routeId?: string;
   session: NonNullable<DatabaseMeetingSession>;
   calendarMeeting?: GoogleCalendarMeeting | null;
+  currentUserId?: string;
 }): MeetingDetailRecord {
   const sessionRecord = toMeetingSessionRecord(params.session);
   const scheduledStartTime = params.calendarMeeting?.startTime ?? sessionRecord.scheduledStartTime ?? null;
@@ -54,7 +55,10 @@ export function buildMeetingDetailFromSession(params: {
     chapters: sessionRecord.chapters,
     canJoinAndCapture: mapMeetingSessionToDetailStatus(sessionRecord.status) === "failed"
       ? true
-      : !sessionRecord.summary && mapMeetingSessionToDetailStatus(sessionRecord.status) !== "processing"
+      : !sessionRecord.summary && mapMeetingSessionToDetailStatus(sessionRecord.status) !== "processing",
+    workspaceMoveStatus: params.session.workspaceMoveStatus ?? null,
+    workspaceId: params.session.workspaceId ?? null,
+    isOwner: params.currentUserId ? params.session.userId === params.currentUserId : false,
   };
 }
 
@@ -92,6 +96,9 @@ export function buildMeetingDetailFromCalendarMeeting(meeting: GoogleCalendarMee
     recordingDuration: null,
     insights: null,
     chapters: null,
-    canJoinAndCapture: Boolean(meeting.meetLink)
+    canJoinAndCapture: Boolean(meeting.meetLink),
+    workspaceMoveStatus: null,
+    workspaceId: null,
+    isOwner: true,
   };
 }

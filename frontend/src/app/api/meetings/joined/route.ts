@@ -5,8 +5,9 @@ import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
 import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
 import { isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
 
   if (!userId) {
@@ -16,7 +17,9 @@ export async function GET() {
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
-    const meetings = await listMeetingSessionsByUser(user.id, {
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
+
+    const meetings = await listMeetingSessionsByUser(user.id, workspaceId, {
       excludeDrafts: true
     });
 

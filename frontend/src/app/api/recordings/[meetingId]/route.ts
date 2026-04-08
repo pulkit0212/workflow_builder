@@ -1,9 +1,10 @@
 import { auth } from "@clerk/nextjs/server";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "@/lib/db/client";
 import { meetingSessions } from "@/db/schema";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 export const runtime = "nodejs";
 
@@ -11,7 +12,7 @@ type RouteContext = {
   params: Promise<{ meetingId: string }>;
 };
 
-export async function GET(_req: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { userId } = await auth();
   if (!userId) {
     return new Response(null, { status: 401 });
@@ -21,24 +22,40 @@ export async function GET(_req: Request, context: RouteContext) {
     return new Response(JSON.stringify({ error: "Database not configured" }), { status: 503 });
   }
 
+  const workspaceId = await resolveWorkspaceIdForRequest(request, userId);
+
   const { meetingId } = await context.params;
 
   if (!meetingId || meetingId.length < 5) {
     return new Response(JSON.stringify({ error: "Invalid meeting ID" }), { status: 400 });
   }
 
-  let session: { id: string; userId: string; sharedWithUserIds: string[] | null; recordingUrl: string | null } | null = null;
+  let session: {
+    id: string;
+    userId: string;
+    workspaceId: string | null;
+    sharedWithUserIds: string[] | null;
+    recordingUrl: string | null;
+  } | null = null;
 
   try {
     const rows = await db
       .select({
         id: meetingSessions.id,
         userId: meetingSessions.userId,
+        workspaceId: meetingSessions.workspaceId,
         sharedWithUserIds: meetingSessions.sharedWithUserIds,
         recordingUrl: meetingSessions.recordingUrl,
       })
       .from(meetingSessions)
-      .where(eq(meetingSessions.id, meetingId))
+      .where(
+        workspaceId
+          ? and(
+              eq(meetingSessions.id, meetingId),
+              eq(meetingSessions.workspaceId, workspaceId)
+            )
+          : eq(meetingSessions.id, meetingId)
+      )
       .limit(1);
     session = rows[0] ?? null;
   } catch (dbError: unknown) {

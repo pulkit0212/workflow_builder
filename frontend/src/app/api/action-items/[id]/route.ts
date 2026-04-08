@@ -5,6 +5,7 @@ import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { db } from "@/lib/db/client";
 import { actionItems } from "@/db/schema";
+import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
 
 const VALID_STATUSES = ["pending", "in_progress", "done", "hold"] as const;
 
@@ -31,12 +32,24 @@ export async function PATCH(
   try {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
+    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
     const { id } = await params;
 
     await db
       .update(actionItems)
       .set({ status, updatedAt: new Date() })
-      .where(and(eq(actionItems.id, id), eq(actionItems.userId, user.id)));
+      .where(
+        workspaceId
+          ? and(
+              eq(actionItems.id, id),
+              eq(actionItems.workspaceId, workspaceId),
+              eq(actionItems.userId, user.id)
+            )
+          : and(
+              eq(actionItems.id, id),
+              eq(actionItems.userId, user.id)
+            )
+      );
 
     return apiSuccess({ success: true });
   } catch (error) {

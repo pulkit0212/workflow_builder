@@ -15,6 +15,7 @@ function getDbOrThrow() {
 
 type CreateMeetingSessionInput = {
   userId: string;
+  workspaceId?: string | null;
   provider: "google_meet" | "zoom_web" | "teams_web";
   title: string;
   meetingLink: string;
@@ -28,6 +29,7 @@ type CreateMeetingSessionInput = {
 };
 
 type UpdateMeetingSessionInput = {
+  workspaceId?: string | null;
   provider?: "google_meet" | "zoom_web" | "teams_web";
   title?: string;
   meetingLink?: string;
@@ -82,6 +84,7 @@ export async function createMeetingSession(values: CreateMeetingSessionInput) {
     .insert(meetingSessions)
     .values({
       userId: values.userId,
+      workspaceId: values.workspaceId ?? null,
       provider: values.provider,
       title: values.title,
       meetingLink: values.meetingLink,
@@ -120,6 +123,10 @@ export async function updateMeetingSession(sessionId: string, userId: string, va
 
   if (values.provider !== undefined) {
     payload.provider = values.provider;
+  }
+
+  if (values.workspaceId !== undefined) {
+    payload.workspaceId = values.workspaceId;
   }
 
   if (values.meetingLink !== undefined) {
