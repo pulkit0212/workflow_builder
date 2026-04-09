@@ -1,0 +1,44 @@
+{
+  "name": "api",
+  "version": "1.0.0",
+  "description": "Standalone Express API server",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "nodemon --exec ts-node -r tsconfig-paths/register src/main.ts",
+    "build": "tsc",
+    "start": "node -r tsconfig-paths/register dist/main.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@clerk/backend": "^3.2.8",
+    "@clerk/nextjs": "^6.15.1",
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
+    "drizzle-orm": "^0.41.0",
+    "express": "^5.2.1",
+    "googleapis": "^150.0.1",
+    "mammoth": "^1.12.0",
+    "next": "^15.5.12",
+    "next-auth": "^5.0.0-beta.25",
+    "openai": "^4.104.0",
+    "pdf-parse": "^2.4.0",
+    "pg": "^8.14.1",
+    "playwright": "latest",
+    "razorpay": "^2.9.5",
+    "svix": "^1.60.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.13.10",
+    "@types/pg": "^8.11.11",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.8.2"
+  }
+}

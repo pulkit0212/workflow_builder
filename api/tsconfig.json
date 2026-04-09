@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021", "DOM"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "typeRoots": ["./node_modules/@types"],
+    "paths": {
+      "@/*": ["../frontend/src/*"],
+      "server-only": ["./src/shims/server-only.ts"],
+      "next/navigation": ["./src/shims/next-navigation.ts"],
+      "next-auth": ["./src/shims/next-auth.ts"],
+      "next-auth/providers/google": ["./src/shims/next-auth-providers-google.ts"],
+      "@clerk/nextjs/server": ["./src/shims/clerk-nextjs-server.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "../frontend/src/lib/auth/nextauth.ts"
+  ]
+}

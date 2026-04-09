@@ -23,10 +23,29 @@ function isPlaywrightOrBotRequest(request: string | undefined): boolean {
   );
 }
 
+const API_URL = process.env.API_URL ?? "http://localhost:4000";
+
 const nextConfig: NextConfig = {
   // Monorepo: lockfile at repo root + frontend — pin tracing to repo root to silence warnings.
   outputFileTracingRoot: path.join(__dirname, ".."),
   typedRoutes: true,
+
+  // Proxy all /api/* requests to the standalone Express API server.
+  // This means every fetch("/api/...") in the frontend hits the api folder instead.
+  async rewrites() {
+    return [
+      {
+        // Keep NextAuth OAuth routes handled locally in Next.js
+        source: "/api/auth/:path*",
+        destination: "/api/auth/:path*",
+      },
+      {
+        // Proxy everything else to the standalone Express API server
+        source: "/api/:path*",
+        destination: `${API_URL}/api/:path*`,
+      },
+    ];
+  },
   serverExternalPackages: [
     "playwright",
     "playwright-core",
