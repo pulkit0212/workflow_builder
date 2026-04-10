@@ -692,8 +692,20 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         description="From meetings to meaningful work."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            {/* Workspace controls — driven by WorkspaceContext (Req 10.1, 10.2, 10.5) */}
-            {activeWorkspaceId !== null && meeting.workspaceId === activeWorkspaceId ? (
+            {/* Share to workspace — shown in personal mode for meeting owners */}
+            {activeWorkspaceId === null ? (
+              <ShareToWorkspaceButton
+                meetingId={meetingId}
+                workspaceMoveStatus={meeting.workspaceMoveStatus}
+                workspaceId={meeting.workspaceId}
+                isOwner={meeting.isOwner}
+              />
+            ) : activeWorkspaceId !== null && meeting.workspaceId === activeWorkspaceId ? (
+              /* Meeting belongs to the active workspace — show badge */
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f3ff] px-3 py-1 text-sm font-medium text-[#6c63ff]">
+                {activeWorkspace?.name ?? "Workspace"}
+              </span>
+            ) : activeWorkspaceId !== null && meeting.workspaceId === activeWorkspaceId ? (
               /* Meeting belongs to the active workspace — show badge */
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f5f3ff] px-3 py-1 text-sm font-medium text-[#6c63ff]">
                 {activeWorkspace?.name ?? "Workspace"}

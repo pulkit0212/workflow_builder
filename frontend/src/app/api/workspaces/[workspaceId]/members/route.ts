@@ -7,7 +7,7 @@ import { addWorkspaceMember } from "@/lib/db/mutations/workspaces";
 import { getWorkspaceMembership, listWorkspaceMembers } from "@/lib/db/queries/workspaces";
 
 function canManageWorkspace(role: string) {
-  return role === "owner" || role === "admin";
+  return role === "admin";
 }
 
 export async function GET(

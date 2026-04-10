@@ -19,7 +19,7 @@ export type WorkspaceInfo = {
   id: string;
   name: string;
   type: 'personal' | 'team';
-  role: 'owner' | 'admin' | 'member';
+  role: 'admin' | 'member' | 'viewer';
 };
 
 export type WorkspaceContextValue = {
@@ -29,6 +29,7 @@ export type WorkspaceContextValue = {
   workspaces: WorkspaceInfo[];
   switchToPersonal: () => void;
   switchToWorkspace: (id: string) => void;
+  refreshWorkspaces: () => Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -57,56 +58,54 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // 3. null (personal mode)
   const urlParam = searchParams.get('workspace');
 
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
-    if (urlParam) return urlParam;
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(LS_KEY);
-      return stored || null;
-    }
-    return null;
-  });
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
+    // Always start null on server — hydrate from localStorage in useEffect
+    urlParam ?? null
+  );
 
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
 
   // ---------------------------------------------------------------------------
-  // Sync URL when localStorage fallback is used on mount
+  // Hydrate from localStorage on mount (after SSR)
   // ---------------------------------------------------------------------------
   useEffect(() => {
-    if (!urlParam && activeWorkspaceId) {
-      // localStorage had a value but URL didn't — sync to URL (Req 1.5)
+    if (urlParam) return; // URL param is authoritative, already set
+    const stored = localStorage.getItem(LS_KEY);
+    if (stored) {
+      setActiveWorkspaceId(stored);
       const params = new URLSearchParams(searchParams.toString());
-      params.set('workspace', activeWorkspaceId);
+      params.set('workspace', stored);
       router.replace(`?${params.toString()}`);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // run once on mount
 
   // ---------------------------------------------------------------------------
-  // Fetch workspace list on mount
+  // Fetch workspace list
   // ---------------------------------------------------------------------------
-  useEffect(() => {
-    fetch('/api/workspaces')
-      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
-      .then((data: { workspaces?: WorkspaceInfo[] }) => {
-        const list: WorkspaceInfo[] = data.workspaces ?? [];
-        setWorkspaces(list);
+  const refreshWorkspaces = useCallback(async () => {
+    try {
+      const res = await fetch('/api/workspaces');
+      if (!res.ok) return;
+      const data = (await res.json()) as { workspaces?: WorkspaceInfo[] };
+      const list: WorkspaceInfo[] = data.workspaces ?? [];
+      setWorkspaces(list);
 
-        // If stored workspace ID is no longer in the list, fall back to personal
-        if (activeWorkspaceId) {
-          const stillValid = list.some((w) => w.id === activeWorkspaceId);
-          if (!stillValid) {
-            localStorage.removeItem(LS_KEY);
-            setActiveWorkspaceId(null);
-            const params = new URLSearchParams(searchParams.toString());
-            params.delete('workspace');
-            const qs = params.toString();
-            router.replace(qs ? `?${qs}` : window.location.pathname);
-          }
+      // If active workspace is no longer in the list, fall back to personal
+      setActiveWorkspaceId((current) => {
+        if (current && !list.some((w) => w.id === current)) {
+          localStorage.removeItem(LS_KEY);
+          return null;
         }
-      })
-      .catch(() => {
-        // Fetch failed — keep current state, WorkspaceSwitcher will show error
+        return current;
       });
+    } catch {
+      // keep current state on error
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshWorkspaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -131,7 +130,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const params = new URLSearchParams(searchParams.toString());
     params.delete('workspace');
     const qs = params.toString();
-    router.replace(qs ? `?${qs}` : window.location.pathname);
+    router.replace((qs ? `?${qs}` : window.location.pathname) as never);
   }, [router, searchParams]);
 
   // ---------------------------------------------------------------------------
@@ -154,6 +153,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         workspaces,
         switchToPersonal,
         switchToWorkspace,
+        refreshWorkspaces,
       }}
     >
       {children}

@@ -19,7 +19,7 @@ const navigation: DashboardNavItem[] = [
   { href: "/dashboard/action-items", label: "Action Items", icon: CheckSquare },
   { href: "/dashboard/history", label: "History", icon: Clock3 },
   { href: "/dashboard/tools", label: "Tools", icon: Wrench },
-  { href: "/dashboard/workspaces", label: "Workspaces", icon: UsersRound }
+  { href: "/dashboard/workspace", label: "Workspaces", icon: UsersRound }
 ];
 
 function isActiveRoute(pathname: string, href: Route) {

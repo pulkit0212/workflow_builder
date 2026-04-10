@@ -62,8 +62,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       )
       .limit(1);
 
-    if (!membership || !["admin", "owner"].includes(membership.role)) {
-      return apiError("You must be an admin or owner of this workspace.", 403, {
+    if (!membership || !["admin"].includes(membership.role)) {
+      return apiError("You must be an admin of this workspace.", 403, {
         error: "admin_required"
       });
     }

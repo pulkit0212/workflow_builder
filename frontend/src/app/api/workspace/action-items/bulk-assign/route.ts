@@ -48,8 +48,8 @@ export async function PATCH(request: Request) {
       .limit(1);
 
     const role = membership?.role ?? "viewer";
-    if (role !== "admin" && role !== "owner") {
-      return apiError("Admin or owner role required.", 403, { error: "admin_required" });
+    if (role !== "admin") {
+      return apiError("Admin role required.", 403, { error: "admin_required" });
     }
 
     // Parse body

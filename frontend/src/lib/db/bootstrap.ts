@@ -171,6 +171,66 @@ async function createRequiredTables() {
   `);
 
   await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_invites" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "invited_email" varchar(255) NOT NULL,
+      "invited_by" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token" varchar(128) NOT NULL UNIQUE,
+      "status" varchar(20) NOT NULL DEFAULT 'pending',
+      "expires_at" timestamptz NOT NULL,
+      "accepted_at" timestamptz,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "workspace_invites_token_uidx"
+    ON "workspace_invites" ("token")
+  `);
+
+  await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "workspace_invites_pending_email_workspace_uidx"
+    ON "workspace_invites" ("workspace_id", "invited_email")
+    WHERE status = 'pending'
+  `);
+
+  await database.execute(sql`
+    CREATE INDEX IF NOT EXISTS "workspace_invites_workspace_id_idx"
+    ON "workspace_invites" ("workspace_id")
+  `);
+
+  await database.execute(sql`
+    CREATE TABLE IF NOT EXISTS "workspace_invites" (
+      "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      "workspace_id" uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+      "invited_email" varchar(255) NOT NULL,
+      "invited_by" uuid NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
+      "token" varchar(128) NOT NULL UNIQUE,
+      "status" varchar(20) NOT NULL DEFAULT 'pending',
+      "expires_at" timestamptz NOT NULL,
+      "accepted_at" timestamptz,
+      "created_at" timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+
+  await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "workspace_invites_token_uidx"
+    ON "workspace_invites" ("token")
+  `);
+
+  await database.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS "workspace_invites_pending_email_workspace_uidx"
+    ON "workspace_invites" ("workspace_id", "invited_email")
+    WHERE status = 'pending'
+  `);
+
+  await database.execute(sql`
+    CREATE INDEX IF NOT EXISTS "workspace_invites_workspace_id_idx"
+    ON "workspace_invites" ("workspace_id")
+  `);
+
+  await database.execute(sql`
     ALTER TABLE "workspace_members"
     ADD COLUMN IF NOT EXISTS "status" varchar(50) NOT NULL DEFAULT 'active'
   `);

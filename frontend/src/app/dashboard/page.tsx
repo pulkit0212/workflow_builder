@@ -192,16 +192,22 @@ export default function DashboardPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [joined, todayRes] = await Promise.all([
-        fetchJoinedMeetingsWithContext(),
-        fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
-      ]);
-      setReports(joined);
-      // Sort today's meetings by start time ascending
-      const sorted = [...todayRes.meetings].sort(
-        (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-      );
-      setTodayMeetings(sorted.slice(0, 5));
+      if (activeWorkspaceId) {
+        const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
+        const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
+        setReports(data.meetings ?? []);
+        setTodayMeetings([]);
+      } else {
+        const [joined, todayRes] = await Promise.all([
+          fetchJoinedMeetingsWithContext(),
+          fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
+        ]);
+        setReports(joined);
+        const sorted = [...todayRes.meetings].sort(
+          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+        );
+        setTodayMeetings(sorted.slice(0, 5));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
       setReports([]);
@@ -217,16 +223,26 @@ export default function DashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [joined, todayRes] = await Promise.all([
-          fetchJoinedMeetingsWithContext(),
-          fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
-        ]);
-        if (!mounted) return;
-        setReports(joined);
-        const sorted = [...todayRes.meetings].sort(
-          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-        );
-        setTodayMeetings(sorted.slice(0, 5));
+        if (activeWorkspaceId) {
+          // Workspace mode: fetch shared meetings from workspace API, no calendar
+          const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
+          const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
+          if (!mounted) return;
+          setReports(data.meetings ?? []);
+          setTodayMeetings([]); // no calendar in workspace mode
+        } else {
+          // Personal mode: fetch joined meetings + Google Calendar
+          const [joined, todayRes] = await Promise.all([
+            fetchJoinedMeetingsWithContext(),
+            fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
+          ]);
+          if (!mounted) return;
+          setReports(joined);
+          const sorted = [...todayRes.meetings].sort(
+            (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+          );
+          setTodayMeetings(sorted.slice(0, 5));
+        }
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : "Failed to load dashboard.");
@@ -238,7 +254,6 @@ export default function DashboardPage() {
       }
     })();
     return () => { mounted = false; };
-    // Re-fetch when activeWorkspaceId changes (Req 4.4)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
 
@@ -436,17 +451,17 @@ export default function DashboardPage() {
             </div>
           </Card>
 
-          {/* ── Today's Meetings ── */}
+          {/* ── Today's Meetings / Workspace Meetings ── */}
           <Card className="col-span-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:col-span-2">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
               <div>
-                <h2 className="text-[16px] font-semibold text-gray-900">Today&apos;s Meetings</h2>
+                <h2 className="text-[16px] font-semibold text-gray-900">
+                  {activeWorkspaceId ? "Shared Meetings" : "Today's Meetings"}
+                </h2>
                 <p className="mt-0.5 text-[13px] text-gray-400">
-                  {new Date().toLocaleDateString("en-US", {
-                    weekday: "long",
-                    month: "short",
-                    day: "numeric",
-                  })}
+                  {activeWorkspaceId
+                    ? "Meetings shared to this workspace"
+                    : new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
                 </p>
               </div>
               <Link
@@ -458,60 +473,64 @@ export default function DashboardPage() {
             </div>
 
             <div className="divide-y divide-[#f3f4f6]">
-              {todayMeetings.length > 0 ? (
-                todayMeetings.map((meeting) => {
-                  const session = findSessionForMeeting(meeting, reports);
-                  const status = getMeetingDisplayStatus(meeting, session);
-                  const platformStyle = getPlatformStyle(meeting.provider);
-                  const platformLabel = getPlatformLabel(meeting.provider);
-                  const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
-
-                  return (
-                    <a
-                      key={meeting.id}
-                      href={getMeetingDetailHref(meeting)}
-                      className="block px-5 py-4 transition-colors hover:bg-[#fafafa]"
-                    >
-                      {/* Badges row */}
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span
-                          className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                          style={{ background: platformStyle.bg, color: platformStyle.color }}
-                        >
-                          {platformLabel}
+              {activeWorkspaceId ? (
+                // Workspace mode: show shared meetings list
+                reports.slice(0, 5).length > 0 ? (
+                  reports.slice(0, 5).map((meeting, index) => {
+                    const displayTitle = getDisplayTitle(meeting);
+                    return (
+                      <Link
+                        key={meeting.id}
+                        href={`/dashboard/meetings/${meeting.id}` as Route}
+                        className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[#fafafa]"
+                      >
+                        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", avatarColors[index % avatarColors.length])}>
+                          {displayTitle.charAt(0).toUpperCase()}
                         </span>
-                        <span
-                          className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                          style={{ background: status.bg, color: status.color }}
-                        >
-                          {status.pulse ? (
-                            <span
-                              className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
-                              style={{ backgroundColor: status.color }}
-                            />
-                          ) : null}
-                          {status.label}
-                        </span>
-                      </div>
-
-                      {/* Title */}
-                      <p className="mt-2 truncate text-[14px] font-semibold text-gray-900">
-                        {meeting.title}
-                      </p>
-
-                      {/* Time */}
-                      <p className="mt-0.5 text-[12px] text-gray-400">{timeRange}</p>
-                    </a>
-                  );
-                })
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[13px] font-semibold text-gray-900">{displayTitle}</p>
+                          <p className="text-[11px] text-gray-400">{formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
+                        </div>
+                      </Link>
+                    );
+                  })
+                ) : (
+                  <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+                    <span className="text-3xl">📋</span>
+                    <p className="text-[14px] font-medium text-gray-700">No shared meetings yet</p>
+                    <p className="text-[13px] text-gray-400">Admin can share meetings to this workspace.</p>
+                  </div>
+                )
               ) : (
-                <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                  <span className="text-3xl">📅</span>
-                  <p className="text-[14px] font-medium text-gray-700">No meetings today</p>
-                  <p className="text-[13px] text-gray-400">
-                    Connect Google Calendar to see your schedule here.
-                  </p>
-                </div>
+                // Personal mode: show Google Calendar meetings
+                todayMeetings.length > 0 ? (
+                  todayMeetings.map((meeting) => {
+                    const session = findSessionForMeeting(meeting, reports);
+                    const status = getMeetingDisplayStatus(meeting, session);
+                    const platformStyle = getPlatformStyle(meeting.provider);
+                    const platformLabel = getPlatformLabel(meeting.provider);
+                    const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
+                    return (
+                      <a key={meeting.id} href={getMeetingDetailHref(meeting)} className="block px-5 py-4 transition-colors hover:bg-[#fafafa]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ background: platformStyle.bg, color: platformStyle.color }}>{platformLabel}</span>
+                          <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ background: status.bg, color: status.color }}>
+                            {status.pulse ? <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ backgroundColor: status.color }} /> : null}
+                            {status.label}
+                          </span>
+                        </div>
+                        <p className="mt-2 truncate text-[14px] font-semibold text-gray-900">{meeting.title}</p>
+                        <p className="mt-0.5 text-[12px] text-gray-400">{timeRange}</p>
+                      </a>
+                    );
+                  })
+                ) : (
+                  <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
+                    <span className="text-3xl">📅</span>
+                    <p className="text-[14px] font-medium text-gray-700">No meetings today</p>
+                    <p className="text-[13px] text-gray-400">Connect Google Calendar to see your schedule here.</p>
+                  </div>
+                )
               )}
             </div>
           </Card>

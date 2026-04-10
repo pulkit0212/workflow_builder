@@ -7,6 +7,7 @@ import {
   uuid,
   varchar
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { users } from "@/db/schema/users";
 import { meetingSessions } from "@/db/schema/meeting-sessions";
 
@@ -92,3 +93,29 @@ export const workspaceMoveRequests = pgTable("workspace_move_requests", {
   reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const workspaceInvites = pgTable(
+  "workspace_invites",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    invitedEmail: varchar("invited_email", { length: 255 }).notNull(),
+    invitedBy: uuid("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: varchar("token", { length: 128 }).notNull().unique(),
+    status: varchar("status", { length: 20 }).notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+  },
+  (table) => ({
+    tokenIdx: uniqueIndex("workspace_invites_token_uidx").on(table.token),
+    pendingEmailWorkspaceIdx: uniqueIndex("workspace_invites_pending_email_workspace_uidx")
+      .on(table.workspaceId, table.invitedEmail)
+      .where(sql`status = 'pending'`),
+    workspaceIdx: index("workspace_invites_workspace_id_idx").on(table.workspaceId)
+  })
+);

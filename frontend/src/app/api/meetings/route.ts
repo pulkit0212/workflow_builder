@@ -21,7 +21,9 @@ export async function GET(request: Request) {
     const user = await syncCurrentUserToDatabase(userId);
     const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
 
-    const meetings = await listMeetingSessionsByUser(user.id, workspaceId, {
+    // /api/meetings GET always shows only the current user's own meetings
+    // regardless of workspace mode — workspace meetings are shown via /api/workspace/[id]/meetings
+    const meetings = await listMeetingSessionsByUser(user.id, null, {
       excludeDrafts: true
     });
 
@@ -69,7 +71,7 @@ export async function POST(request: Request) {
 
     const session = await createMeetingSession({
       userId: user.id,
-      workspaceId: workspaceId ?? null,
+      workspaceId: null, // meetings always start in personal — user must explicitly share to workspace
       provider: parsed.data.provider,
       title: parsed.data.title,
       meetingLink: parsed.data.meetingLink,

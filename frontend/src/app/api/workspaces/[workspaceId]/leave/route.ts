@@ -26,9 +26,9 @@ export async function POST(
       return apiError("You are not a member of this workspace.", 403);
     }
 
-    if (membership.role === "owner") {
+    if (membership.role === "admin") {
       return apiError(
-        "Workspace owners cannot leave. Transfer ownership first or delete the workspace.",
+        "Workspace admins cannot leave. Transfer admin rights first or delete the workspace.",
         400
       );
     }

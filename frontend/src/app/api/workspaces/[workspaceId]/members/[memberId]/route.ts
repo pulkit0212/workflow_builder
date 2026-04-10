@@ -13,18 +13,13 @@ import {
 } from "@/lib/db/queries/workspaces";
 
 function canManageWorkspace(role: string) {
-  return role === "owner" || role === "admin";
+  return role === "admin";
 }
 
 function canManageTarget(actorRole: string, targetRole: string) {
-  if (actorRole === "owner") {
-    return targetRole !== "owner";
-  }
-
   if (actorRole === "admin") {
     return targetRole === "member" || targetRole === "viewer";
   }
-
   return false;
 }
 

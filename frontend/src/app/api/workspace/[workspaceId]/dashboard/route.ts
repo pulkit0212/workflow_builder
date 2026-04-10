@@ -58,7 +58,7 @@ export async function GET(_request: Request, context: RouteContext) {
     }
 
     const isAdmin =
-      membership.role === "admin" || membership.role === "owner";
+      membership.role === "admin";
 
     const monthStart = getStartOfCurrentMonth();
 

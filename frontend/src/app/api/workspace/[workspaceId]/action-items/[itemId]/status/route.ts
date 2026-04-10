@@ -80,7 +80,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       )
       .limit(1);
 
-    const isAdmin = membership && (membership.role === "admin" || membership.role === "owner");
+    const isAdmin = membership && membership.role === "admin";
     const isAssignedMember = actionItem.owner === user.fullName;
 
     if (!isAdmin && !isAssignedMember) {

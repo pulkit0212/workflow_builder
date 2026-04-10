@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { getSession, signIn } from "next-auth/react";
-import { CalendarDays, CalendarSync, LoaderCircle } from "lucide-react";
+import type { Route } from "next";
+import Link from "next/link";
+import { CalendarDays, CalendarSync, LoaderCircle, Share2 } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
@@ -13,6 +15,7 @@ import { CalendarMeetingRow } from "@/features/meetings/components/calendar-meet
 import { findSessionForMeeting } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
 
 function formatDateHeading(value: Date, prefix: string) {
   return `${prefix} — ${value.toLocaleDateString("en-US", {
@@ -109,9 +112,11 @@ function ReconnectGoogleCalendarCard({
 
 export function MeetingsList() {
   const searchParams = useSearchParams();
+  const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
   const [upcomingMeetings, setUpcomingMeetings] = useState<GoogleCalendarMeeting[]>([]);
   const [sessions, setSessions] = useState<MeetingSessionRecord[]>([]);
+  const [workspaceMeetings, setWorkspaceMeetings] = useState<MeetingSessionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -121,41 +126,46 @@ export function MeetingsList() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   async function loadMeetings(options?: { silent?: boolean }) {
-    if (!options?.silent) {
-      setIsLoading(true);
-    }
-
+    if (!options?.silent) setIsLoading(true);
     setError(null);
-
     try {
-      const todayResult = await fetchTodayMeetings();
-      setNeedsGoogleConnection(todayResult.status === "not_connected");
-      setNeedsGoogleReconnect(todayResult.status === "auth_required");
-      setTodayMeetings(todayResult.meetings);
-
-      if (todayResult.status === "connected") {
-        const [upcoming, joined] = await Promise.all([
-          fetchUpcomingMeetings(),
-          fetchJoinedMeetings().catch(() => []),
-        ]);
-        setUpcomingMeetings(upcoming);
-        setSessions(joined);
-      } else {
+      if (activeWorkspaceId) {
+        // Workspace mode: fetch shared meetings only, no Google Calendar
+        const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
+        const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
+        setWorkspaceMeetings(data.meetings ?? []);
+        setTodayMeetings([]);
         setUpcomingMeetings([]);
         setSessions([]);
+      } else {
+        // Personal mode: Google Calendar
+        const todayResult = await fetchTodayMeetings();
+        setNeedsGoogleConnection(todayResult.status === "not_connected");
+        setNeedsGoogleReconnect(todayResult.status === "auth_required");
+        setTodayMeetings(todayResult.meetings);
+        if (todayResult.status === "connected") {
+          const [upcoming, joined] = await Promise.all([
+            fetchUpcomingMeetings(),
+            fetchJoinedMeetings().catch(() => []),
+          ]);
+          setUpcomingMeetings(upcoming);
+          setSessions(joined);
+        } else {
+          setUpcomingMeetings([]);
+          setSessions([]);
+        }
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Failed to load meetings.");
     } finally {
-      if (!options?.silent) {
-        setIsLoading(false);
-      }
+      if (!options?.silent) setIsLoading(false);
     }
   }
 
   useEffect(() => {
     void loadMeetings();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     void getSession().then((session) => {
@@ -217,12 +227,72 @@ export function MeetingsList() {
     return <SkeletonList count={3} />;
   }
 
+  // ── Workspace mode ──────────────────────────────────────────────────────────
+  if (activeWorkspaceId) {
+    return (
+      <div className="space-y-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Meetings</p>
+            <h1 className="mt-1 text-2xl font-bold text-slate-900">{activeWorkspace?.name ?? "Workspace"} Meetings</h1>
+            <p className="mt-1 text-sm text-slate-400">Meetings shared to this workspace by the admin.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void loadMeetings({ silent: true })}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <CalendarSync className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
+
+        {error ? (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
+        ) : workspaceMeetings.length === 0 ? (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-20 text-center">
+            <Share2 className="mx-auto h-10 w-10 text-slate-300" />
+            <p className="mt-3 text-sm font-semibold text-slate-700">No meetings shared yet</p>
+            <p className="mt-1 text-xs text-slate-400">The workspace admin can share meetings from their personal space.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {workspaceMeetings.map((meeting) => (
+              <Link
+                key={meeting.id}
+                href={`/dashboard/meetings/${meeting.id}` as Route}
+                className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-[#6c63ff]/40 hover:bg-[#faf9ff] hover:shadow-md"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6c63ff] to-[#9b8fff] text-sm font-semibold text-white">
+                  {(meeting.title ?? "M").charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-900">{meeting.title}</p>
+                  <p className="text-xs text-slate-400">
+                    {meeting.scheduledStartTime
+                      ? new Date(meeting.scheduledStartTime).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
+                      : new Date(meeting.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-[#6c63ff] opacity-0 transition-opacity group-hover:opacity-100">
+                  View →
+                </span>
+              </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Personal mode ────────────────────────────────────────────────────────────
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1>Meetings</h1>
-          <p className="mt-1">Your upcoming Google Calendar sessions</p>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Meetings</p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">Meetings</h1>
+          <p className="mt-1 text-sm text-slate-400">Your upcoming Google Calendar sessions</p>
         </div>
         <Button type="button" variant="secondary" onClick={handleSyncCalendar} disabled={isSyncing}>
           {isSyncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarSync className="h-4 w-4" />}

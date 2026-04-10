@@ -40,7 +40,7 @@ export async function createWorkspace(values: {
   await database.insert(workspaceMembers).values({
     workspaceId: workspace.id,
     userId: values.ownerId,
-    role: "owner",
+    role: "admin",
     status: "active"
   });
 

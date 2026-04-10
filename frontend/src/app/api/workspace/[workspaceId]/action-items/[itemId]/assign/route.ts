@@ -50,7 +50,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       )
       .limit(1);
 
-    if (!membership || (membership.role !== "admin" && membership.role !== "owner")) {
+    if (!membership || membership.role !== "admin") {
       return apiError("Only workspace admins can assign action items.", 403, { error: "admin_required" });
     }
 

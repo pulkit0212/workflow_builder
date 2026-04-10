@@ -41,8 +41,8 @@ export async function POST(
     const user = await syncCurrentUserToDatabase(userId);
     const actorMembership = await getWorkspaceMembership(workspaceId, user.id);
 
-    if (!actorMembership || actorMembership.role !== "owner") {
-      return apiError("Only the workspace owner can transfer ownership.", 403);
+    if (!actorMembership || actorMembership.role !== "admin") {
+      return apiError("Only the workspace admin can transfer ownership.", 403);
     }
 
     const targetMembership = await getWorkspaceMemberById(parsed.data.newOwnerMemberId);
@@ -61,10 +61,10 @@ export async function POST(
 
     if (!db) throw new Error("DATABASE_URL is not configured.");
 
-    // Transfer: set new owner role to 'owner', demote current owner to 'admin'
+    // Transfer: promote target to 'admin', demote current admin to 'member'
     await db
       .update(workspaceMembers)
-      .set({ role: "owner" })
+      .set({ role: "admin" })
       .where(
         and(
           eq(workspaceMembers.id, targetMembership.id),
@@ -74,7 +74,7 @@ export async function POST(
 
     await db
       .update(workspaceMembers)
-      .set({ role: "admin" })
+      .set({ role: "member" })
       .where(
         and(
           eq(workspaceMembers.id, actorMembership.id),

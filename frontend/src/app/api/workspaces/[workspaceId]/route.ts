@@ -47,8 +47,7 @@ export async function GET(
       listWorkspaceJoinRequests(workspaceId)
     ]);
 
-    const canManageJoinRequests =
-      membership.role === "owner" || membership.role === "admin";
+    const canManageJoinRequests = membership.role === "admin";
 
     return apiSuccess({
       success: true,
@@ -112,8 +111,8 @@ export async function PATCH(
     const user = await syncCurrentUserToDatabase(userId);
     const membership = await getWorkspaceMembership(workspaceId, user.id);
 
-    if (!membership || membership.role !== "owner") {
-      return apiError("Only the workspace owner can update the workspace name.", 403);
+    if (!membership || membership.role !== "admin") {
+      return apiError("Only the workspace admin can update the workspace name.", 403);
     }
 
     if (!db) throw new Error("DATABASE_URL is not configured.");
@@ -151,8 +150,8 @@ export async function DELETE(
     const user = await syncCurrentUserToDatabase(userId);
     const membership = await getWorkspaceMembership(workspaceId, user.id);
 
-    if (!membership || membership.role !== "owner") {
-      return apiError("Only the workspace owner can delete the workspace.", 403);
+    if (!membership || membership.role !== "admin") {
+      return apiError("Only the workspace admin can delete the workspace.", 403);
     }
 
     if (!db) throw new Error("DATABASE_URL is not configured.");

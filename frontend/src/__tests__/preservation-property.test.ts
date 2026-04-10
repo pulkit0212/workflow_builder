@@ -1,7 +1,7 @@
 /**
  * Preservation Property Tests - Task 2
  * Property 2: Preservation - Workspace-Scoped Routes Unchanged
- * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.9, 3.11
+ * Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.9, 3.11
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   mockAuth, mockSyncUser, mockEnsureDb, mockGetSubscription,
   mockResolveWorkspaceId, mockListMeetingsByUser, mockListMeetingsPaginated, mockDbSelect,
+  mockCanUseActionItems,
 } = vi.hoisted(() => {
   return {
     mockAuth: vi.fn().mockResolvedValue({ userId: "clerk-user-1" }),
@@ -25,6 +26,7 @@ const {
       sessions: [], pagination: { total: 0, page: 1, limit: 6, totalPages: 1 },
     }),
     mockDbSelect: vi.fn(),
+    mockCanUseActionItems: vi.fn().mockReturnValue(true),
   };
 });
 
@@ -32,6 +34,7 @@ vi.mock("@clerk/nextjs/server", () => ({ auth: mockAuth }));
 vi.mock("@/lib/auth/current-user", () => ({ syncCurrentUserToDatabase: mockSyncUser }));
 vi.mock("@/lib/db/bootstrap", () => ({ ensureDatabaseReady: mockEnsureDb }));
 vi.mock("@/lib/subscription.server", () => ({ getUserSubscription: mockGetSubscription }));
+vi.mock("@/lib/subscription", () => ({ canUseActionItems: mockCanUseActionItems }));
 vi.mock("@/lib/workspaces/server", () => ({ resolveWorkspaceIdForRequest: mockResolveWorkspaceId }));
 vi.mock("@/lib/db/queries/meeting-sessions", () => ({
   listMeetingSessionsByUser: mockListMeetingsByUser,
@@ -75,6 +78,7 @@ function resetMocks() {
   mockSyncUser.mockResolvedValue(defaultUserMock());
   mockEnsureDb.mockResolvedValue(undefined);
   mockGetSubscription.mockResolvedValue({ plan: "pro" });
+  mockCanUseActionItems.mockReturnValue(true);
   mockListMeetingsByUser.mockResolvedValue([]);
   mockListMeetingsPaginated.mockResolvedValue({
     sessions: [], pagination: { total: 0, page: 1, limit: 6, totalPages: 1 },
@@ -113,9 +117,6 @@ describe("Property 2a: Workspace routes return 200 with valid membership (Req 3.
 
   it("PRESERVE 3.3 - GET /api/workspace/dashboard with valid x-workspace-id returns 200", async () => {
     mockResolveWorkspaceId.mockResolvedValue(VALID_WORKSPACE_ID);
-    // Dashboard makes 6 db.select calls: 4 count queries + 2 list queries
-    // Count queries: totalMeetings, meetingsThisWeek, totalActionItems, activeMemberCount
-    // List queries: recentMeetings, pendingActionItems
     let dashCallCount = 0;
     const countResults = [
       [{ totalMeetings: 0 }],
@@ -128,12 +129,9 @@ describe("Property 2a: Workspace routes return 200 with valid membership (Req 3.
         where: vi.fn().mockImplementation(() => {
           const idx = dashCallCount++;
           if (idx < 4) {
-            // Count queries: .where() is awaited directly (no .limit())
-            // Must return a thenable (Promise-like) AND support .orderBy() for list queries
             const result = Promise.resolve(countResults[idx] ?? [{ count: 0 }]);
             return result;
           }
-          // List queries: .where().orderBy().limit()
           return {
             orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
           };
@@ -192,20 +190,14 @@ describe("Property 2c: Personal routes with valid x-workspace-id return 200 work
   it("PRESERVE 3.9 - GET /api/action-items with valid x-workspace-id returns 200 workspace-scoped", async () => {
     mockResolveWorkspaceId.mockResolvedValue(VALID_WORKSPACE_ID);
     mockGetSubscription.mockResolvedValue({ plan: "pro" });
-    // Route makes multiple db.select() calls for workspace mode (admin):
-    // 1. Membership role check -> [{ role: "admin" }]
-    // 2+3. Promise.all: main items query + count query (awaited directly)
     let callCount = 0;
     mockDbSelect.mockImplementation(() => ({
       from: vi.fn().mockReturnValue({
         where: vi.fn().mockImplementation(() => {
           callCount++;
           if (callCount === 1) {
-            // Membership check: .where().limit()
             return { limit: vi.fn().mockResolvedValue([{ role: "admin" }]) };
           }
-          // Main items query (.where().orderBy().limit().offset()) and
-          // count query (.where() awaited directly) - support both patterns
           const directResult = Promise.resolve([{ count: 0 }]);
           return Object.assign(directResult, {
             orderBy: vi.fn().mockReturnValue({
@@ -310,6 +302,262 @@ describe("Property 2d: PBT - workspace membership validation holds across many w
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.success).toBe(true);
+    }
+  });
+});
+
+// ============================================================================
+// Task 2: Preservation Property Tests for Action Items Route
+// Property 2: Preservation - Non-Bug Requests Unchanged
+// Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6
+// ============================================================================
+
+/**
+ * Set up the db mock for personal mode (no workspace) for action-items route.
+ *
+ * In personal mode the route makes these db.select() calls:
+ *   1. participatedMeetingIds: .select().from(meetingSessions).where() → []
+ *   2. main items query:       .select().from(actionItems).where().orderBy().limit().offset() → items
+ *   3. count query:            .select({count}).from(actionItems).where() → [{ count: N }]
+ *
+ * Calls 2 & 3 are issued via Promise.all so they share the same mock invocation order.
+ */
+function setupActionItemsPersonalModeDb(items: Array<{ owner: string; priority?: string; source?: string; createdAt?: Date }>) {
+  let callCount = 0;
+  mockDbSelect.mockImplementation(() => ({
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          // participatedMeetingIds query — returns empty array
+          return Promise.resolve([]);
+        }
+        // Main items query and count query (called via Promise.all)
+        const countResult = Promise.resolve([{ count: items.length }]);
+        return Object.assign(countResult, {
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockReturnValue({
+              offset: vi.fn().mockResolvedValue(
+                items.map((item, idx) => ({
+                  id: `item-${idx}`,
+                  task: `Task ${idx}`,
+                  owner: item.owner,
+                  dueDate: null,
+                  priority: item.priority ?? "Medium",
+                  completed: false,
+                  status: "pending",
+                  source: item.source ?? "meeting",
+                  meetingId: null,
+                  meetingTitle: null,
+                  createdAt: item.createdAt ?? new Date("2024-06-01"),
+                  userId: "db-user-1",
+                  workspaceId: null,
+                }))
+              ),
+            }),
+          }),
+        });
+      }),
+    }),
+  }));
+}
+
+function makeActionItemsRequest(url: string): Request {
+  return new Request(`http://localhost${url}`, {
+    method: "GET",
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function resetActionItemsMocks() {
+  vi.clearAllMocks();
+  mockAuth.mockResolvedValue({ userId: "clerk-user-1" });
+  mockSyncUser.mockResolvedValue({
+    id: "db-user-1",
+    clerkUserId: "clerk-user-1",
+    email: "test@example.com",
+    fullName: "Test User",
+    plan: "pro",
+    createdAt: new Date("2024-01-01"),
+    updatedAt: new Date("2024-01-01"),
+  });
+  mockEnsureDb.mockResolvedValue(undefined);
+  mockCanUseActionItems.mockReturnValue(true);
+  mockGetSubscription.mockResolvedValue({ plan: "pro" });
+  mockResolveWorkspaceId.mockResolvedValue(null);
+}
+
+describe("Property 2 (Action Items): Preservation - Non-Bug Requests Unchanged (Req 3.1–3.6)", () => {
+  beforeEach(resetActionItemsMocks);
+
+  /**
+   * Test 3.2: tab=all with NO firstName → returns all items (no owner filter)
+   * isBugCondition is false because firstName is empty/absent
+   */
+  it("PRESERVE 3.2 - tab=all with no firstName returns all items without owner filter", async () => {
+    const allItems = [
+      { owner: "Alice Smith" },
+      { owner: "Bob Williams" },
+      { owner: "Carol Davis" },
+    ];
+    setupActionItemsPersonalModeDb(allItems);
+
+    const req = makeActionItemsRequest("/api/action-items?tab=all");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(3);
+  });
+
+  /**
+   * Test 3.3: tab=high_priority with NO firstName → returns only high-priority items
+   * isBugCondition is false because firstName is empty/absent
+   */
+  it("PRESERVE 3.3 - tab=high_priority with no firstName returns only high-priority items", async () => {
+    const highPriorityItems = [
+      { owner: "Alice Smith", priority: "High" },
+      { owner: "Bob Williams", priority: "High" },
+    ];
+    setupActionItemsPersonalModeDb(highPriorityItems);
+
+    const req = makeActionItemsRequest("/api/action-items?tab=high_priority");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(2);
+  });
+
+  /**
+   * Test 3.4: tab=this_week with NO firstName → returns only items from last 7 days
+   * isBugCondition is false because firstName is empty/absent
+   */
+  it("PRESERVE 3.4 - tab=this_week with no firstName returns only recent items", async () => {
+    const recentDate = new Date();
+    recentDate.setDate(recentDate.getDate() - 2);
+    const recentItems = [
+      { owner: "Alice Smith", createdAt: recentDate },
+      { owner: "Bob Williams", createdAt: recentDate },
+    ];
+    setupActionItemsPersonalModeDb(recentItems);
+
+    const req = makeActionItemsRequest("/api/action-items?tab=this_week");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(2);
+  });
+
+  /**
+   * Test 3.1: tab=my_items with firstName=Alice → applies ilike owner filter (already works)
+   * isBugCondition is false because tab === "my_items"
+   */
+  it("PRESERVE 3.1 - tab=my_items with firstName=Alice applies ilike owner filter", async () => {
+    const aliceItems = [
+      { owner: "Alice Smith" },
+      { owner: "Alice Johnson" },
+    ];
+    setupActionItemsPersonalModeDb(aliceItems);
+
+    const req = makeActionItemsRequest("/api/action-items?tab=my_items&firstName=Alice");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    for (const item of body.items) {
+      expect(item.owner.toLowerCase()).toContain("alice");
+    }
+  });
+
+  /**
+   * Test 3.2: tab=all with whitespace-only firstName (e.g., "   ") → trimmed to empty, no owner filter
+   * isBugCondition is false because firstName trims to empty string
+   */
+  it("PRESERVE 3.2 - tab=all with whitespace-only firstName is treated as no firstName (no owner filter)", async () => {
+    const allItems = [
+      { owner: "Alice Smith" },
+      { owner: "Bob Williams" },
+    ];
+    setupActionItemsPersonalModeDb(allItems);
+
+    const req = makeActionItemsRequest("/api/action-items?tab=all&firstName=   ");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(2);
+  });
+
+  /**
+   * Test 3.5: source=meeting with no firstName → source filter applies correctly
+   * isBugCondition is false because firstName is absent
+   */
+  it("PRESERVE 3.5 - source=meeting with no firstName applies source filter correctly", async () => {
+    const meetingItems = [
+      { owner: "Alice Smith", source: "meeting" },
+      { owner: "Bob Williams", source: "meeting" },
+    ];
+    setupActionItemsPersonalModeDb(meetingItems);
+
+    const req = makeActionItemsRequest("/api/action-items?source=meeting");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(2);
+  });
+
+  /**
+   * Test 3.5: source=task-generator with no firstName → source filter applies correctly
+   * isBugCondition is false because firstName is absent
+   */
+  it("PRESERVE 3.5 - source=task-generator with no firstName applies source filter correctly", async () => {
+    const taskGenItems = [
+      { owner: "Alice Smith", source: "task-generator" },
+    ];
+    setupActionItemsPersonalModeDb(taskGenItems);
+
+    const req = makeActionItemsRequest("/api/action-items?source=task-generator");
+    const res = await personalActionItemsGET(req);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.success).toBe(true);
+    expect(Array.isArray(body.items)).toBe(true);
+    expect(body.items).toHaveLength(1);
+  });
+
+  /**
+   * PBT: For all non-bug-condition requests (no firstName, various tabs), route always returns 200
+   * Validates: Requirements 3.2, 3.3, 3.4
+   */
+  it("PBT PRESERVE 3.2/3.3/3.4 - all tabs with no firstName always return 200", async () => {
+    const tabs = ["all", "high_priority", "this_week", "my_items"];
+    for (const tab of tabs) {
+      resetActionItemsMocks();
+      setupActionItemsPersonalModeDb([{ owner: "Alice Smith" }]);
+
+      const req = makeActionItemsRequest(`/api/action-items?tab=${tab}`);
+      const res = await personalActionItemsGET(req);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.success).toBe(true);
+      expect(Array.isArray(body.items)).toBe(true);
     }
   });
 });

@@ -38,7 +38,7 @@ const navigation: DashboardNavItem[] = [
   { href: "/dashboard/action-items", label: "Action Items", icon: CheckSquare, section: "primary" },
   { href: "/dashboard/integrations", label: "Integrations", icon: Link2, section: "primary" },
   { href: "/dashboard/history", label: "History", icon: Clock3, section: "primary", personalOnly: true },
-  { href: "/dashboard/workspaces", label: "Workspace", icon: UsersRound, section: "primary", personalOnly: true },
+  { href: "/dashboard/workspace", label: "Workspace", icon: UsersRound, section: "primary", personalOnly: true },
   { href: "/dashboard/tools", label: "Tools", icon: Wrench, section: "secondary", personalOnly: true },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, section: "secondary" },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard, section: "secondary" }

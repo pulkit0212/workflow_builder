@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const workspaceRoleSchema = z.enum(["owner", "admin", "member", "viewer"]);
+export const workspaceRoleSchema = z.enum(["admin", "member", "viewer"]);
 export const workspaceMemberStatusSchema = z.enum(["active", "pending", "removed"]);
 export const workspaceJoinRequestStatusSchema = z.enum(["pending", "accepted", "rejected"]);
 export const searchableUserSchema = z.object({
@@ -15,8 +15,8 @@ export const createWorkspaceSchema = z.object({
     .array(
       z.object({
         userId: z.string().uuid("Invalid user id."),
-        role: workspaceRoleSchema.refine((value) => value !== "owner", {
-          message: "Owner role is reserved for the workspace creator."
+        role: workspaceRoleSchema.refine((value) => value !== "admin", {
+          message: "Admin role is reserved for the workspace creator."
         })
       })
     )
@@ -29,14 +29,14 @@ export const joinWorkspaceSchema = z.object({
 
 export const addWorkspaceMemberSchema = z.object({
   userId: z.string().uuid("Invalid user id."),
-  role: workspaceRoleSchema.refine((value) => value !== "owner", {
-    message: "Owner role is reserved for the workspace creator."
+  role: workspaceRoleSchema.refine((value) => value !== "admin", {
+    message: "Admin role is reserved for the workspace creator."
   }).default("member")
 });
 
 export const updateWorkspaceMemberSchema = z.object({
-  role: workspaceRoleSchema.refine((value) => value !== "owner", {
-    message: "Owner role cannot be assigned through member updates."
+  role: workspaceRoleSchema.refine((value) => value !== "admin", {
+    message: "Admin role cannot be assigned through member updates."
   })
 });
 
@@ -51,8 +51,8 @@ export const requestJoinWorkspaceSchema = z.object({
 });
 
 export const acceptJoinRequestSchema = z.object({
-  role: workspaceRoleSchema.refine((value) => value !== "owner", {
-    message: "Owner role cannot be assigned when accepting a join request."
+  role: workspaceRoleSchema.refine((value) => value !== "admin", {
+    message: "Admin role cannot be assigned when accepting a join request."
   })
 });
 

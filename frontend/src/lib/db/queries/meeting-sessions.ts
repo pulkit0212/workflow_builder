@@ -169,30 +169,10 @@ export async function listMeetingSessionsByUser(
 ) {
   const database = getDbOrThrow();
   const condition = options?.completedOnly
-    ? workspaceId
-      ? and(
-          eq(meetingSessions.workspaceId, workspaceId),
-          eq(meetingSessions.userId, userId),
-          eq(meetingSessions.status, "completed")
-        )
-      : and(
-          eq(meetingSessions.userId, userId),
-          eq(meetingSessions.status, "completed")
-        )
+    ? and(eq(meetingSessions.userId, userId), eq(meetingSessions.status, "completed"))
     : options?.excludeDrafts
-      ? workspaceId
-        ? and(
-            eq(meetingSessions.workspaceId, workspaceId),
-            eq(meetingSessions.userId, userId),
-            ne(meetingSessions.status, "draft")
-          )
-        : and(
-            eq(meetingSessions.userId, userId),
-            ne(meetingSessions.status, "draft")
-          )
-      : workspaceId
-        ? and(eq(meetingSessions.workspaceId, workspaceId), eq(meetingSessions.userId, userId))
-        : eq(meetingSessions.userId, userId);
+      ? and(eq(meetingSessions.userId, userId), ne(meetingSessions.status, "draft"))
+      : eq(meetingSessions.userId, userId);
 
   return database
     .select()
@@ -271,15 +251,23 @@ export async function listMeetingSessionsByUserPaginated(
     statuses?: string[];
     search?: string;
     dateFrom?: Date;
+    requireApprovedForWorkspace?: boolean;
   } = { page: 1, limit: 20 }
 ) {
   const database = getDbOrThrow();
-  const { page, limit, excludeDrafts, statuses, search, dateFrom } = options;
+  const { page, limit, excludeDrafts, statuses, search, dateFrom, requireApprovedForWorkspace } = options;
   const offset = (page - 1) * limit;
 
+  // Workspace mode: show ALL meetings shared to this workspace (any user)
+  // Personal mode: show only current user's meetings
   const conditions = workspaceId
-    ? [eq(meetingSessions.workspaceId, workspaceId), eq(meetingSessions.userId, userId)]
+    ? [eq(meetingSessions.workspaceId, workspaceId)]
     : [eq(meetingSessions.userId, userId)];
+
+  // In workspace mode, only show explicitly shared (approved) meetings
+  if (workspaceId && requireApprovedForWorkspace) {
+    conditions.push(eq(meetingSessions.workspaceMoveStatus, "approved"));
+  }
 
   if (excludeDrafts) {
     conditions.push(ne(meetingSessions.status, "draft"));

@@ -1,8 +1,5 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { type ToolDefinition } from "@/lib/ai/tool-registry";
 
 type ToolCardProps = {
@@ -14,27 +11,37 @@ export function ToolCard({ tool }: ToolCardProps) {
   const isAvailable = tool.status === "available";
 
   return (
-    <Card className="flex h-full flex-col justify-between p-6">
-      <div className="space-y-5">
-        <div className="flex items-start justify-between gap-4">
-          <div className="rounded-2xl bg-[linear-gradient(145deg,#eef2ff,#dbeafe)] p-3 text-indigo-700">
-            <Icon className="h-6 w-6" />
-          </div>
-          <Badge variant={isAvailable ? "available" : "pending"}>{isAvailable ? "Available" : "Coming Soon"}</Badge>
+    <Link
+      href={tool.route}
+      className="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-[#6c63ff]/50 hover:bg-[#faf9ff] hover:shadow-lg hover:shadow-[#6c63ff]/10 focus:outline-none focus:ring-2 focus:ring-[#6c63ff]/40"
+    >
+      {/* Top row — icon + status badge */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#eef2ff] to-[#dbeafe] text-indigo-600 transition-colors group-hover:from-[#ede9fe] group-hover:to-[#ddd6fe] group-hover:text-[#6c63ff]">
+          <Icon className="h-5 w-5" />
         </div>
-        <div className="space-y-2">
-          <h3 className="text-xl font-semibold text-slate-950">{tool.name}</h3>
-          <p className="text-sm leading-6 text-slate-600">{tool.description}</p>
-        </div>
+        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${
+          isAvailable
+            ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+            : "bg-slate-100 text-slate-400 ring-slate-200"
+        }`}>
+          {isAvailable ? "Available" : "Coming Soon"}
+        </span>
       </div>
-      <div className="pt-6">
-        <Button asChild variant={isAvailable ? "default" : "secondary"} className="w-full justify-between">
-          <Link href={tool.route}>
-            {isAvailable ? "Open tool" : "View placeholder"}
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Button>
+
+      {/* Name + description */}
+      <h3 className="mt-4 text-base font-bold text-slate-900">{tool.name}</h3>
+      <p className="mt-1.5 flex-1 text-sm leading-relaxed text-slate-500">{tool.description}</p>
+
+      {/* Footer — date placeholder + hover hint */}
+      <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-3">
+        <span className={`text-xs font-medium ${isAvailable ? "text-slate-400" : "text-slate-300"}`}>
+          {isAvailable ? "AI powered" : "Planned"}
+        </span>
+        <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#6c63ff] opacity-0 transition-opacity group-hover:opacity-100">
+          Open tool <ArrowRight className="h-3.5 w-3.5" />
+        </span>
       </div>
-    </Card>
+    </Link>
   );
 }
