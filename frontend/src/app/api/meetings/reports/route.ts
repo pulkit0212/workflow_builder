@@ -80,7 +80,8 @@ export async function GET(request: Request) {
       page,
       limit,
       excludeDrafts: true,
-      requireApprovedForWorkspace: true, // only show explicitly shared meetings in workspace mode
+      requireApprovedForWorkspace: true,
+      excludeUnrecorded: true, // hide calendar-shared meetings that were never recorded
       statuses,
       search: search.length > 0 ? search : undefined,
       dateFrom

@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { ArrowRight, CheckCircle, Loader2, Share2, X } from "lucide-react";
 import type { WorkspaceRecord } from "@/features/workspaces/types";
+import { isCalendarMeetingId, decodeCalendarMeetingId } from "@/features/meetings/ids";
 
 type ShareToWorkspaceButtonProps = {
   meetingId: string;
@@ -10,7 +11,17 @@ type ShareToWorkspaceButtonProps = {
   workspaceId: string | null;
   isOwner: boolean;
   currentUserId?: string;
-  currentUserWorkspaceRole?: string | null; // role in the current workspace context
+  currentUserWorkspaceRole?: string | null;
+  /** DB UUID for the meeting — needed when meetingId is a calendar ID */
+  dbMeetingId?: string | null;
+  calendarMeeting?: {
+    title: string;
+    meetingLink: string;
+    scheduledStartTime?: string;
+    scheduledEndTime?: string;
+    provider?: string;
+    externalCalendarEventId?: string;
+  };
 };
 
 export function ShareToWorkspaceButton({
@@ -19,10 +30,16 @@ export function ShareToWorkspaceButton({
   workspaceId: initialWorkspaceId,
   isOwner,
   currentUserWorkspaceRole,
+  calendarMeeting,
+  dbMeetingId: initialDbMeetingId,
 }: ShareToWorkspaceButtonProps) {
   const [moveStatus, setMoveStatus] = useState(initialMoveStatus);
   const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId);
   const [workspaceName, setWorkspaceName] = useState<string | null>(null);
+  // For calendar meetings, store the DB UUID returned after sharing (or passed in)
+  const [dbMeetingId, setDbMeetingId] = useState<string | null>(
+    initialDbMeetingId ?? (isCalendarMeetingId(meetingId) ? null : meetingId)
+  );
   // Only admin workspaces — user can only share to workspaces where they are admin
   const [adminWorkspaces, setAdminWorkspaces] = useState<WorkspaceRecord[] | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -69,12 +86,34 @@ export function ShareToWorkspaceButton({
     if (!selectedWorkspaceId) return;
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/meetings/${meetingId}/move-to-workspace`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
-        });
-        const data = await res.json() as { success: boolean; message?: string; details?: { error?: string } };
+        const isCalendar = isCalendarMeetingId(meetingId);
+        let res: Response;
+
+        if (isCalendar && calendarMeeting) {
+          // Calendar meeting — create DB record and share in one step
+          res = await fetch("/api/meetings/share-calendar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              workspaceId: selectedWorkspaceId,
+              title: calendarMeeting.title,
+              meetingLink: calendarMeeting.meetingLink,
+              scheduledStartTime: calendarMeeting.scheduledStartTime,
+              scheduledEndTime: calendarMeeting.scheduledEndTime,
+              provider: calendarMeeting.provider ?? "google_meet",
+              externalCalendarEventId: calendarMeeting.externalCalendarEventId,
+            }),
+          });
+        } else {
+          // DB meeting — use move-to-workspace
+          res = await fetch(`/api/meetings/${meetingId}/move-to-workspace`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workspaceId: selectedWorkspaceId }),
+          });
+        }
+
+        const data = await res.json() as { success: boolean; message?: string; details?: { error?: string }; meetingId?: string };
         if (!res.ok) {
           const msg = data.details?.error === "already_in_workspace"
             ? "This meeting is already shared to a workspace."
@@ -84,6 +123,10 @@ export function ShareToWorkspaceButton({
           setToast({ message: msg, type: "error" });
           setModalOpen(false);
           return;
+        }
+        // Store the DB UUID returned by share-calendar so remove works correctly
+        if (isCalendar && data.meetingId) {
+          setDbMeetingId(data.meetingId);
         }
         const shared = adminWorkspaces?.find((w) => w.id === selectedWorkspaceId);
         setWorkspaceName(shared?.name ?? null);
@@ -99,9 +142,14 @@ export function ShareToWorkspaceButton({
   }
 
   function handleRemove() {
+    const idToUse = dbMeetingId;
+    if (!idToUse) {
+      setToast({ message: "Cannot remove: meeting ID not found.", type: "error" });
+      return;
+    }
     startTransition(async () => {
       try {
-        const res = await fetch(`/api/meetings/${meetingId}/move-to-workspace`, { method: "DELETE" });
+        const res = await fetch(`/api/meetings/${idToUse}/move-to-workspace`, { method: "DELETE" });
         const data = await res.json() as { success: boolean; message?: string };
         if (!res.ok) {
           setToast({ message: data.message ?? "Failed to remove from workspace.", type: "error" });
@@ -110,6 +158,7 @@ export function ShareToWorkspaceButton({
         setMoveStatus(null);
         setWorkspaceId(null);
         setWorkspaceName(null);
+        setDbMeetingId(null);
         setToast({ message: "Meeting removed from workspace.", type: "success" });
       } catch {
         setToast({ message: "Failed to remove meeting from workspace.", type: "error" });

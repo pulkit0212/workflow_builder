@@ -27,6 +27,7 @@ import type { MeetingDetailRecord } from "@/features/meetings/types";
 import { useSessionPolling } from "@/hooks/useSessionPolling";
 import { cn } from "@/lib/utils";
 import { ShareToWorkspaceButton } from "@/features/meetings/components/share-to-workspace-button";
+import { isCalendarMeetingId } from "@/features/meetings/ids";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 
 type MeetingDetailProps = {
@@ -699,6 +700,15 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
                 workspaceMoveStatus={meeting.workspaceMoveStatus}
                 workspaceId={meeting.workspaceId}
                 isOwner={meeting.isOwner}
+                dbMeetingId={meeting.meetingSessionId}
+                calendarMeeting={isCalendarMeetingId(meetingId) ? {
+                  title: meeting.title,
+                  meetingLink: meeting.meetingLink,
+                  scheduledStartTime: meeting.scheduledStartTime ?? undefined,
+                  scheduledEndTime: meeting.scheduledEndTime ?? undefined,
+                  provider: meeting.provider,
+                  externalCalendarEventId: meeting.externalCalendarEventId ?? undefined,
+                } : undefined}
               />
             ) : activeWorkspaceId !== null && meeting.workspaceId === activeWorkspaceId ? (
               /* Meeting belongs to the active workspace — show badge */

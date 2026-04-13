@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
 import { useUser } from "@clerk/nextjs";
 import type { Route } from "next";
 import Link from "next/link";
-import { CalendarDays, CheckCircle2, ClipboardList, Video } from "lucide-react";
+import { ArrowRight, CalendarDays, CheckCircle2, ClipboardList, Sparkles, TrendingUp, Video, Zap } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { fetchTodayMeetings } from "@/features/meetings/api";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
 import { getMeetingDisplayStatus, findSessionForMeeting } from "@/features/meetings/meeting-status";
@@ -22,60 +19,34 @@ import type { MeetingSessionListResponse, MeetingSessionErrorResponse } from "@/
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const getGreeting = () => {
-  const hour = new Date().getHours();
-  if (hour >= 5 && hour < 12) return "Good morning";
-  if (hour >= 12 && hour < 17) return "Good afternoon";
-  if (hour >= 17 && hour < 21) return "Good evening";
+  const h = new Date().getHours();
+  if (h >= 5 && h < 12) return "Good morning";
+  if (h >= 12 && h < 17) return "Good afternoon";
+  if (h >= 17 && h < 21) return "Good evening";
   return "Good night";
 };
 
 function hasContent(m: MeetingSessionRecord) {
-  // Include if has summary, transcript, or is completed/has any processed content
   const summary = m.summary?.trim() ?? "";
   const transcript = m.transcript?.trim() ?? "";
   const errorPhrases = ["not enough content", "summary generation failed", "googlegenerativeai", "error fetching"];
   const summaryIsError = errorPhrases.some((p) => summary.toLowerCase().includes(p));
-  return (
-    (summary.length > 0 && !summaryIsError) ||
-    transcript.length > 0 ||
-    m.status === "completed" ||
-    m.keyPoints.length > 0 ||
-    m.actionItems.length > 0
-  );
+  return (summary.length > 0 && !summaryIsError) || transcript.length > 0 || m.status === "completed" || (m.keyPoints?.length ?? 0) > 0 || (m.actionItems?.length ?? 0) > 0;
 }
 
-/** Returns a clean summary preview or null if it's an error/too short */
 function getSummaryPreview(summary: string | null): string | null {
   if (!summary) return null;
   const text = summary.replace(/\s+/g, " ").trim();
-  const errorPhrases = [
-    "not enough content",
-    "summary generation failed",
-    "googlegenerativeai",
-    "error fetching",
-    "404",
-    "failed:",
-  ];
-  if (
-    errorPhrases.some((p) => text.toLowerCase().includes(p)) ||
-    text.length < 20
-  ) {
-    return null;
-  }
-  return text.length > 120 ? `${text.slice(0, 117).trimEnd()}...` : text;
+  const errorPhrases = ["not enough content", "summary generation failed", "googlegenerativeai", "error fetching", "404", "failed:"];
+  if (errorPhrases.some((p) => text.toLowerCase().includes(p)) || text.length < 20) return null;
+  return text.length > 100 ? `${text.slice(0, 97).trimEnd()}...` : text;
 }
 
 function formatCompactDate(value: string | null) {
   if (!value) return "";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return d.toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function formatTime(dateStr: string) {
@@ -84,87 +55,64 @@ function formatTime(dateStr: string) {
   return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
-function formatTimeRange(startTime: string, endTime: string) {
-  const s = formatTime(startTime);
-  const e = formatTime(endTime);
-  if (!s) return "Time unavailable";
-  if (!e || s === e) return s;
-  return `${s} – ${e}`;
+function formatTimeRange(s: string, e: string) {
+  const a = formatTime(s), b = formatTime(e);
+  if (!a) return "Time unavailable";
+  return (!b || a === b) ? a : `${a} – ${b}`;
 }
 
 const PLATFORM_NAMES = new Set(["google meet", "zoom", "teams", "microsoft teams"]);
 
-/** If the stored title is just a platform name, derive a better display title */
-function getDisplayTitle(meeting: MeetingSessionRecord): string {
-  const raw = meeting.title?.trim() ?? "";
-  if (raw && !PLATFORM_NAMES.has(raw.toLowerCase())) {
-    return raw;
-  }
-  // Fallback: use date
-  const date = meeting.scheduledStartTime ?? meeting.createdAt;
+function getDisplayTitle(m: MeetingSessionRecord): string {
+  const raw = m.title?.trim() ?? "";
+  if (raw && !PLATFORM_NAMES.has(raw.toLowerCase())) return raw;
+  const date = m.scheduledStartTime ?? m.createdAt;
   if (date) {
     const d = new Date(date);
-    if (!Number.isNaN(d.getTime())) {
-      return `Meeting on ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
-    }
+    if (!Number.isNaN(d.getTime())) return `Meeting on ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
   }
   return "Untitled Meeting";
 }
 
-function getMeetingDetailHref(meeting: GoogleCalendarMeeting) {
-  return `/dashboard/meetings/${encodeCalendarMeetingId(meeting.id)}`;
+function getMeetingDetailHref(m: GoogleCalendarMeeting) {
+  return `/dashboard/meetings/${encodeCalendarMeetingId(m.id)}`;
 }
 
-function getPlatformLabel(provider: string) {
-  if (provider === "zoom_web") return "Zoom";
-  if (provider === "teams_web") return "Teams";
+function getPlatformLabel(p: string) {
+  if (p === "zoom_web") return "Zoom";
+  if (p === "teams_web") return "Teams";
   return "Google Meet";
 }
 
-function getPlatformStyle(provider: string): { bg: string; color: string } {
-  if (provider === "zoom_web") return { bg: "#e3f2fd", color: "#2D8CFF" };
-  if (provider === "teams_web") return { bg: "#ede7f6", color: "#6264A7" };
+function getPlatformStyle(p: string) {
+  if (p === "zoom_web") return { bg: "#e3f2fd", color: "#2D8CFF" };
+  if (p === "teams_web") return { bg: "#ede7f6", color: "#6264A7" };
   return { bg: "#e8f5e9", color: "#16a34a" };
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Stat Card ───────────────────────────────────────────────────────────────
 
-function StatCard({
-  label,
-  value,
-  helper,
-  icon,
-  accent,
-  iconBg,
-}: {
-  label: string;
-  value: number;
-  helper: string;
-  icon: ReactNode;
-  accent: string;
-  iconBg: string;
+function StatCard({ label, value, helper, icon, gradient, textColor }: {
+  label: string; value: number; helper: string;
+  icon: React.ReactNode; gradient: string; textColor: string;
 }) {
   return (
-    <Card
-      className="rounded-2xl border border-gray-100 bg-white p-6 transition-all hover:shadow-md"
-      style={{ borderLeft: `4px solid ${accent}` }}
-    >
-      <div className="space-y-4">
-        <span
-          className="flex h-11 w-11 items-center justify-center rounded-full"
-          style={{ backgroundColor: iconBg, color: accent }}
-        >
-          {icon}
-        </span>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-            {label}
-          </p>
-          <p className="mt-1 text-[38px] font-bold leading-none text-gray-900">{value}</p>
-          <p className="mt-2 text-[13px] text-gray-500">{helper}</p>
+    <div className={`relative overflow-hidden rounded-2xl p-6 ${gradient} transition-all hover:scale-[1.02] hover:shadow-lg`}>
+      <div className="flex items-start justify-between">
+        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
+          <span className="text-white">{icon}</span>
         </div>
+        <TrendingUp className="h-4 w-4 text-white/40" />
       </div>
-    </Card>
+      <div className="mt-4">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">{label}</p>
+        <p className="mt-1 text-4xl font-bold text-white">{value}</p>
+        <p className="mt-1.5 text-[12px] text-white/70">{helper}</p>
+      </div>
+      {/* Decorative circle */}
+      <div className="absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/10" />
+      <div className="absolute -bottom-8 -right-2 h-20 w-20 rounded-full bg-white/5" />
+    </div>
   );
 }
 
@@ -182,360 +130,278 @@ export default function DashboardPage() {
   async function fetchJoinedMeetingsWithContext(): Promise<MeetingSessionRecord[]> {
     const response = await workspaceFetch("/api/meetings/joined", { cache: "no-store" });
     const payload = (await response.json()) as MeetingSessionListResponse | MeetingSessionErrorResponse;
-    if (!response.ok || !payload.success) {
-      throw new Error("message" in payload ? payload.message : "Failed to load joined meetings.");
-    }
+    if (!response.ok || !payload.success) throw new Error("message" in payload ? payload.message : "Failed to load.");
     return payload.meetings;
   }
 
   async function loadDashboard() {
-    setIsLoading(true);
-    setError(null);
+    setIsLoading(true); setError(null);
     try {
       if (activeWorkspaceId) {
         const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
         const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
-        setReports(data.meetings ?? []);
-        setTodayMeetings([]);
+        setReports(data.meetings ?? []); setTodayMeetings([]);
       } else {
         const [joined, todayRes] = await Promise.all([
           fetchJoinedMeetingsWithContext(),
           fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
         ]);
         setReports(joined);
-        const sorted = [...todayRes.meetings].sort(
-          (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-        );
-        setTodayMeetings(sorted.slice(0, 5));
+        setTodayMeetings([...todayRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
-      setReports([]);
-      setTodayMeetings([]);
-    } finally {
-      setIsLoading(false);
-    }
+      setReports([]); setTodayMeetings([]);
+    } finally { setIsLoading(false); }
   }
 
   useEffect(() => {
     let mounted = true;
     void (async () => {
-      setIsLoading(true);
-      setError(null);
+      setIsLoading(true); setError(null);
       try {
         if (activeWorkspaceId) {
-          // Workspace mode: fetch shared meetings from workspace API, no calendar
           const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
           const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
           if (!mounted) return;
-          setReports(data.meetings ?? []);
-          setTodayMeetings([]); // no calendar in workspace mode
+          setReports(data.meetings ?? []); setTodayMeetings([]);
         } else {
-          // Personal mode: fetch joined meetings + Google Calendar
           const [joined, todayRes] = await Promise.all([
             fetchJoinedMeetingsWithContext(),
             fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
           ]);
           if (!mounted) return;
           setReports(joined);
-          const sorted = [...todayRes.meetings].sort(
-            (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-          );
-          setTodayMeetings(sorted.slice(0, 5));
+          setTodayMeetings([...todayRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5));
         }
       } catch (err) {
-        if (mounted) {
-          setError(err instanceof Error ? err.message : "Failed to load dashboard.");
-          setReports([]);
-          setTodayMeetings([]);
-        }
-      } finally {
-        if (mounted) setIsLoading(false);
-      }
+        if (mounted) { setError(err instanceof Error ? err.message : "Failed to load."); setReports([]); setTodayMeetings([]); }
+      } finally { if (mounted) setIsLoading(false); }
     })();
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
 
   const greeting = useMemo(() => getGreeting(), []);
-
-  // Stats derived from reports (already sorted DESC by createdAt from API)
   const meetingsWithContent = reports.filter(hasContent);
   const completedCount = meetingsWithContent.length;
-  const meetingsThisWeek = reports.filter((m) => {
-    const ts = new Date(m.scheduledStartTime ?? m.createdAt).getTime();
-    return ts >= Date.now() - 7 * 24 * 60 * 60 * 1000;
-  }).length;
-  const totalActionItems = reports.reduce((sum, m) => sum + m.actionItems.length, 0);
-
-  // Recent reports: meetings with content, newest first, max 5
-  // API already returns DESC by createdAt, so just filter + slice
+  const meetingsThisWeek = reports.filter((m) => new Date(m.scheduledStartTime ?? m.createdAt).getTime() >= Date.now() - 7 * 24 * 60 * 60 * 1000).length;
+  const totalActionItems = reports.reduce((sum, m) => sum + (m.actionItems?.length ?? 0), 0);
   const recentReports = reports.filter(hasContent).slice(0, 5);
 
   const mondayDate = (() => {
-    const d = new Date();
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
+    const d = new Date(); const day = d.getDay(); const diff = day === 0 ? -6 : 1 - day;
     d.setDate(d.getDate() + diff);
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   })();
 
   const stats = [
-    {
-      label: "Total Meetings Recorded",
-      value: reports.length,
-      helper: `${completedCount} with transcripts`,
-      icon: <Video className="h-5 w-5" />,
-      accent: "#6c63ff",
-      iconBg: "#f5f3ff",
-    },
-    {
-      label: "Meetings This Week",
-      value: meetingsThisWeek,
-      helper: `Since ${mondayDate}`,
-      icon: <CalendarDays className="h-5 w-5" />,
-      accent: "#2563eb",
-      iconBg: "#eff6ff",
-    },
-    {
-      label: "Total Action Items",
-      value: totalActionItems,
-      helper: `Across ${reports.length} meetings`,
-      icon: <ClipboardList className="h-5 w-5" />,
-      accent: "#16a34a",
-      iconBg: "#f0fdf4",
-    },
-    {
-      label: "Completed Meetings",
-      value: completedCount,
-      helper: `${completedCount} with full summaries`,
-      icon: <CheckCircle2 className="h-5 w-5" />,
-      accent: "#ca8a04",
-      iconBg: "#fefce8",
-    },
+    { label: "Meetings Recorded", value: reports.length, helper: `${completedCount} with transcripts`, icon: <Video className="h-5 w-5" />, gradient: "bg-gradient-to-br from-[#6c63ff] to-[#9b8fff]", textColor: "#6c63ff" },
+    { label: "This Week", value: meetingsThisWeek, helper: `Since ${mondayDate}`, icon: <CalendarDays className="h-5 w-5" />, gradient: "bg-gradient-to-br from-[#2563eb] to-[#60a5fa]", textColor: "#2563eb" },
+    { label: "Action Items", value: totalActionItems, helper: `Across ${reports.length} meeting${reports.length !== 1 ? "s" : ""}`, icon: <ClipboardList className="h-5 w-5" />, gradient: "bg-gradient-to-br from-[#059669] to-[#34d399]", textColor: "#059669" },
+    { label: "Completed", value: completedCount, helper: "With full summaries", icon: <CheckCircle2 className="h-5 w-5" />, gradient: "bg-gradient-to-br from-[#d97706] to-[#fbbf24]", textColor: "#d97706" },
   ];
 
-  const avatarColors = [
-    "bg-[#f5f3ff] text-[#6c63ff]",
-    "bg-[#eff6ff] text-[#2563eb]",
-    "bg-[#f0fdf4] text-[#16a34a]",
-    "bg-[#fefce8] text-[#ca8a04]",
-    "bg-[#fff1f2] text-[#f97316]",
-  ];
+  const avatarColors = ["bg-[#f5f3ff] text-[#6c63ff]", "bg-[#eff6ff] text-[#2563eb]", "bg-[#f0fdf4] text-[#16a34a]", "bg-[#fefce8] text-[#ca8a04]", "bg-[#fff1f2] text-[#f97316]"];
 
   if (isLoading) {
     return (
-      <div className="space-y-6 p-8">
-        <SkeletonList count={4} />
+      <div className="space-y-6">
+        <div className="h-32 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="grid grid-cols-4 gap-4">
+          {[0,1,2,3].map(i => <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-100" />)}
+        </div>
+        <SkeletonList count={3} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-8">
-      <div className="space-y-8">
+    <div className="space-y-8">
 
-        {/* Greeting */}
-        <div className="space-y-1">
-          <h1 className="text-[24px] font-bold text-gray-900">
-            {greeting}, {user?.firstName || "there"} 👋
-          </h1>
-          {activeWorkspaceId && activeWorkspace ? (
-            <p className="text-sm font-medium text-[#6c63ff]">
-              {activeWorkspace.name}
+      {/* ── Hero greeting banner ── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#1e1b4b] via-[#312e81] to-[#4c1d95] px-8 py-8">
+        {/* Decorative blobs */}
+        <div className="absolute -right-16 -top-16 h-64 w-64 rounded-full bg-[#6c63ff]/20 blur-3xl" />
+        <div className="absolute -bottom-12 left-1/3 h-48 w-48 rounded-full bg-purple-400/10 blur-2xl" />
+
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-yellow-300" />
+              <p className="text-sm font-semibold text-purple-200">
+                {activeWorkspaceId && activeWorkspace ? activeWorkspace.name : "Personal Space"}
+              </p>
+            </div>
+            <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">
+              {greeting}, {user?.firstName || "there"} 👋
+            </h1>
+            <p className="mt-1 text-sm text-purple-300">
+              {activeWorkspaceId
+                ? "Here's your workspace meeting intelligence."
+                : "Here's your meeting intelligence overview."}
             </p>
-          ) : null}
-          <p className="text-sm text-gray-500">Here&apos;s your meeting intelligence overview.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/dashboard/meetings"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors">
+              <CalendarDays className="h-4 w-4" /> Meetings
+            </Link>
+            <Link href="/dashboard/reports"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-4 py-2 text-sm font-semibold text-white backdrop-blur-sm hover:bg-white/20 transition-colors">
+              <Zap className="h-4 w-4" /> Reports
+            </Link>
+          </div>
         </div>
+      </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {stats.map((stat) => (
-            <StatCard key={stat.label} {...stat} />
-          ))}
+      {/* ── Stats grid ── */}
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {stats.map((stat) => <StatCard key={stat.label} {...stat} />)}
+      </div>
+
+      {/* ── Error ── */}
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-center justify-between gap-4">
+          <p className="text-sm text-red-700">{error}</p>
+          <button onClick={() => void loadDashboard()} className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors">Retry</button>
         </div>
+      )}
 
-        {/* Error */}
-        {error ? (
-          <Card className="border-[#fecaca] bg-[#fef2f2] p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold text-[#991b1b]">Unable to load dashboard</p>
-                <p className="mt-2 text-sm text-[#991b1b]">{error}</p>
-              </div>
-              <Button type="button" variant="outline" onClick={() => void loadDashboard()}>
-                Retry
-              </Button>
+      {/* ── Main content grid ── */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
+
+        {/* Recent Reports — 3 cols */}
+        <div className="col-span-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:col-span-3">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div>
+              <p className="text-sm font-bold text-slate-900">Recent Reports</p>
+              <p className="mt-0.5 text-xs text-slate-400">Last 5 meetings with summaries</p>
             </div>
-          </Card>
-        ) : null}
+            <Link href="/dashboard/reports" className="inline-flex items-center gap-1 text-xs font-semibold text-[#6c63ff] hover:text-[#5b52ee] transition-colors">
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
 
-        {/* Recent Reports + Today's Meetings */}
-        <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-
-          {/* ── Recent Reports ── */}
-          <Card className="col-span-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:col-span-3">
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
-              <div>
-                <h2 className="text-[16px] font-semibold text-gray-900">Recent Reports</h2>
-                <p className="mt-0.5 text-[13px] text-gray-400">Last 5 meetings with summaries</p>
-              </div>
-              <Link
-                href="/dashboard/reports"
-                className="text-[13px] font-medium text-[#6c63ff] hover:text-[#5b52ee]"
-              >
-                View all →
-              </Link>
-            </div>
-
-            <div className="divide-y divide-[#f3f4f6]">
-              {recentReports.length > 0 ? (
-                recentReports.map((meeting, index) => {
-                  const preview = getSummaryPreview(meeting.summary);
-                  const displayTitle = getDisplayTitle(meeting);
-                  const avatarLetter = displayTitle.charAt(0).toUpperCase();
-
-                  return (
-                    <div
-                      key={meeting.id}
-                      className="flex items-center gap-4 px-6 py-4 transition-colors hover:bg-[#fafafa]"
-                    >
-                      {/* Avatar */}
-                      <span
-                        className={cn(
-                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
-                          avatarColors[index % avatarColors.length]
-                        )}
-                      >
-                        {avatarLetter}
-                      </span>
-
-                      {/* Content */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-[14px] font-semibold text-gray-900">
-                            {displayTitle}
-                          </p>
-                          <span className="shrink-0 rounded-full bg-[#f0fdf4] px-2 py-0.5 text-[10px] font-semibold text-[#16a34a]">
-                            Completed
-                          </span>
-                        </div>
-                        <p className="mt-0.5 text-[12px] text-gray-400">
-                          {formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}
-                        </p>
-                        {preview ? (
-                          <p className="mt-0.5 truncate text-[13px] text-gray-500">{preview}</p>
-                        ) : (
-                          <p className="mt-0.5 truncate text-[13px] italic text-gray-400">
-                            Summary not available
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Action */}
-                      <Button asChild variant="secondary" size="sm" className="shrink-0">
-                        <Link href={`/dashboard/meetings/${meeting.id}` as Route}>View</Link>
-                      </Button>
+          <div className="divide-y divide-slate-50">
+            {recentReports.length > 0 ? recentReports.map((meeting, index) => {
+              const preview = getSummaryPreview(meeting.summary);
+              const displayTitle = getDisplayTitle(meeting);
+              return (
+                <Link key={meeting.id} href={`/dashboard/meetings/${meeting.id}` as Route}
+                  className="group flex items-start gap-4 px-6 py-4 transition-colors hover:bg-[#faf9ff]">
+                  <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold", avatarColors[index % avatarColors.length])}>
+                    {displayTitle.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-semibold text-slate-900">{displayTitle}</p>
+                      <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">✓</span>
                     </div>
-                  );
-                })
-              ) : (
-                <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                  <span className="text-3xl">📋</span>
-                  <p className="text-[14px] font-medium text-gray-700">No reports yet</p>
-                  <p className="text-[13px] text-gray-400">
-                    Start AI Notetaker on a meeting to generate your first report.
-                  </p>
+                    <p className="mt-0.5 text-xs text-slate-400">{formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
+                    {preview && <p className="mt-0.5 truncate text-xs text-slate-500">{preview}</p>}
+                  </div>
+                  <span className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 opacity-0 transition-all group-hover:opacity-100 group-hover:border-[#6c63ff]/30 group-hover:text-[#6c63ff]">
+                    View
+                  </span>
+                </Link>
+              );
+            }) : (
+              <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
+                  <Video className="h-7 w-7 text-slate-300" />
                 </div>
-              )}
-            </div>
-          </Card>
-
-          {/* ── Today's Meetings / Workspace Meetings ── */}
-          <Card className="col-span-1 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm xl:col-span-2">
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5">
-              <div>
-                <h2 className="text-[16px] font-semibold text-gray-900">
-                  {activeWorkspaceId ? "Shared Meetings" : "Today's Meetings"}
-                </h2>
-                <p className="mt-0.5 text-[13px] text-gray-400">
-                  {activeWorkspaceId
-                    ? "Meetings shared to this workspace"
-                    : new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
-                </p>
+                <p className="text-sm font-semibold text-slate-700">No reports yet</p>
+                <p className="text-xs text-slate-400">Start AI Notetaker on a meeting to generate your first report.</p>
+                <Link href="/dashboard/meetings" className="mt-1 inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-xs font-semibold text-white hover:bg-[#5b52e0] transition-colors">
+                  Go to Meetings <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
-              <Link
-                href="/dashboard/meetings"
-                className="text-[13px] font-medium text-[#6c63ff] hover:text-[#5b52ee]"
-              >
-                View all →
-              </Link>
-            </div>
-
-            <div className="divide-y divide-[#f3f4f6]">
-              {activeWorkspaceId ? (
-                // Workspace mode: show shared meetings list
-                reports.slice(0, 5).length > 0 ? (
-                  reports.slice(0, 5).map((meeting, index) => {
-                    const displayTitle = getDisplayTitle(meeting);
-                    return (
-                      <Link
-                        key={meeting.id}
-                        href={`/dashboard/meetings/${meeting.id}` as Route}
-                        className="flex items-center gap-3 px-5 py-4 transition-colors hover:bg-[#fafafa]"
-                      >
-                        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold", avatarColors[index % avatarColors.length])}>
-                          {displayTitle.charAt(0).toUpperCase()}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[13px] font-semibold text-gray-900">{displayTitle}</p>
-                          <p className="text-[11px] text-gray-400">{formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
-                        </div>
-                      </Link>
-                    );
-                  })
-                ) : (
-                  <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                    <span className="text-3xl">📋</span>
-                    <p className="text-[14px] font-medium text-gray-700">No shared meetings yet</p>
-                    <p className="text-[13px] text-gray-400">Admin can share meetings to this workspace.</p>
-                  </div>
-                )
-              ) : (
-                // Personal mode: show Google Calendar meetings
-                todayMeetings.length > 0 ? (
-                  todayMeetings.map((meeting) => {
-                    const session = findSessionForMeeting(meeting, reports);
-                    const status = getMeetingDisplayStatus(meeting, session);
-                    const platformStyle = getPlatformStyle(meeting.provider);
-                    const platformLabel = getPlatformLabel(meeting.provider);
-                    const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
-                    return (
-                      <a key={meeting.id} href={getMeetingDetailHref(meeting)} className="block px-5 py-4 transition-colors hover:bg-[#fafafa]">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ background: platformStyle.bg, color: platformStyle.color }}>{platformLabel}</span>
-                          <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={{ background: status.bg, color: status.color }}>
-                            {status.pulse ? <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ backgroundColor: status.color }} /> : null}
-                            {status.label}
-                          </span>
-                        </div>
-                        <p className="mt-2 truncate text-[14px] font-semibold text-gray-900">{meeting.title}</p>
-                        <p className="mt-0.5 text-[12px] text-gray-400">{timeRange}</p>
-                      </a>
-                    );
-                  })
-                ) : (
-                  <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-                    <span className="text-3xl">📅</span>
-                    <p className="text-[14px] font-medium text-gray-700">No meetings today</p>
-                    <p className="text-[13px] text-gray-400">Connect Google Calendar to see your schedule here.</p>
-                  </div>
-                )
-              )}
-            </div>
-          </Card>
-
+            )}
+          </div>
         </div>
+
+        {/* Today / Workspace Meetings — 2 cols */}
+        <div className="col-span-1 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm xl:col-span-2">
+          <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div>
+              <p className="text-sm font-bold text-slate-900">
+                {activeWorkspaceId ? "Shared Meetings" : "Today's Meetings"}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {activeWorkspaceId
+                  ? "Shared to this workspace"
+                  : new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+              </p>
+            </div>
+            <Link href="/dashboard/meetings" className="inline-flex items-center gap-1 text-xs font-semibold text-[#6c63ff] hover:text-[#5b52ee] transition-colors">
+              View all <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
+
+          <div className="divide-y divide-slate-50">
+            {activeWorkspaceId ? (
+              reports.slice(0, 5).length > 0 ? reports.slice(0, 5).map((meeting, index) => {
+                const displayTitle = getDisplayTitle(meeting);
+                return (
+                  <Link key={meeting.id} href={`/dashboard/meetings/${meeting.id}` as Route}
+                    className="group flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-[#faf9ff]">
+                    <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold", avatarColors[index % avatarColors.length])}>
+                      {displayTitle.charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{displayTitle}</p>
+                      <p className="text-xs text-slate-400">{formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
+                    </div>
+                    <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#6c63ff]" />
+                  </Link>
+                );
+              }) : (
+                <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                    <CalendarDays className="h-6 w-6 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">No shared meetings</p>
+                  <p className="text-xs text-slate-400">Admin can share meetings to this workspace.</p>
+                </div>
+              )
+            ) : (
+              todayMeetings.length > 0 ? todayMeetings.map((meeting) => {
+                const session = findSessionForMeeting(meeting, reports);
+                const status = getMeetingDisplayStatus(meeting, session);
+                const platformStyle = getPlatformStyle(meeting.provider);
+                const platformLabel = getPlatformLabel(meeting.provider);
+                const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
+                return (
+                  <a key={meeting.id} href={getMeetingDetailHref(meeting)}
+                    className="group block px-5 py-3.5 transition-colors hover:bg-[#faf9ff]">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: platformStyle.bg, color: platformStyle.color }}>{platformLabel}</span>
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: status.bg, color: status.color }}>
+                          {status.pulse && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ backgroundColor: status.color }} />}
+                          {status.label}
+                        </span>
+                      </div>
+                      <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#6c63ff]" />
+                    </div>
+                    <p className="mt-1.5 truncate text-sm font-semibold text-slate-900">{meeting.title}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">{timeRange}</p>
+                  </a>
+                );
+              }) : (
+                <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                    <CalendarDays className="h-6 w-6 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">No meetings today</p>
+                  <p className="text-xs text-slate-400">Connect Google Calendar to see your schedule.</p>
+                </div>
+              )
+            )}
+          </div>
+        </div>
+
       </div>
     </div>
   );

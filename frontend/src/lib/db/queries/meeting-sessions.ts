@@ -252,10 +252,11 @@ export async function listMeetingSessionsByUserPaginated(
     search?: string;
     dateFrom?: Date;
     requireApprovedForWorkspace?: boolean;
+    excludeUnrecorded?: boolean; // exclude scheduled/draft meetings with no transcript/summary
   } = { page: 1, limit: 20 }
 ) {
   const database = getDbOrThrow();
-  const { page, limit, excludeDrafts, statuses, search, dateFrom, requireApprovedForWorkspace } = options;
+  const { page, limit, excludeDrafts, statuses, search, dateFrom, requireApprovedForWorkspace, excludeUnrecorded } = options;
   const offset = (page - 1) * limit;
 
   // Workspace mode: show ALL meetings shared to this workspace (any user)
@@ -271,6 +272,23 @@ export async function listMeetingSessionsByUserPaginated(
 
   if (excludeDrafts) {
     conditions.push(ne(meetingSessions.status, "draft"));
+  }
+
+  // Exclude meetings that were shared from calendar but never actually recorded
+  // (status = scheduled/draft AND no transcript AND no summary)
+  if (excludeUnrecorded) {
+    conditions.push(
+      or(
+        // Keep if status is not scheduled/draft (i.e., was actually processed)
+        and(
+          ne(meetingSessions.status, "scheduled"),
+          ne(meetingSessions.status, "draft")
+        ),
+        // OR keep if it has transcript or summary (content exists)
+        sql`(${meetingSessions.transcript} IS NOT NULL AND ${meetingSessions.transcript} != '')`,
+        sql`(${meetingSessions.summary} IS NOT NULL AND ${meetingSessions.summary} != '')`
+      )!
+    );
   }
 
   if (statuses && statuses.length > 0) {

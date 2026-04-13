@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ArrowRight, CheckCircle, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
 
 const INTEGRATIONS_CONFIG = [
   {
@@ -9,25 +10,12 @@ const INTEGRATIONS_CONFIG = [
     description: "Post meeting summaries and action items to a Slack channel automatically.",
     icon: "💬",
     color: "#E01E5A",
-    bg: "#fdf2f8",
+    gradient: "from-pink-50 to-rose-50",
+    accent: "#E01E5A",
     fields: [
-      {
-        key: "webhookUrl",
-        label: "Webhook URL",
-        placeholder: "https://hooks.slack.com/services/...",
-        type: "text",
-        required: true,
-        help: "Create at api.slack.com/apps → Incoming Webhooks"
-      }
+      { key: "webhookUrl", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/...", type: "text", required: true, help: "Create at api.slack.com/apps → Incoming Webhooks" }
     ],
-    setupSteps: [
-      "Go to api.slack.com/apps",
-      "Create a new app → From scratch",
-      "Add feature: Incoming Webhooks",
-      "Add new webhook to workspace",
-      "Select your channel",
-      "Copy webhook URL and paste above"
-    ]
+    setupSteps: ["Go to api.slack.com/apps", "Create a new app → From scratch", "Add feature: Incoming Webhooks", "Add new webhook to workspace", "Select your channel", "Copy webhook URL and paste above"]
   },
   {
     type: "gmail",
@@ -35,22 +23,12 @@ const INTEGRATIONS_CONFIG = [
     description: "Send meeting summary emails to participants after each meeting.",
     icon: "📧",
     color: "#EA4335",
-    bg: "#fef2f2",
+    gradient: "from-red-50 to-orange-50",
+    accent: "#EA4335",
     fields: [
-      {
-        key: "recipients",
-        label: "Recipients",
-        placeholder: "john@company.com, sarah@company.com",
-        type: "text",
-        required: true,
-        help: "Comma-separated email addresses"
-      }
+      { key: "recipients", label: "Recipients", placeholder: "john@company.com, sarah@company.com", type: "text", required: true, help: "Comma-separated email addresses" }
     ],
-    setupSteps: [
-      "Enter recipient email addresses above",
-      "Uses your connected Google account",
-      "Emails are sent automatically after each meeting"
-    ]
+    setupSteps: ["Enter recipient email addresses above", "Uses your connected Google account", "Emails are sent automatically after each meeting"]
   },
   {
     type: "notion",
@@ -58,33 +36,13 @@ const INTEGRATIONS_CONFIG = [
     description: "Create a Notion page for each meeting with summary, action items, and transcript.",
     icon: "📝",
     color: "#000000",
-    bg: "#f9fafb",
+    gradient: "from-slate-50 to-gray-50",
+    accent: "#374151",
     fields: [
-      {
-        key: "apiToken",
-        label: "API Token",
-        placeholder: "secret_...",
-        type: "password",
-        required: true,
-        help: "Get at notion.so/my-integrations"
-      },
-      {
-        key: "databaseId",
-        label: "Database ID",
-        placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
-        type: "text",
-        required: true,
-        help: "From your Notion database URL"
-      }
+      { key: "apiToken", label: "API Token", placeholder: "secret_...", type: "password", required: true, help: "Get at notion.so/my-integrations" },
+      { key: "databaseId", label: "Database ID", placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx", type: "text", required: true, help: "From your Notion database URL" }
     ],
-    setupSteps: [
-      "Go to notion.so/my-integrations",
-      "Create a new integration",
-      "Copy the API token",
-      "Open your Notion database",
-      "Settings → Connections → Add integration",
-      "Copy the database ID from the URL"
-    ]
+    setupSteps: ["Go to notion.so/my-integrations", "Create a new integration", "Copy the API token", "Open your Notion database", "Settings → Connections → Add integration", "Copy the database ID from the URL"]
   },
   {
     type: "jira",
@@ -92,55 +50,19 @@ const INTEGRATIONS_CONFIG = [
     description: "Automatically create Jira tickets from meeting action items.",
     icon: "🎯",
     color: "#0052CC",
-    bg: "#eff6ff",
+    gradient: "from-blue-50 to-indigo-50",
+    accent: "#0052CC",
     fields: [
-      {
-        key: "domain",
-        label: "Jira Domain",
-        placeholder: "yourcompany.atlassian.net",
-        type: "text",
-        required: true,
-        help: "Your Atlassian domain"
-      },
-      {
-        key: "email",
-        label: "Email",
-        placeholder: "you@company.com",
-        type: "text",
-        required: true,
-        help: "Your Atlassian account email"
-      },
-      {
-        key: "apiToken",
-        label: "API Token",
-        placeholder: "ATATT...",
-        type: "password",
-        required: true,
-        help: "Create at id.atlassian.com/manage-profile/security/api-tokens"
-      },
-      {
-        key: "projectKey",
-        label: "Project Key",
-        placeholder: "PROJ",
-        type: "text",
-        required: true,
-        help: "Your Jira project key (for example DEV or PROJ)"
-      }
+      { key: "domain", label: "Jira Domain", placeholder: "yourcompany.atlassian.net", type: "text", required: true, help: "Your Atlassian domain" },
+      { key: "email", label: "Email", placeholder: "you@company.com", type: "text", required: true, help: "Your Atlassian account email" },
+      { key: "apiToken", label: "API Token", placeholder: "ATATT...", type: "password", required: true, help: "Create at id.atlassian.com/manage-profile/security/api-tokens" },
+      { key: "projectKey", label: "Project Key", placeholder: "PROJ", type: "text", required: true, help: "Your Jira project key (e.g. DEV or PROJ)" }
     ],
-    setupSteps: [
-      "Go to id.atlassian.com → Security → API Tokens",
-      "Create a new API token",
-      "Fill in your domain, email, and token above",
-      "Enter your Jira project key",
-      "Action items will become Jira tasks automatically"
-    ]
+    setupSteps: ["Go to id.atlassian.com → Security → API Tokens", "Create a new API token", "Fill in your domain, email, and token above", "Enter your Jira project key", "Action items will become Jira tasks automatically"]
   }
 ] as const;
 
-type ToastState = {
-  msg: string;
-  type: "success" | "error";
-};
+type ToastState = { msg: string; type: "success" | "error" };
 
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Record<string, any>>({});
@@ -153,153 +75,88 @@ export default function IntegrationsPage() {
 
   function showToast(msg: string, type: ToastState["type"]) {
     setToast({ msg, type });
-    window.setTimeout(() => setToast(null), 3000);
+    window.setTimeout(() => setToast(null), 3500);
   }
 
-  useEffect(() => {
-    void fetchIntegrations();
-  }, []);
+  useEffect(() => { void fetchIntegrations(); }, []);
 
   async function fetchIntegrations() {
     try {
-      const response = await fetch("/api/integrations", { cache: "no-store" });
-      const data = (await response.json()) as { integrations?: Array<any> };
-
-      const integrationMap: Record<string, any> = {};
-      const configMap: Record<string, any> = {};
-
-      for (const integration of data.integrations || []) {
-        integrationMap[integration.type] = integration;
-        configMap[integration.type] = integration.config || {};
-      }
-
-      setIntegrations(integrationMap);
-      setConfigs(configMap);
-    } catch (error) {
-      console.error("Failed to fetch integrations:", error);
-      showToast("Failed to load integrations", "error");
-    } finally {
-      setLoading(false);
-    }
+      const res = await fetch("/api/integrations", { cache: "no-store" });
+      const data = await res.json() as { integrations?: any[] };
+      const iMap: Record<string, any> = {}, cMap: Record<string, any> = {};
+      for (const i of data.integrations || []) { iMap[i.type] = i; cMap[i.type] = i.config || {}; }
+      setIntegrations(iMap); setConfigs(cMap);
+    } catch { showToast("Failed to load integrations", "error"); }
+    finally { setLoading(false); }
   }
 
   async function saveIntegration(type: string, enabled: boolean) {
     setSaving(type);
-
     try {
-      const response = await fetch("/api/integrations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type,
-          enabled,
-          config: configs[type] || {}
-        })
+      const res = await fetch("/api/integrations", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, enabled, config: configs[type] || {} })
       });
-
-      const data = (await response.json()) as {
-        success?: boolean;
-        integration?: any;
-        message?: string;
-      };
-
-      if (response.ok && data.success) {
-        setIntegrations((current) => ({ ...current, [type]: data.integration }));
-        showToast(`${type} integration saved!`, "success");
-      } else {
-        showToast(data.message || "Failed to save integration", "error");
-      }
-    } catch {
-      showToast("Failed to save integration", "error");
-    } finally {
-      setSaving(null);
-    }
+      const data = await res.json() as { success?: boolean; integration?: any; message?: string };
+      if (res.ok && data.success) { setIntegrations(c => ({ ...c, [type]: data.integration })); showToast(`${type} saved!`, "success"); }
+      else showToast(data.message || "Failed to save", "error");
+    } catch { showToast("Failed to save", "error"); }
+    finally { setSaving(null); }
   }
 
   async function testIntegration(type: string) {
     setTesting(type);
-
     try {
-      const response = await fetch("/api/integrations/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type,
-          config: configs[type] || {}
-        })
+      const res = await fetch("/api/integrations/test", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, config: configs[type] || {} })
       });
-
-      const data = (await response.json()) as {
-        success?: boolean;
-        message?: string;
-      };
-
+      const data = await res.json() as { success?: boolean; message?: string };
       showToast(data.message || "Test completed", data.success ? "success" : "error");
-    } catch {
-      showToast("Test failed", "error");
-    } finally {
-      setTesting(null);
-    }
+    } catch { showToast("Test failed", "error"); }
+    finally { setTesting(null); }
   }
 
   function updateConfig(type: string, key: string, value: string) {
-    setConfigs((current) => ({
-      ...current,
-      [type]: { ...(current[type] || {}), [key]: value }
-    }));
+    setConfigs(c => ({ ...c, [type]: { ...(c[type] || {}), [key]: value } }));
   }
 
-  if (loading) {
-    return (
-      <div style={{ padding: "32px" }}>
-        <div style={{ color: "#6b7280" }}>Loading integrations...</div>
-      </div>
-    );
-  }
+  const activeCount = Object.values(integrations).filter((i: any) => i?.enabled).length;
+
+  if (loading) return (
+    <div className="flex items-center justify-center py-24">
+      <Loader2 className="h-7 w-7 animate-spin text-[#6c63ff]" />
+    </div>
+  );
 
   return (
-    <div style={{ padding: "32px", maxWidth: "900px" }}>
-      {toast ? (
-        <div
-          style={{
-            position: "fixed",
-            top: "20px",
-            right: "20px",
-            background: toast.type === "success" ? "#16a34a" : "#dc2626",
-            color: "white",
-            padding: "12px 20px",
-            borderRadius: "8px",
-            fontSize: "14px",
-            zIndex: 1000,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)"
-          }}
-        >
+    <div className="space-y-8">
+
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed right-6 top-6 z-50 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all ${toast.type === "success" ? "bg-emerald-600" : "bg-red-600"}`}>
           {toast.msg}
         </div>
-      ) : null}
+      )}
 
-      <div style={{ marginBottom: "32px" }}>
-        <p
-          style={{
-            fontSize: "12px",
-            fontWeight: 600,
-            color: "#6c63ff",
-            letterSpacing: "0.1em",
-            textTransform: "uppercase",
-            marginBottom: "4px"
-          }}
-        >
-          INTEGRATIONS
-        </p>
-        <h1 style={{ fontSize: "24px", fontWeight: 700, color: "#111827", marginBottom: "8px" }}>
-          Connect Your Tools
-        </h1>
-        <p style={{ color: "#6b7280", fontSize: "14px" }}>
-          Automatically send meeting summaries and action items to your favorite tools.
-        </p>
+      {/* Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Integrations</p>
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">Connect Your Tools</h1>
+          <p className="mt-1 text-sm text-slate-400">Automatically send meeting summaries and action items to your favorite tools.</p>
+        </div>
+        {activeCount > 0 && (
+          <div className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200">
+            <CheckCircle className="h-4 w-4" />
+            {activeCount} active integration{activeCount !== 1 ? "s" : ""}
+          </div>
+        )}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {/* Integration cards grid */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {INTEGRATIONS_CONFIG.map((integration) => {
           const saved = integrations[integration.type];
           const isEnabled = saved?.enabled || false;
@@ -309,229 +166,140 @@ export default function IntegrationsPage() {
           return (
             <div
               key={integration.type}
-              style={{
-                background: "white",
-                borderRadius: "12px",
-                border: `1px solid ${isEnabled ? `${integration.color}40` : "#f3f4f6"}`,
-                overflow: "hidden",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.06)"
-              }}
+              className={`overflow-hidden rounded-2xl border bg-white shadow-sm transition-all ${
+                isEnabled
+                  ? "border-[#6c63ff]/30 shadow-[#6c63ff]/5"
+                  : "border-slate-200 hover:border-slate-300 hover:shadow-md"
+              }`}
             >
-              <div
-                style={{
-                  padding: "20px 24px",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "16px"
-                }}
-              >
-                <div
-                  style={{
-                    width: "48px",
-                    height: "48px",
-                    background: integration.bg,
-                    borderRadius: "12px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "24px"
-                  }}
-                >
-                  {integration.icon}
-                </div>
-
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-                    <h3 style={{ fontSize: "16px", fontWeight: 600, color: "#111827", margin: 0 }}>
-                      {integration.name}
-                    </h3>
-                    {isEnabled ? (
-                      <span
-                        style={{
-                          background: "#f0fdf4",
-                          color: "#16a34a",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          padding: "2px 8px",
-                          borderRadius: "9999px"
-                        }}
-                      >
-                        ✓ Active
-                      </span>
-                    ) : null}
+              {/* Card header */}
+              <div className={`bg-gradient-to-br ${integration.gradient} px-5 py-4`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white shadow-sm text-2xl">
+                      {integration.icon}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-base font-bold text-slate-900">{integration.name}</h3>
+                        {isEnabled && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-slate-500">{integration.description}</p>
+                    </div>
                   </div>
-                  <p style={{ fontSize: "13px", color: "#6b7280", margin: 0 }}>{integration.description}</p>
-                </div>
 
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  {/* Toggle */}
                   <button
-                    onClick={() => setExpanded(isExpanded ? null : integration.type)}
-                    style={{
-                      padding: "6px 14px",
-                      border: "1px solid #e5e7eb",
-                      borderRadius: "8px",
-                      background: "white",
-                      color: "#374151",
-                      fontSize: "13px",
-                      cursor: "pointer"
-                    }}
+                    type="button"
+                    onClick={() => { if (saving !== integration.type) void saveIntegration(integration.type, !isEnabled); }}
+                    disabled={saving === integration.type}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-60 ${isEnabled ? "bg-[#6c63ff]" : "bg-slate-200"}`}
                   >
-                    {isExpanded ? "Close" : "Configure"}
+                    {saving === integration.type
+                      ? <Loader2 className="absolute inset-0 m-auto h-3.5 w-3.5 animate-spin text-white" />
+                      : <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${isEnabled ? "left-[22px]" : "left-0.5"}`} />
+                    }
                   </button>
-
-                  <div
-                    onClick={() => {
-                      if (saving !== integration.type) {
-                        void saveIntegration(integration.type, !isEnabled);
-                      }
-                    }}
-                    style={{
-                      width: "44px",
-                      height: "24px",
-                      background: isEnabled ? "#6c63ff" : "#d1d5db",
-                      borderRadius: "9999px",
-                      cursor: saving === integration.type ? "wait" : "pointer",
-                      position: "relative",
-                      transition: "background 0.2s"
-                    }}
-                  >
-                    <div
-                      style={{
-                        position: "absolute",
-                        top: "2px",
-                        left: isEnabled ? "22px" : "2px",
-                        width: "20px",
-                        height: "20px",
-                        background: "white",
-                        borderRadius: "50%",
-                        transition: "left 0.2s",
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.2)"
-                      }}
-                    />
-                  </div>
                 </div>
               </div>
 
-              {isExpanded ? (
-                <div style={{ padding: "0 24px 24px", borderTop: "1px solid #f3f4f6" }}>
-                  <div
-                    style={{
-                      background: "#f8fafc",
-                      borderRadius: "8px",
-                      padding: "16px",
-                      marginBottom: "20px",
-                      marginTop: "16px"
-                    }}
-                  >
-                    <p style={{ fontSize: "12px", fontWeight: 600, color: "#374151", marginBottom: "8px" }}>
-                      SETUP GUIDE
-                    </p>
-                    {integration.setupSteps.map((step, index) => (
-                      <div
-                        key={index}
-                        style={{
-                          display: "flex",
-                          gap: "8px",
-                          marginBottom: "6px",
-                          fontSize: "13px",
-                          color: "#4b5563"
-                        }}
-                      >
-                        <span style={{ color: "#6c63ff", fontWeight: 600, minWidth: "20px" }}>{index + 1}.</span>
-                        {step}
-                      </div>
-                    ))}
+              {/* Configure button */}
+              <div className="flex items-center justify-between border-t border-slate-100 px-5 py-3">
+                <p className="text-xs text-slate-400">
+                  {isEnabled ? "Integration is active and running" : "Toggle to enable this integration"}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setExpanded(isExpanded ? null : integration.type)}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-[#6c63ff]/30 hover:bg-[#faf9ff] hover:text-[#6c63ff] transition-all"
+                >
+                  {isExpanded ? <><ChevronUp className="h-3.5 w-3.5" /> Close</> : <><ArrowRight className="h-3.5 w-3.5" /> Configure</>}
+                </button>
+              </div>
+
+              {/* Expanded config */}
+              {isExpanded && (
+                <div className="border-t border-slate-100 px-5 pb-5 pt-4 space-y-4">
+                  {/* Setup guide */}
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Setup Guide</p>
+                    <ol className="space-y-1.5">
+                      {integration.setupSteps.map((step, i) => (
+                        <li key={i} className="flex gap-2 text-xs text-slate-600">
+                          <span className="shrink-0 font-bold text-[#6c63ff]">{i + 1}.</span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", gap: "16px", marginBottom: "16px" }}>
+                  {/* Fields */}
+                  <div className="space-y-3">
                     {integration.fields.map((field) => (
                       <div key={field.key}>
-                        <label
-                          style={{
-                            display: "block",
-                            fontSize: "13px",
-                            fontWeight: 500,
-                            color: "#374151",
-                            marginBottom: "6px"
-                          }}
-                        >
-                          {field.label}
-                          {field.required ? <span style={{ color: "#dc2626" }}> *</span> : null}
+                        <label className="mb-1 block text-xs font-semibold text-slate-700">
+                          {field.label}{field.required && <span className="ml-0.5 text-red-500">*</span>}
                         </label>
                         <input
                           type={field.type}
                           placeholder={field.placeholder}
                           value={config[field.key] || ""}
-                          onChange={(event) => updateConfig(integration.type, field.key, event.target.value)}
-                          style={{
-                            width: "100%",
-                            padding: "10px 12px",
-                            border: "1px solid #e5e7eb",
-                            borderRadius: "8px",
-                            fontSize: "13px",
-                            outline: "none",
-                            boxSizing: "border-box"
-                          }}
+                          onChange={(e) => updateConfig(integration.type, field.key, e.target.value)}
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6c63ff]/40"
                         />
-                        <p style={{ fontSize: "12px", color: "#9ca3af", marginTop: "4px" }}>{field.help}</p>
+                        <p className="mt-1 text-xs text-slate-400">{field.help}</p>
                       </div>
                     ))}
                   </div>
 
-                  <div style={{ display: "flex", gap: "8px" }}>
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-1">
                     <button
+                      type="button"
                       onClick={() => void saveIntegration(integration.type, isEnabled)}
                       disabled={saving === integration.type}
-                      style={{
-                        background: "#6c63ff",
-                        color: "white",
-                        border: "none",
-                        padding: "10px 20px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 500,
-                        cursor: "pointer"
-                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5b52e0] disabled:opacity-50 transition-colors"
                     >
-                      {saving === integration.type ? "Saving..." : "Save Configuration"}
+                      {saving === integration.type ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Configuration
                     </button>
                     <button
+                      type="button"
                       onClick={() => void testIntegration(integration.type)}
                       disabled={testing === integration.type}
-                      style={{
-                        background: "white",
-                        color: "#374151",
-                        border: "1px solid #e5e7eb",
-                        padding: "10px 20px",
-                        borderRadius: "8px",
-                        fontSize: "13px",
-                        fontWeight: 500,
-                        cursor: "pointer"
-                      }}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
                     >
-                      {testing === integration.type ? "Testing..." : "Test Connection"}
+                      {testing === integration.type ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Test Connection
                     </button>
                   </div>
                 </div>
-              ) : null}
+              )}
             </div>
           );
         })}
       </div>
 
-      <div
-        style={{
-          marginTop: "32px",
-          padding: "16px 20px",
-          background: "#f8fafc",
-          borderRadius: "8px",
-          fontSize: "13px",
-          color: "#6b7280"
-        }}
-      >
-        💡 <strong>How it works:</strong> When a meeting recording completes, Artivaa automatically sends the summary
-        and action items to all enabled integrations. No manual action needed.
+      {/* How it works */}
+      <div className="rounded-2xl border border-[#6c63ff]/20 bg-gradient-to-br from-[#faf9ff] to-white p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#6c63ff]/10">
+            <Zap className="h-4 w-4 text-[#6c63ff]" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-900">How it works</p>
+            <p className="mt-1 text-sm text-slate-500">
+              When a meeting recording completes, Artivaa automatically sends the summary and action items to all enabled integrations. No manual action needed.
+            </p>
+          </div>
+        </div>
       </div>
+
     </div>
   );
 }
