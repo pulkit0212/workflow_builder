@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { CheckSquare, ClipboardList, FileText, PencilLine, ShieldAlert, Sparkles, UploadCloud, X } from "lucide-react";
+import {
+  AlertTriangle, CheckCircle2, CheckSquare, ClipboardList, FileText,
+  Lightbulb, PencilLine, RefreshCw, ShieldAlert, Sparkles, UploadCloud,
+  Wand2, X, Zap,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useUser } from "@clerk/nextjs";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { EmptyState } from "@/components/shared/empty-state";
 import { CopyButton } from "@/components/tools/copy-button";
 import { LoadingSpinner } from "@/components/tools/loading-spinner";
 import { cn } from "@/lib/utils";
@@ -15,12 +17,7 @@ type ExtractOption = "summary" | "actionItems" | "keyPoints" | "decisions" | "ri
 
 type DocumentAnalysisResult = {
   summary: string | null;
-  action_items: Array<{
-    task: string;
-    owner: string;
-    due_date: string;
-    priority: "High" | "Medium" | "Low";
-  }>;
+  action_items: Array<{ task: string; owner: string; due_date: string; priority: "High" | "Medium" | "Low" }>;
   key_points: string[];
   decisions: string[];
   risks: string[];
@@ -28,96 +25,187 @@ type DocumentAnalysisResult = {
 };
 
 const defaultOptions: Record<ExtractOption, boolean> = {
-  summary: true,
-  actionItems: true,
-  keyPoints: true,
-  decisions: true,
-  risks: true,
-  rawInsights: false
+  summary: true, actionItems: true, keyPoints: true,
+  decisions: true, risks: true, rawInsights: false,
 };
 
+const EXTRACT_OPTIONS: Array<{ key: ExtractOption; label: string; icon: string; desc: string }> = [
+  { key: "summary",     label: "Summary",        icon: "📋", desc: "Overview of the document" },
+  { key: "actionItems", label: "Action Items",    icon: "✅", desc: "Tasks with owners & dates" },
+  { key: "keyPoints",   label: "Key Points",      icon: "💡", desc: "Most important details" },
+  { key: "decisions",   label: "Decisions Made",  icon: "🎯", desc: "Final decisions captured" },
+  { key: "risks",       label: "Risks",           icon: "⚠️", desc: "Blockers & concerns" },
+  { key: "rawInsights", label: "Raw Insights",    icon: "🔍", desc: "Additional observations" },
+];
+
 function formatFileSize(bytes: number) {
-  if (bytes < 1024) {
-    return `${bytes} B`;
-  }
-
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`;
-  }
-
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function getPriorityVariant(priority: string) {
-  if (priority === "High") {
-    return "danger" as const;
-  }
-
-  if (priority === "Low") {
-    return "available" as const;
-  }
-
-  return "pending" as const;
+function getPriorityClass(priority: string) {
+  if (priority === "High") return "bg-red-50 text-red-600 ring-red-200";
+  if (priority === "Low") return "bg-emerald-50 text-emerald-600 ring-emerald-200";
+  return "bg-amber-50 text-amber-600 ring-amber-200";
 }
 
 function buildCopyText(result: DocumentAnalysisResult) {
   return [
     result.summary ? `Summary\n${result.summary}` : null,
     result.action_items.length
-      ? [
-          "Action Items",
-          ...result.action_items.map(
-            (item, index) =>
-              `${index + 1}. ${item.task} | Owner: ${item.owner || "Unassigned"} | Due: ${item.due_date || "Not specified"} | Priority: ${item.priority}`
-          )
-        ].join("\n")
+      ? ["Action Items", ...result.action_items.map((item, i) => `${i + 1}. ${item.task} | Owner: ${item.owner || "Unassigned"} | Due: ${item.due_date || "Not specified"} | Priority: ${item.priority}`)].join("\n")
       : null,
-    result.key_points.length ? `Key Points\n${result.key_points.map((item) => `- ${item}`).join("\n")}` : null,
-    result.decisions.length ? `Decisions Made\n${result.decisions.map((item, index) => `${index + 1}. ${item}`).join("\n")}` : null,
-    result.risks.length ? `Risks & Concerns\n${result.risks.map((item) => `- ${item}`).join("\n")}` : null,
-    result.raw_insights ? `Raw Insights\n${result.raw_insights}` : null
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+    result.key_points.length ? `Key Points\n${result.key_points.map((p) => `- ${p}`).join("\n")}` : null,
+    result.decisions.length ? `Decisions Made\n${result.decisions.map((d, i) => `${i + 1}. ${d}`).join("\n")}` : null,
+    result.risks.length ? `Risks & Concerns\n${result.risks.map((r) => `- ${r}`).join("\n")}` : null,
+    result.raw_insights ? `Raw Insights\n${result.raw_insights}` : null,
+  ].filter(Boolean).join("\n\n");
 }
 
-function SectionCard({
+function ActionItemsSection({
+  items,
+  isSavingItems,
+  actionItemsSaved,
+  onSave,
+  currentUserName,
+}: {
+  items: DocumentAnalysisResult["action_items"];
+  isSavingItems: boolean;
+  actionItemsSaved: boolean;
+  onSave: (selectedIndices: number[]) => void;
+  currentUserName: string;
+}) {
+  // Pre-select items assigned to the current user
+  const myIndices = items.reduce<number[]>((acc, item, i) => {
+    const owner = (item.owner ?? "").toLowerCase().trim();
+    const me = currentUserName.toLowerCase().trim();
+    if (me && owner && (owner.includes(me) || me.includes(owner))) acc.push(i);
+    return acc;
+  }, []);
+
+  const [selected, setSelected] = useState<Set<number>>(new Set(myIndices));
+
+  function toggle(i: number) {
+    // Only allow toggling items assigned to the current user
+    const owner = (items[i]?.owner ?? "").toLowerCase().trim();
+    const me = currentUserName.toLowerCase().trim();
+    const isMyItem = me && owner && (owner.includes(me) || me.includes(owner));
+    if (!isMyItem) return;
+
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-slate-400">
+        Items assigned to you are pre-selected. Only your tasks can be saved to Action Items.
+      </p>
+      {items.map((item, i) => {
+        const owner = (item.owner ?? "").toLowerCase().trim();
+        const me = currentUserName.toLowerCase().trim();
+        const isMyItem = me && owner && (owner.includes(me) || me.includes(owner));
+        const isSelected = selected.has(i);
+
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => toggle(i)}
+            disabled={!isMyItem}
+            className={cn(
+              "flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-all",
+              !isMyItem
+                ? "cursor-not-allowed border-slate-100 bg-slate-50/40 opacity-50"
+                : isSelected
+                  ? "border-[#6c63ff] bg-[#f5f3ff]"
+                  : "border-slate-100 bg-slate-50/60 hover:bg-[#faf9ff]"
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
+              !isMyItem
+                ? "border-slate-200 bg-slate-100"
+                : isSelected
+                  ? "border-[#6c63ff] bg-[#6c63ff]"
+                  : "border-slate-300 bg-white"
+            )}>
+              {isSelected && isMyItem && (
+                <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
+                  <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className={cn("text-sm font-medium", isSelected && isMyItem ? "text-[#6c63ff]" : "text-slate-900")}>{item.task}</p>
+              <p className="mt-0.5 text-xs text-slate-400">
+                {[item.owner || "Unassigned", item.due_date || "No date"].join(" · ")}
+                {isMyItem && <span className="ml-1.5 rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6c63ff]">You</span>}
+              </p>
+            </div>
+            <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", getPriorityClass(item.priority))}>
+              {item.priority}
+            </span>
+          </button>
+        );
+      })}
+
+      <button
+        type="button"
+        onClick={() => onSave(Array.from(selected))}
+        disabled={selected.size === 0 || isSavingItems || actionItemsSaved}
+        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-[#6c63ff] px-4 py-2.5 text-sm font-semibold text-[#6c63ff] transition hover:bg-[#f5f3ff] disabled:opacity-50"
+      >
+        {isSavingItems ? <><LoadingSpinner size="sm" /> Saving…</>
+          : actionItemsSaved ? <><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Saved!</>
+          : selected.size === 0 ? "No tasks assigned to you"
+          : <><Zap className="h-4 w-4" /> Save {selected.size} task{selected.size !== 1 ? "s" : ""} to Action Items</>}
+      </button>
+    </div>
+  );
+}
+
+function ResultSection({
   icon: Icon,
   title,
-  description,
-  children,
+  accent = "purple",
   action,
-  className
+  children,
 }: {
   icon: LucideIcon;
   title: string;
-  description?: string;
-  children: ReactNode;
+  accent?: "purple" | "amber" | "blue" | "green";
   action?: ReactNode;
-  className?: string;
+  children: ReactNode;
 }) {
+  const map = {
+    purple: { bg: "bg-[#f5f3ff]", text: "text-[#6c63ff]", border: "border-[#ede9fe]", hdr: "bg-[#f5f3ff]" },
+    amber:  { bg: "bg-amber-50",  text: "text-amber-600",  border: "border-amber-200",  hdr: "bg-amber-50" },
+    blue:   { bg: "bg-blue-50",   text: "text-blue-600",   border: "border-blue-100",   hdr: "bg-blue-50" },
+    green:  { bg: "bg-emerald-50",text: "text-emerald-600",border: "border-emerald-100",hdr: "bg-emerald-50" },
+  };
+  const c = map[accent];
   return (
-    <Card className={cn("p-5", className)}>
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="rounded-2xl bg-[#f5f3ff] p-3 text-[#6c63ff]">
-              <Icon className="h-5 w-5" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-slate-950">{title}</h3>
-              {description ? <p className="text-sm text-slate-500">{description}</p> : null}
-            </div>
-          </div>
-          {action ? <div>{action}</div> : null}
+    <div className={`overflow-hidden rounded-2xl border ${c.border} bg-white shadow-sm`}>
+      <div className={`flex items-center justify-between gap-3 border-b ${c.border} ${c.hdr} px-5 py-3.5`}>
+        <div className="flex items-center gap-2.5">
+          <span className={c.text}><Icon className="h-4 w-4" /></span>
+          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
         </div>
-        {children}
+        {action}
       </div>
-    </Card>
+      <div className="p-5">{children}</div>
+    </div>
   );
 }
 
 export function DocumentAnalyzerWorkspace() {
+  const { user } = useUser();
+  const currentUserName = [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() || user?.fullName || "";
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [mode, setMode] = useState<"file" | "text">("file");
   const [file, setFile] = useState<File | null>(null);
@@ -127,505 +215,374 @@ export function DocumentAnalyzerWorkspace() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSavingItems, setIsSavingItems] = useState(false);
   const [actionItemsSaved, setActionItemsSaved] = useState(false);
-  const [historySaved, setHistorySaved] = useState(false);
   const [result, setResult] = useState<DocumentAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!historySaved) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setHistorySaved(false);
-    }, 2000);
-
-    return () => window.clearTimeout(timeout);
-  }, [historySaved]);
-
-  useEffect(() => {
-    if (!actionItemsSaved) {
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setActionItemsSaved(false);
-    }, 2000);
-
-    return () => window.clearTimeout(timeout);
+    if (!actionItemsSaved) return;
+    const t = window.setTimeout(() => setActionItemsSaved(false), 2500);
+    return () => window.clearTimeout(t);
   }, [actionItemsSaved]);
 
-  function selectedExtractOptions() {
-    return (Object.entries(extractOptions).filter(([, checked]) => checked).map(([key]) => key) as ExtractOption[]).slice();
+  function handleFile(f: File | null) {
+    setFile(f); setError(null);
+    if (f) setMode("file");
   }
 
-  function handleFile(fileInput: File | null) {
-    setFile(fileInput);
-    setError(null);
-    if (fileInput) {
-      setMode("file");
-    }
-  }
-
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setIsDragging(false);
-
-    const droppedFile = event.dataTransfer.files?.[0] ?? null;
-    if (droppedFile) {
-      handleFile(droppedFile);
-    }
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault(); setIsDragging(false);
+    const f = e.dataTransfer.files?.[0] ?? null;
+    if (f) handleFile(f);
   }
 
   async function handleAnalyze() {
     const hasText = text.trim().length > 0;
     const hasFile = Boolean(file);
+    if (!hasText && !hasFile) { setError("Upload a file or paste some text first."); return; }
 
-    if (!hasText && !hasFile) {
-      setError("Upload a file or paste some text first.");
-      return;
-    }
-
-    setIsAnalyzing(true);
-    setError(null);
-    setActionItemsSaved(false);
-    setHistorySaved(false);
+    setIsAnalyzing(true); setError(null); setActionItemsSaved(false);
 
     try {
-      const extractOptionValues = selectedExtractOptions();
-
+      const extractOptionValues = (Object.entries(extractOptions).filter(([, v]) => v).map(([k]) => k) as ExtractOption[]);
       const response = mode === "text" || (!hasFile && hasText)
         ? await fetch("/api/tools/document-analyzer", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-              text: text.trim(),
-              extractOptions: extractOptionValues
-            })
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: text.trim(), extractOptions: extractOptionValues }),
           })
         : await fetch("/api/tools/document-analyzer", {
             method: "POST",
-            body: (() => {
-              const formData = new FormData();
-              formData.append("file", file as File);
-              formData.append("extractOptions", JSON.stringify(extractOptionValues));
-              return formData;
-            })()
+            body: (() => { const fd = new FormData(); fd.append("file", file as File); fd.append("extractOptions", JSON.stringify(extractOptionValues)); return fd; })(),
           });
 
-      const payload = (await response.json()) as
-        | {
-            success: true;
-            result: DocumentAnalysisResult;
-          }
-        | {
-            success: false;
-            message?: string;
-          };
-
-      if (!response.ok || !("success" in payload) || payload.success !== true) {
-        throw new Error("message" in payload ? payload.message || "Failed to analyze document." : "Failed to analyze document.");
-      }
-
+      const payload = (await response.json()) as { success: true; result: DocumentAnalysisResult } | { success: false; message?: string };
+      if (!response.ok || !payload.success) throw new Error("message" in payload ? payload.message ?? "Failed." : "Failed.");
       setResult(payload.result);
-    } catch (analysisError) {
-      setError(analysisError instanceof Error ? analysisError.message : "Failed to analyze document.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to analyze document.");
     } finally {
       setIsAnalyzing(false);
     }
   }
 
-  async function handleSaveAllToActionItems() {
-    if (!result || result.action_items.length === 0) {
-      return;
-    }
-
-    setIsSavingItems(true);
-    setError(null);
-
+  async function handleSaveSelectedActionItems(selectedIndices: number[]) {
+    if (!result || selectedIndices.length === 0) return;
+    setIsSavingItems(true); setError(null);
     try {
-      const response = await fetch("/api/action-items/bulk-save", {
+      const selectedItems = selectedIndices.map((i) => result.action_items[i]).filter(Boolean);
+      const res = await fetch("/api/action-items/bulk-save", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source: "document-analyzer",
-          items: result.action_items.map((item) => ({
-            task: item.task,
-            owner: item.owner || "Unassigned",
-            dueDate: item.due_date || "Not specified",
-            priority: item.priority,
-            completed: false
-          }))
-        })
+          items: selectedItems.map((item) => ({ task: item.task, owner: item.owner || "Unassigned", dueDate: item.due_date || "Not specified", priority: item.priority, completed: false })),
+        }),
       });
-      const payload = (await response.json()) as
-        | {
-            success: true;
-            count: number;
-          }
-        | {
-            success: false;
-            message?: string;
-          };
-
-      if (!response.ok || !("success" in payload) || payload.success !== true) {
-        throw new Error("message" in payload ? payload.message || "Failed to save action items." : "Failed to save action items.");
-      }
-
+      const payload = (await res.json()) as { success: boolean; message?: string };
+      if (!res.ok || !payload.success) throw new Error(payload.message ?? "Failed.");
       setActionItemsSaved(true);
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save action items.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save action items.");
     } finally {
       setIsSavingItems(false);
     }
   }
 
-  async function handleSaveToHistory() {
-    if (!result) {
-      return;
-    }
-
-    const historyKey = "Artivaa-document-analyzer-history";
-    const existing = window.localStorage.getItem(historyKey);
-    const history = existing ? (JSON.parse(existing) as Array<Record<string, unknown>>) : [];
-
-    history.unshift({
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      mode,
-      fileName: file?.name ?? null,
-      text,
-      result
-    });
-
-    window.localStorage.setItem(historyKey, JSON.stringify(history.slice(0, 20)));
-    setHistorySaved(true);
-  }
-
-  function handleAnalyzeAnother() {
-    setResult(null);
-    setError(null);
-    setActionItemsSaved(false);
-    setHistorySaved(false);
-  }
-
   const copyText = result ? buildCopyText(result) : "";
+  const canAnalyze = !isAnalyzing && (text.trim().length > 0 || Boolean(file));
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,45fr)_minmax(0,55fr)]">
-      <Card className="p-5">
-        <div className="space-y-6">
-          <div className="flex gap-2">
-            <Button type="button" variant={mode === "file" ? "default" : "outline"} onClick={() => setMode("file")}>
-              Upload File
-            </Button>
-            <Button type="button" variant={mode === "text" ? "default" : "outline"} onClick={() => setMode("text")}>
-              Paste Text
-            </Button>
-          </div>
+    <div className="grid gap-6 xl:grid-cols-[400px_minmax(0,1fr)]">
 
-          <section className="space-y-4">
+      {/* ── Left panel ── */}
+      <div className="space-y-4">
+
+        {/* Mode toggle */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex">
+            {(["file", "text"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                className={cn(
+                  "flex-1 py-3 text-sm font-semibold transition-all",
+                  mode === m
+                    ? "bg-[#6c63ff] text-white"
+                    : "text-slate-500 hover:bg-slate-50"
+                )}
+              >
+                {m === "file" ? "📎 Upload File" : "📝 Paste Text"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Input area */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+            <p className="text-sm font-bold text-slate-900">
+              {mode === "file" ? "Document" : "Text Content"}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-400">
+              {mode === "file" ? "PDF, DOCX, TXT, PNG, JPG supported" : "Paste meeting notes, reports, or any text"}
+            </p>
+          </div>
+          <div className="p-3">
             {mode === "text" ? (
-              <div className="space-y-3">
-                <label className="text-sm font-semibold text-slate-900" htmlFor="document-text">
-                  Paste document text, meeting notes, or any content here...
-                </label>
+              <div className="space-y-2">
                 <textarea
-                  id="document-text"
                   value={text}
-                  onChange={(event) => setText(event.target.value)}
-                  rows={14}
-                  className="min-h-[220px] w-full rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-7 text-slate-900 outline-none transition focus:border-[#6c63ff] focus:ring-2 focus:ring-[#6c63ff]/20"
+                  onChange={(e) => setText(e.target.value)}
+                  rows={10}
+                  placeholder="Paste document text, meeting notes, or any content here..."
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
                 />
-                <div className="text-right text-xs text-slate-500">{text.length.toLocaleString()} characters</div>
+                <p className="text-right text-xs text-slate-400">{text.length.toLocaleString()} chars</p>
               </div>
             ) : file ? (
-              <Card className="border-dashed border-slate-200 bg-slate-50/70 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-2xl bg-white p-3 text-slate-400 shadow-sm">
-                      <FileText className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-slate-950">{file.name}</p>
-                      <p className="text-sm text-slate-500">{formatFileSize(file.size)}</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFile(null)}
-                    className="rounded-full p-1 text-slate-400 transition hover:bg-white hover:text-slate-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+              <div className="flex items-center gap-3 rounded-xl border border-[#ede9fe] bg-[#f5f3ff] px-4 py-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
+                  <FileText className="h-5 w-5 text-[#6c63ff]" />
                 </div>
-              </Card>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-900">{file.name}</p>
+                  <p className="text-xs text-slate-400">{formatFileSize(file.size)}</p>
+                </div>
+                <button type="button" onClick={() => setFile(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-600 transition">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             ) : (
               <div
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setIsDragging(true);
-                }}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
                 className={cn(
-                  "flex min-h-[200px] flex-col items-center justify-center rounded-3xl border-2 border-dashed p-6 text-center transition",
-                  isDragging ? "border-[#6c63ff] bg-[#f5f3ff]" : "border-slate-200 bg-slate-50/70"
+                  "flex min-h-[180px] cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition-all",
+                  isDragging
+                    ? "border-[#6c63ff] bg-[#f5f3ff]"
+                    : "border-slate-200 bg-slate-50 hover:border-[#c4b5fd] hover:bg-[#faf9ff]"
                 )}
               >
-                <UploadCloud className="h-14 w-14 text-slate-300" />
-                <div className="mt-4 space-y-2">
-                  <p className="text-lg font-semibold text-slate-950">Drop your file here</p>
-                  <p className="text-sm text-slate-500">or</p>
+                <div className={cn("flex h-14 w-14 items-center justify-center rounded-2xl transition-all", isDragging ? "bg-[#6c63ff] text-white" : "bg-white text-slate-300 shadow-sm")}>
+                  <UploadCloud className="h-7 w-7" />
                 </div>
-                <Button type="button" variant="outline" className="mt-4" onClick={() => fileInputRef.current?.click()}>
-                  Browse Files
-                </Button>
-                <p className="mt-4 text-sm text-slate-500">Supported formats: PDF, DOCX, TXT, PNG, JPG</p>
+                <div>
+                  <p className="text-sm font-semibold text-slate-700">Drop your file here</p>
+                  <p className="mt-0.5 text-xs text-slate-400">or click to browse</p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
+                  PDF · DOCX · TXT · PNG · JPG
+                </span>
               </div>
             )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              accept=".pdf,.docx,.txt,.png,.jpg,.jpeg"
-              onChange={(event) => handleFile(event.target.files?.[0] ?? null)}
-            />
-          </section>
-
-          <section className="space-y-3">
-            <label className="text-sm font-semibold text-slate-900">Extract:</label>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {(
-                [
-                  ["summary", "Summary"],
-                  ["actionItems", "Action Items"],
-                  ["keyPoints", "Key Points"],
-                  ["decisions", "Decisions Made"],
-                  ["risks", "Risks & Concerns"],
-                  ["rawInsights", "Raw Insights"]
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={extractOptions[key]}
-                    onChange={(event) =>
-                      setExtractOptions((current) => ({
-                        ...current,
-                        [key]: event.target.checked
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-slate-300 text-[#6c63ff] focus:ring-[#6c63ff]"
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
-            </div>
-          </section>
-
-          {error ? <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
-
-          <Button type="button" className="w-full" disabled={isAnalyzing || (!text.trim() && !file)} onClick={() => void handleAnalyze()}>
-            {isAnalyzing ? (
-              <>
-                <LoadingSpinner size="sm" />
-                Analyzing...
-              </>
-            ) : (
-              "Analyze Document →"
-            )}
-          </Button>
+            <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
+          </div>
         </div>
-      </Card>
 
-      <div className="space-y-6">
+        {/* Extract options */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+            <p className="text-sm font-bold text-slate-900">What to extract</p>
+            <p className="mt-0.5 text-xs text-slate-400">Select the insights you need</p>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 p-3">
+            {EXTRACT_OPTIONS.map(({ key, label, icon }) => {
+              const checked = extractOptions[key];
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setExtractOptions((c) => ({ ...c, [key]: !c[key] }))}
+                  className={cn(
+                    "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all",
+                    checked
+                      ? "border-[#6c63ff] bg-[#f5f3ff]"
+                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                  )}
+                >
+                  <div className={cn(
+                    "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
+                    checked ? "border-[#6c63ff] bg-[#6c63ff]" : "border-slate-300 bg-white"
+                  )}>
+                    {checked && (
+                      <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
+                        <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    )}
+                  </div>
+                  <span className="text-base leading-none">{icon}</span>
+                  <span className={cn("text-xs font-semibold", checked ? "text-[#6c63ff]" : "text-slate-600")}>{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {error && (
+          <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={!canAnalyze}
+          onClick={() => void handleAnalyze()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6c63ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+        >
+          {isAnalyzing
+            ? <><LoadingSpinner size="sm" /> Analyzing…</>
+            : <><Wand2 className="h-4 w-4" /> Analyze Document</>}
+        </button>
+      </div>
+
+      {/* ── Right panel ── */}
+      <div>
         {!result ? (
           isAnalyzing ? (
-            <Card className="p-6">
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 text-slate-500">
-                  <LoadingSpinner />
-                  <span>Artivaa is reading your document...</span>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 rounded-2xl border border-[#ede9fe] bg-[#f5f3ff] px-5 py-4">
+                <LoadingSpinner />
+                <div>
+                  <p className="text-sm font-semibold text-[#6c63ff]">Artivaa is reading your document…</p>
+                  <p className="text-xs text-[#9b8fff]">Extracting insights, action items, and key points</p>
                 </div>
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-                    <div className="h-5 w-40 animate-pulse rounded-full bg-slate-200" />
-                    <div className="h-4 w-full animate-pulse rounded-full bg-slate-200" />
-                    <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-200" />
+              </div>
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                  <div className="h-12 animate-pulse bg-slate-50" />
+                  <div className="space-y-3 p-5">
+                    <div className="h-4 w-3/4 animate-pulse rounded-full bg-slate-100" />
+                    <div className="h-4 w-full animate-pulse rounded-full bg-slate-100" />
+                    <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-100" />
                   </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex min-h-[500px] flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#f5f3ff]">
+                <Sparkles className="h-10 w-10 text-[#6c63ff]" />
+              </div>
+              <div>
+                <p className="text-base font-bold text-slate-900">Upload a document to get started</p>
+                <p className="mt-1 text-sm text-slate-400">AI will extract summaries, action items, key points, and more</p>
+              </div>
+              <div className="flex flex-wrap justify-center gap-2">
+                {["PDF", "DOCX", "TXT", "PNG", "JPG"].map((fmt) => (
+                  <span key={fmt} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">{fmt}</span>
                 ))}
               </div>
-            </Card>
-          ) : (
-            <EmptyState
-              icon={FileText}
-              title="Upload a document to get started"
-              description="Supported formats: PDF, DOCX, TXT, PNG, JPG"
-            />
+            </div>
           )
         ) : (
-          <>
-            {extractOptions.summary && result.summary ? (
-              <SectionCard
-                icon={Sparkles}
-                title="Summary"
-                description="2-4 paragraph summary of the document"
-                action={<CopyButton text={result.summary} label="Copy" />}
-              >
-                <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm leading-7 text-slate-700">
-                  {result.summary.split(/\n\s*\n/).map((paragraph) => (
-                    <p key={paragraph.slice(0, 24)}>{paragraph}</p>
-                  ))}
-                </div>
-              </SectionCard>
-            ) : null}
+          <div className="space-y-4">
+            {/* Results header */}
+            <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <p className="text-sm font-bold text-emerald-800">Analysis complete</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(copyText)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
+                >
+                  Copy All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setResult(null); setError(null); }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" /> Analyze Another
+                </button>
+              </div>
+            </div>
 
-            {extractOptions.actionItems ? (
-              <SectionCard
-                icon={ClipboardList}
-                title="Action Items"
-                description="Tasks, owners, due dates, and priority"
-                action={<CopyButton text={buildCopyText({ ...result, summary: null, key_points: [], decisions: [], risks: [], raw_insights: null })} label="Copy" />}
+            {/* Summary */}
+            {extractOptions.summary && result.summary && (
+              <ResultSection icon={Sparkles} title="Summary" accent="purple" action={<CopyButton text={result.summary} label="Copy" />}>
+                <div className="space-y-3 text-sm leading-7 text-slate-700">
+                  {result.summary.split(/\n\s*\n/).map((p, i) => <p key={i}>{p}</p>)}
+                </div>
+              </ResultSection>
+            )}
+
+            {/* Action Items */}
+            {extractOptions.actionItems && (
+              <ResultSection icon={ClipboardList} title={`Action Items${result.action_items.length > 0 ? ` (${result.action_items.length})` : ""}`} accent="green"
+                action={<CopyButton text={result.action_items.map((item, i) => `${i + 1}. ${item.task} | ${item.owner || "Unassigned"} | ${item.due_date || "No date"} | ${item.priority}`).join("\n")} label="Copy" />}
               >
                 {result.action_items.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-500">
-                    No action items were extracted.
-                  </div>
+                  <p className="text-sm text-slate-400">No action items extracted.</p>
                 ) : (
-                  <div className="overflow-hidden rounded-2xl border border-slate-200">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-slate-50 text-left text-slate-500">
-                        <tr>
-                          <th className="px-4 py-3 font-semibold">Task</th>
-                          <th className="px-4 py-3 font-semibold">Owner</th>
-                          <th className="px-4 py-3 font-semibold">Due Date</th>
-                          <th className="px-4 py-3 font-semibold">Priority</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {result.action_items.map((item, index) => (
-                          <tr key={`${item.task}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-slate-50/50"}>
-                            <td className="px-4 py-3 text-slate-900">{item.task}</td>
-                            <td className="px-4 py-3 text-slate-600">{item.owner || "Unassigned"}</td>
-                            <td className="px-4 py-3 text-slate-600">{item.due_date || "Not specified"}</td>
-                            <td className="px-4 py-3">
-                              <Badge variant={getPriorityVariant(item.priority)}>{item.priority}</Badge>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ActionItemsSection
+                    items={result.action_items}
+                    isSavingItems={isSavingItems}
+                    actionItemsSaved={actionItemsSaved}
+                    onSave={handleSaveSelectedActionItems}
+                    currentUserName={currentUserName}
+                  />
                 )}
-                <div className="pt-3">
-                  <Button
-                    type="button"
-                    className="w-full"
-                    variant="secondary"
-                    onClick={() => void handleSaveAllToActionItems()}
-                    disabled={isSavingItems || result.action_items.length === 0}
-                  >
-                    {isSavingItems ? (
-                      <>
-                        <LoadingSpinner size="sm" />
-                        Saving...
-                      </>
-                    ) : actionItemsSaved ? (
-                      "Saved to Action Items"
-                    ) : (
-                      "Save All to Action Items"
-                    )}
-                  </Button>
-                </div>
-              </SectionCard>
-            ) : null}
+              </ResultSection>
+            )}
 
-            {extractOptions.keyPoints && result.key_points.length > 0 ? (
-              <SectionCard
-                icon={Sparkles}
-                title="Key Points"
-                description="Most important details from the document"
-                action={<CopyButton text={result.key_points.map((item) => `- ${item}`).join("\n")} label="Copy" />}
-              >
-                <ul className="space-y-3">
-                  {result.key_points.map((point) => (
-                    <li key={point} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm leading-6 text-slate-700">
+            {/* Key Points */}
+            {extractOptions.keyPoints && result.key_points.length > 0 && (
+              <ResultSection icon={Lightbulb} title="Key Points" accent="blue" action={<CopyButton text={result.key_points.map((p) => `• ${p}`).join("\n")} label="Copy" />}>
+                <ul className="space-y-2">
+                  {result.key_points.map((point, i) => (
+                    <li key={i} className="flex gap-2.5 text-sm text-slate-700">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6c63ff]" />
                       {point}
                     </li>
                   ))}
                 </ul>
-              </SectionCard>
-            ) : null}
+              </ResultSection>
+            )}
 
-            {extractOptions.decisions && result.decisions.length > 0 ? (
-              <SectionCard
-                icon={CheckSquare}
-                title="Decisions Made"
-                description="Final decisions captured from the document"
-                action={<CopyButton text={result.decisions.map((item, index) => `${index + 1}. ${item}`).join("\n")} label="Copy" />}
-              >
-                <ol className="space-y-3 pl-5">
-                  {result.decisions.map((decision) => (
-                    <li key={decision} className="rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 text-sm leading-6 text-slate-700">
+            {/* Decisions */}
+            {extractOptions.decisions && result.decisions.length > 0 && (
+              <ResultSection icon={CheckSquare} title="Decisions Made" accent="purple" action={<CopyButton text={result.decisions.map((d, i) => `${i + 1}. ${d}`).join("\n")} label="Copy" />}>
+                <ol className="space-y-2">
+                  {result.decisions.map((decision, i) => (
+                    <li key={i} className="flex gap-3 text-sm text-slate-700">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6c63ff]/10 text-[10px] font-bold text-[#6c63ff]">{i + 1}</span>
                       {decision}
                     </li>
                   ))}
                 </ol>
-              </SectionCard>
-            ) : null}
+              </ResultSection>
+            )}
 
-            {extractOptions.risks && result.risks.length > 0 ? (
-              <SectionCard
-                icon={ShieldAlert}
-                title="Risks & Concerns"
-                description="Potential blockers or concerns to track"
-                action={<CopyButton text={result.risks.map((item) => `- ${item}`).join("\n")} label="Copy" />}
-                className="border-l-4 border-l-amber-400"
-              >
-                <ul className="space-y-3">
-                  {result.risks.map((risk) => (
-                    <li key={risk} className="rounded-2xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm leading-6 text-amber-900">
+            {/* Risks */}
+            {extractOptions.risks && result.risks.length > 0 && (
+              <ResultSection icon={ShieldAlert} title="Risks & Concerns" accent="amber" action={<CopyButton text={result.risks.map((r) => `• ${r}`).join("\n")} label="Copy" />}>
+                <ul className="space-y-2">
+                  {result.risks.map((risk, i) => (
+                    <li key={i} className="flex gap-2.5 text-sm text-amber-800">
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
                       {risk}
                     </li>
                   ))}
                 </ul>
-              </SectionCard>
-            ) : null}
+              </ResultSection>
+            )}
 
-            {extractOptions.rawInsights && result.raw_insights ? (
-              <SectionCard
-                icon={PencilLine}
-                title="Raw Insights"
-                description="Additional observations from the model"
-                action={<CopyButton text={result.raw_insights} label="Copy" />}
-              >
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap">
+            {/* Raw Insights */}
+            {extractOptions.rawInsights && result.raw_insights && (
+              <ResultSection icon={PencilLine} title="Raw Insights" accent="blue" action={<CopyButton text={result.raw_insights} label="Copy" />}>
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap">
                   {result.raw_insights}
                 </div>
-              </SectionCard>
-            ) : null}
-
-            <Card className="p-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" onClick={() => void navigator.clipboard.writeText(copyText)} disabled={!copyText}>
-                    Copy All Results
-                  </Button>
-                  <Button type="button" variant={historySaved ? "secondary" : "outline"} onClick={() => void handleSaveToHistory()} disabled={!result}>
-                    {historySaved ? "Saved" : "Save to History"}
-                  </Button>
-                </div>
-                <Button type="button" variant="ghost" onClick={handleAnalyzeAnother}>
-                  Analyze Another
-                </Button>
-              </div>
-            </Card>
-          </>
+              </ResultSection>
+            )}
+          </div>
         )}
       </div>
     </div>

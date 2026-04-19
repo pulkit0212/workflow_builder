@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { callAI } from "@/lib/ai/provider";
 import { handleUserSafeAIError } from "@/lib/ai/errorHandler";
+import { createAiRun } from "@/lib/db/mutations/ai-runs";
+import { ensureToolRecord } from "@/lib/db/queries/tools";
+import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
+import { ensureDatabaseReady } from "@/lib/db/bootstrap";
+import { toolRegistry } from "@/lib/ai/tool-registry";
 
 export const runtime = "nodejs";
 
@@ -275,9 +280,30 @@ export async function POST(req: Request) {
       );
     }
 
+    const normalized = normalizeOutput(parsed);
+
+    // Persist to ai_runs (fire-and-forget)
+    void (async () => {
+      try {
+        await ensureDatabaseReady();
+        const user = await syncCurrentUserToDatabase(userId);
+        const toolRecord = await ensureToolRecord(toolRegistry["document-analyzer"]);
+        await createAiRun({
+          userId: user.id,
+          toolId: toolRecord.id,
+          title: normalized.summary?.slice(0, 80).trim() || "Document analysis",
+          status: "completed",
+          inputJson: { textLength: documentText.length, extractOptions },
+          outputJson: normalized as unknown as Record<string, unknown>,
+          model: "gemini",
+          tokensUsed: 0
+        });
+      } catch { /* non-critical */ }
+    })();
+
     return NextResponse.json({
       success: true,
-      result: normalizeOutput(parsed)
+      result: normalized
     });
   } catch (err) {
     return NextResponse.json(

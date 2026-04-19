@@ -29,7 +29,15 @@ const preferencesSchema = z.object({
     .enum(["professional", "friendly", "formal", "concise"])
     .optional(),
   summaryLength: z.enum(["brief", "standard", "detailed"]).optional(),
-  language: z.enum(["en", "hi"]).optional()
+  language: z.enum(["en", "hi"]).optional(),
+  autoShareTargets: z
+    .object({
+      slack: z.boolean().optional(),
+      gmail: z.boolean().optional(),
+      notion: z.boolean().optional(),
+      jira: z.boolean().optional()
+    })
+    .optional()
 });
 
 function getDbOrThrow() {
@@ -98,7 +106,8 @@ export async function GET() {
           summaryLength: newPrefs.summaryLength,
           language: newPrefs.language,
           botDisplayName: newPrefs.botDisplayName,
-          audioSource: newPrefs.audioSource
+          audioSource: newPrefs.audioSource,
+          autoShareTargets: newPrefs.autoShareTargets
         }
       });
     }
@@ -111,7 +120,8 @@ export async function GET() {
         summaryLength: existingPrefs.summaryLength,
         language: existingPrefs.language,
         botDisplayName: existingPrefs.botDisplayName,
-        audioSource: existingPrefs.audioSource
+        audioSource: existingPrefs.audioSource,
+        autoShareTargets: existingPrefs.autoShareTargets
       }
     });
   } catch (error) {
@@ -170,7 +180,10 @@ export async function POST(request: Request) {
             summaryLength: updates.summaryLength ?? "standard",
             language: updates.language ?? "en",
             botDisplayName: "Artiva Notetaker",
-            audioSource: "default"
+            audioSource: "default",
+            autoShareTargets: updates.autoShareTargets
+              ? { slack: false, gmail: false, notion: false, jira: false, ...updates.autoShareTargets }
+              : { slack: false, gmail: false, notion: false, jira: false }
           })
           .returning();
 
@@ -182,7 +195,8 @@ export async function POST(request: Request) {
             summaryLength: newPrefs.summaryLength,
             language: newPrefs.language,
             botDisplayName: newPrefs.botDisplayName,
-            audioSource: newPrefs.audioSource
+            audioSource: newPrefs.audioSource,
+            autoShareTargets: newPrefs.autoShareTargets
           }
         });
       }
@@ -208,6 +222,13 @@ export async function POST(request: Request) {
         updateData.language = updates.language;
       }
 
+      if (updates.autoShareTargets) {
+        updateData.autoShareTargets = {
+          ...(existingPrefs.autoShareTargets as Record<string, boolean>),
+          ...updates.autoShareTargets
+        };
+      }
+
       const [updatedPrefs] = await tx
         .update(userPreferences)
         .set(updateData)
@@ -222,7 +243,8 @@ export async function POST(request: Request) {
           summaryLength: updatedPrefs.summaryLength,
           language: updatedPrefs.language,
           botDisplayName: updatedPrefs.botDisplayName,
-          audioSource: updatedPrefs.audioSource
+          audioSource: updatedPrefs.audioSource,
+          autoShareTargets: updatedPrefs.autoShareTargets
         }
       });
     });

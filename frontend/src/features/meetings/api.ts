@@ -4,6 +4,7 @@ import type {
   MeetingSessionResponse
 } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
+import type { CalendarFeedResponse } from "@/lib/calendar/types";
 import type {
   MeetingDetailResponse,
   MeetingStartResponse,
@@ -289,4 +290,20 @@ export async function fetchMeetingStatus(id: string) {
   }
 
   return payload;
+}
+
+export async function fetchUnifiedCalendarFeed(startDate: Date, endDate: Date): Promise<CalendarFeedResponse> {
+  const params = new URLSearchParams({
+    startDate: startDate.toISOString(),
+    endDate: endDate.toISOString()
+  });
+  const response = await fetch(`/api/meetings/calendar-feed?${params.toString()}`, {
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to load calendar feed: ${response.statusText}`);
+  }
+
+  return (await response.json()) as CalendarFeedResponse;
 }

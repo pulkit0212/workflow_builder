@@ -3,6 +3,11 @@ import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { callAI } from "@/lib/ai/provider";
 import { handleUserSafeAIError } from "@/lib/ai/errorHandler";
+import { createAiRun } from "@/lib/db/mutations/ai-runs";
+import { ensureToolRecord } from "@/lib/db/queries/tools";
+import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
+import { ensureDatabaseReady } from "@/lib/db/bootstrap";
+import { toolRegistry } from "@/lib/ai/tool-registry";
 
 export const runtime = "nodejs";
 const logPrefix = "[Email Generator]";
@@ -91,11 +96,32 @@ export async function POST(request: Request) {
       return apiError("Failed to parse AI response", 500);
     }
 
-    return apiSuccess({
+    const result = {
       success: true,
       subject: output.subject.trim(),
       body: output.body.replace(/\r\n/g, "\n").trim()
-    });
+    };
+
+    // Persist to ai_runs (fire-and-forget)
+    void (async () => {
+      try {
+        await ensureDatabaseReady();
+        const user = await syncCurrentUserToDatabase(userId);
+        const toolRecord = await ensureToolRecord(toolRegistry["email-generator"]);
+        await createAiRun({
+          userId: user.id,
+          toolId: toolRecord.id,
+          title: `${parsed.data.emailType} email — ${parsed.data.context.slice(0, 60).trim()}`,
+          status: "completed",
+          inputJson: parsed.data as Record<string, unknown>,
+          outputJson: { subject: result.subject, body: result.body },
+          model: "gemini",
+          tokensUsed: 0
+        });
+      } catch { /* non-critical */ }
+    })();
+
+    return apiSuccess(result);
   } catch (error) {
     try {
       handleUserSafeAIError(error);

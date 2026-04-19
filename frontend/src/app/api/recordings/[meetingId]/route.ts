@@ -5,6 +5,7 @@ import path from "node:path";
 import { db } from "@/lib/db/client";
 import { meetingSessions } from "@/db/schema";
 import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
+import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 
 export const runtime = "nodejs";
 
@@ -13,14 +14,18 @@ type RouteContext = {
 };
 
 export async function GET(request: Request, context: RouteContext) {
-  const { userId } = await auth();
-  if (!userId) {
+  const { userId: clerkUserId } = await auth();
+  if (!clerkUserId) {
     return new Response(null, { status: 401 });
   }
 
   if (!db) {
     return new Response(JSON.stringify({ error: "Database not configured" }), { status: 503 });
   }
+
+  // Resolve internal DB user ID from Clerk ID
+  const user = await syncCurrentUserToDatabase(clerkUserId);
+  const userId = user.id;
 
   const workspaceId = await resolveWorkspaceIdForRequest(request, userId);
 

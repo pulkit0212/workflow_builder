@@ -8,66 +8,46 @@ export async function sendSlackSummary(
   }
 
   const actionItems = Array.isArray(summary.action_items) ? summary.action_items : [];
-  const keyDecisions = Array.isArray(summary.key_decisions) ? summary.key_decisions : [];
+  const keyPoints = Array.isArray(summary.key_points) ? summary.key_points : [];
+
   const actionItemsText =
     actionItems.length > 0
       ? actionItems
           .map((item) => {
-            const typedItem = item as {
-              task?: string;
-              owner?: string;
-              due_date?: string;
-            };
+            const typedItem = item as { task?: string; owner?: string; due_date?: string };
             return `• *${typedItem.task || "Untitled task"}* — ${typedItem.owner || "Unassigned"} (${typedItem.due_date || "Not specified"})`;
           })
           .join("\n")
       : "_No action items_";
 
-  const decisionsText =
-    keyDecisions.length > 0
-      ? keyDecisions.map((decision) => `• ${String(decision)}`).join("\n")
-      : "_No decisions recorded_";
+  const keyPointsText =
+    keyPoints.length > 0
+      ? keyPoints.map((p) => `• ${String(p)}`).join("\n")
+      : "_No key points_";
 
   const message = {
     blocks: [
       {
         type: "header",
-        text: {
-          type: "plain_text",
-          text: `📋 Meeting Summary: ${meetingTitle}`,
-          emoji: true
-        }
+        text: { type: "plain_text", text: `📋 Meeting Summary: ${meetingTitle}`, emoji: true }
       },
       {
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: String(summary.summary || "No summary available")
-        }
+        text: { type: "mrkdwn", text: String(summary.summary || "No summary available") }
       },
       { type: "divider" },
       {
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*✅ Action Items*\n${actionItemsText}`
-        }
+        text: { type: "mrkdwn", text: `*💡 Key Points*\n${keyPointsText}` }
       },
+      { type: "divider" },
       {
         type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*🎯 Key Decisions*\n${decisionsText}`
-        }
+        text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItemsText}` }
       },
       {
         type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: "_Powered by Artivaa — From meetings to meaningful work_"
-          }
-        ]
+        elements: [{ type: "mrkdwn", text: "_Powered by Artivaa — From meetings to meaningful work_" }]
       }
     ]
   };

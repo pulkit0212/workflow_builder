@@ -7,6 +7,8 @@ import { buildMeetingDetailFromCalendarMeeting, buildMeetingDetailFromSession } 
 import { decodeCalendarMeetingId, encodeCalendarMeetingId, isCalendarMeetingId } from "@/features/meetings/ids";
 import { fetchGoogleCalendarMeetingById } from "@/lib/google/calendar";
 import { getActiveGoogleIntegration } from "@/lib/google/integration";
+import { getUserIntegration } from "@/lib/db/queries/user-integrations";
+import type { GoogleCalendarMeeting } from "@/lib/google/types";
 import {
   getLatestMeetingSessionByCalendarEventIdForUser,
   getLatestMeetingSessionByLinkForUser,
@@ -258,6 +260,62 @@ async function resolveGoogleCalendarMeeting(userId: string, meetingId: string) {
   });
 }
 
+async function resolveMicrosoftCalendarMeeting(
+  userId: string,
+  rawEventId: string,
+  provider: "microsoft_teams" | "microsoft_outlook"
+): Promise<GoogleCalendarMeeting | null> {
+  const integration = await getUserIntegration(userId, provider);
+  if (!integration?.accessToken) return null;
+
+  try {
+    const url = new URL(`https://graph.microsoft.com/v1.0/me/events/${encodeURIComponent(rawEventId)}`);
+    url.searchParams.set("$select", "id,subject,start,end,onlineMeeting,onlineMeetingUrl,webLink,body");
+
+    const res = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${integration.accessToken}` },
+      cache: "no-store",
+    });
+
+    if (!res.ok) return null;
+
+    const event = await res.json() as {
+      id?: string;
+      subject?: string;
+      start?: { dateTime?: string };
+      end?: { dateTime?: string };
+      onlineMeeting?: { joinUrl?: string } | null;
+      onlineMeetingUrl?: string | null;
+      webLink?: string | null;
+      body?: { content?: string } | null;
+    };
+
+    // Extract Teams join URL from body if not in onlineMeeting
+    let joinUrl = event.onlineMeeting?.joinUrl ?? event.onlineMeetingUrl ?? null;
+    if (!joinUrl && event.body?.content) {
+      const match = event.body.content.match(/https:\/\/teams\.(?:live\.com|microsoft\.com)\/meet\/[^\s"<>&]+/i);
+      if (match) joinUrl = match[0].replace(/&amp;/g, "&");
+    }
+
+    const normalize = (dt?: string) => {
+      if (!dt) return "";
+      return /[Zz]$/.test(dt) || /[+-]\d{2}:\d{2}$/.test(dt) ? dt : dt + "Z";
+    };
+
+    return {
+      id: rawEventId,
+      title: event.subject?.trim() || "Untitled event",
+      startTime: normalize(event.start?.dateTime),
+      endTime: normalize(event.end?.dateTime),
+      meetLink: joinUrl,
+      provider: provider === "microsoft_teams" ? "teams_web" : "teams_web",
+      source: provider,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function findLinkedMeetingSessionForCalendarMeeting(params: {
   userId: string;
   workspaceId: string | null;
@@ -296,9 +354,27 @@ export async function GET(request: Request, context: RouteContext) {
 
     if (isCalendarMeetingId(id)) {
       const calendarMeetingId = decodeCalendarMeetingId(id);
-      const calendarMeeting = await resolveGoogleCalendarMeeting(user.id, calendarMeetingId);
 
-      if (!calendarMeeting || !calendarMeeting.meetLink) {
+      // Strip provider prefix added by unified calendar clients (google_, teams_, outlook_)
+      let rawEventId = calendarMeetingId;
+      let detectedProvider: "google" | "microsoft_teams" | "microsoft_outlook" = "google";
+      for (const prefix of ["google_", "teams_", "outlook_"]) {
+        if (calendarMeetingId.startsWith(prefix)) {
+          rawEventId = calendarMeetingId.slice(prefix.length);
+          if (prefix === "teams_") detectedProvider = "microsoft_teams";
+          else if (prefix === "outlook_") detectedProvider = "microsoft_outlook";
+          break;
+        }
+      }
+
+      let calendarMeeting: GoogleCalendarMeeting | null = null;
+      if (detectedProvider === "microsoft_teams" || detectedProvider === "microsoft_outlook") {
+        calendarMeeting = await resolveMicrosoftCalendarMeeting(user.id, rawEventId, detectedProvider);
+      } else {
+        calendarMeeting = await resolveGoogleCalendarMeeting(user.id, rawEventId);
+      }
+
+      if (!calendarMeeting) {
         return apiError("Meeting not found.", 404);
       }
 
@@ -306,7 +382,7 @@ export async function GET(request: Request, context: RouteContext) {
         userId: user.id,
         workspaceId,
         calendarEventId: calendarMeeting.id,
-        meetLink: calendarMeeting.meetLink
+        meetLink: calendarMeeting.meetLink ?? ""
       });
 
       return apiSuccess({

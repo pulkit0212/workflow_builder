@@ -4,13 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import type { Route } from "next";
 import Link from "next/link";
-import { ArrowRight, CalendarDays, CheckCircle2, ClipboardList, Sparkles, TrendingUp, Video, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle2, ClipboardList, Sparkles, TrendingUp, Video, Zap } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
-import { fetchTodayMeetings } from "@/features/meetings/api";
+import { fetchUnifiedCalendarFeed } from "@/features/meetings/api";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
 import { getMeetingDisplayStatus, findSessionForMeeting } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
-import type { GoogleCalendarMeeting } from "@/lib/google/types";
+import type { UnifiedCalendarMeeting } from "@/lib/calendar/types";
 import { cn } from "@/lib/utils";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
@@ -74,19 +74,33 @@ function getDisplayTitle(m: MeetingSessionRecord): string {
   return "Untitled Meeting";
 }
 
-function getMeetingDetailHref(m: GoogleCalendarMeeting) {
+function getMeetingDetailHref(m: UnifiedCalendarMeeting) {
   return `/dashboard/meetings/${encodeCalendarMeetingId(m.id)}`;
 }
 
-function getPlatformLabel(p: string) {
-  if (p === "zoom_web") return "Zoom";
-  if (p === "teams_web") return "Teams";
-  return "Google Meet";
+function getPlatformFromMeeting(meeting: { provider: string; meetLink?: string | null }) {
+  const url = meeting.meetLink?.toLowerCase() ?? "";
+  if (url.includes("zoom.us") || url.includes("zoom.com")) return "zoom";
+  if (url.includes("teams.microsoft.com") || url.includes("teams.live.com")) return "teams";
+  if (url.includes("meet.google.com")) return "google";
+  if (meeting.provider === "microsoft_teams") return "teams";
+  if (meeting.provider === "microsoft_outlook") return "outlook";
+  return "google";
 }
 
-function getPlatformStyle(p: string) {
-  if (p === "zoom_web") return { bg: "#e3f2fd", color: "#2D8CFF" };
-  if (p === "teams_web") return { bg: "#ede7f6", color: "#6264A7" };
+function getPlatformLabel(meeting: { provider: string; meetLink?: string | null }) {
+  const p = getPlatformFromMeeting(meeting);
+  if (p === "zoom") return "Zoom";
+  if (p === "teams") return "Teams";
+  if (p === "outlook") return "Outlook";
+  return "Google";
+}
+
+function getPlatformStyle(meeting: { provider: string; meetLink?: string | null }) {
+  const p = getPlatformFromMeeting(meeting);
+  if (p === "zoom") return { bg: "#e3f2fd", color: "#2D8CFF" };
+  if (p === "teams") return { bg: "#ede7f6", color: "#6264A7" };
+  if (p === "outlook") return { bg: "#e3f2fd", color: "#0078D4" };
   return { bg: "#e8f5e9", color: "#16a34a" };
 }
 
@@ -123,7 +137,9 @@ export default function DashboardPage() {
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const workspaceFetch = useWorkspaceFetch();
   const [reports, setReports] = useState<MeetingSessionRecord[]>([]);
-  const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
+  const [todayMeetings, setTodayMeetings] = useState<UnifiedCalendarMeeting[]>([]);
+  const [calendarPartialFailure, setCalendarPartialFailure] = useState<Array<{ provider: string; error: string }>>([]);
+  const [noCalendarConnected, setNoCalendarConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -140,18 +156,24 @@ export default function DashboardPage() {
       if (activeWorkspaceId) {
         const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
         const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
-        setReports(data.meetings ?? []); setTodayMeetings([]);
+        setReports(data.meetings ?? []); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
       } else {
-        const [joined, todayRes] = await Promise.all([
+        const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+        const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+        const [joined, feedRes] = await Promise.all([
           fetchJoinedMeetingsWithContext(),
-          fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
+          fetchUnifiedCalendarFeed(startOfToday, endOfToday).catch(() => ({ meetings: [], partialFailure: undefined })),
         ]);
         setReports(joined);
-        setTodayMeetings([...todayRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5));
+        const sorted = [...feedRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5);
+        setTodayMeetings(sorted);
+        setCalendarPartialFailure(feedRes.partialFailure?.failedProviders ?? []);
+        // No calendar connected = empty meetings AND no partial failures (meaning no providers were even tried)
+        setNoCalendarConnected(feedRes.meetings.length === 0 && !feedRes.partialFailure);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");
-      setReports([]); setTodayMeetings([]);
+      setReports([]); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
     } finally { setIsLoading(false); }
   }
 
@@ -164,18 +186,23 @@ export default function DashboardPage() {
           const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
           const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
           if (!mounted) return;
-          setReports(data.meetings ?? []); setTodayMeetings([]);
+          setReports(data.meetings ?? []); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
         } else {
-          const [joined, todayRes] = await Promise.all([
+          const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
+          const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
+          const [joined, feedRes] = await Promise.all([
             fetchJoinedMeetingsWithContext(),
-            fetchTodayMeetings().catch(() => ({ status: "connected" as const, meetings: [] })),
+            fetchUnifiedCalendarFeed(startOfToday, endOfToday).catch(() => ({ meetings: [], partialFailure: undefined })),
           ]);
           if (!mounted) return;
           setReports(joined);
-          setTodayMeetings([...todayRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5));
+          const sorted = [...feedRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5);
+          setTodayMeetings(sorted);
+          setCalendarPartialFailure(feedRes.partialFailure?.failedProviders ?? []);
+          setNoCalendarConnected(feedRes.meetings.length === 0 && !feedRes.partialFailure);
         }
       } catch (err) {
-        if (mounted) { setError(err instanceof Error ? err.message : "Failed to load."); setReports([]); setTodayMeetings([]); }
+        if (mounted) { setError(err instanceof Error ? err.message : "Failed to load."); setReports([]); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false); }
       } finally { if (mounted) setIsLoading(false); }
     })();
     return () => { mounted = false; };
@@ -366,36 +393,63 @@ export default function DashboardPage() {
                 </div>
               )
             ) : (
-              todayMeetings.length > 0 ? todayMeetings.map((meeting) => {
-                const session = findSessionForMeeting(meeting, reports);
-                const status = getMeetingDisplayStatus(meeting, session);
-                const platformStyle = getPlatformStyle(meeting.provider);
-                const platformLabel = getPlatformLabel(meeting.provider);
-                const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
-                return (
-                  <a key={meeting.id} href={getMeetingDetailHref(meeting)}
-                    className="group block px-5 py-3.5 transition-colors hover:bg-[#faf9ff]">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: platformStyle.bg, color: platformStyle.color }}>{platformLabel}</span>
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: status.bg, color: status.color }}>
-                          {status.pulse && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ backgroundColor: status.color }} />}
-                          {status.label}
-                        </span>
-                      </div>
-                      <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#6c63ff]" />
+              todayMeetings.length > 0 ? (
+                <>
+                  {calendarPartialFailure.length > 0 && (
+                    <div className="flex items-center gap-2 border-b border-amber-100 bg-amber-50 px-5 py-2.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      <p className="text-xs text-amber-700">Some calendars couldn&apos;t be loaded</p>
                     </div>
-                    <p className="mt-1.5 truncate text-sm font-semibold text-slate-900">{meeting.title}</p>
-                    <p className="mt-0.5 text-xs text-slate-400">{timeRange}</p>
-                  </a>
-                );
-              }) : (
+                  )}
+                  {todayMeetings.map((meeting) => {
+                    const session = findSessionForMeeting(meeting, reports);
+                    const status = getMeetingDisplayStatus(meeting, session);
+                    const platformStyle = getPlatformStyle(meeting);
+                    const platformLabel = getPlatformLabel(meeting);
+                    const timeRange = formatTimeRange(meeting.startTime, meeting.endTime);
+                    return (
+                      <a key={meeting.id} href={getMeetingDetailHref(meeting)}
+                        className="group block px-5 py-3.5 transition-colors hover:bg-[#faf9ff]">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: platformStyle.bg, color: platformStyle.color }}>{platformLabel}</span>
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: status.bg, color: status.color }}>
+                              {status.pulse && <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full" style={{ backgroundColor: status.color }} />}
+                              {status.label}
+                            </span>
+                          </div>
+                          <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#6c63ff]" />
+                        </div>
+                        <p className="mt-1.5 truncate text-sm font-semibold text-slate-900">{meeting.title}</p>
+                        <p className="mt-0.5 text-xs text-slate-400">{timeRange}</p>
+                      </a>
+                    );
+                  })}
+                </>
+              ) : noCalendarConnected ? (
+                <div className="flex flex-col items-center gap-3 px-6 py-14 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                    <CalendarDays className="h-6 w-6 text-slate-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">No calendar connected</p>
+                  <p className="text-xs text-slate-400">Connect a calendar to see today&apos;s meetings.</p>
+                  <Link href="/dashboard/integrations" className="mt-1 inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-xs font-semibold text-white hover:bg-[#5b52e0] transition-colors">
+                    Connect a calendar <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              ) : (
                 <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
+                  {calendarPartialFailure.length > 0 && (
+                    <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      <p className="text-xs text-amber-700">Some calendars couldn&apos;t be loaded</p>
+                    </div>
+                  )}
                   <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
                     <CalendarDays className="h-6 w-6 text-slate-300" />
                   </div>
                   <p className="text-sm font-semibold text-slate-700">No meetings today</p>
-                  <p className="text-xs text-slate-400">Connect Google Calendar to see your schedule.</p>
+                  <p className="text-xs text-slate-400">Your calendar is clear for today.</p>
                 </div>
               )
             )}

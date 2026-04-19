@@ -4,11 +4,10 @@ import { updateMeetingSession } from "@/lib/db/mutations/meeting-sessions";
 import { getMeetingSessionById } from "@/lib/db/queries/meeting-sessions";
 import type { MeetingSessionStatus } from "@/features/meeting-assistant/types";
 import { generateInsights, generateChapters } from "@/lib/insights/generate";
-import { triggerIntegrations } from "@/lib/integrations/trigger";
 import { saveRecording, getRecordingSize } from "@/lib/storage";
 import { incrementMeetingUsage } from "@/lib/subscription.server";
 import { db } from "@/lib/db/client";
-import { actionItems, users } from "@/db/schema";
+import { actionItems, userPreferences, users } from "@/db/schema";
 
 export type BotCaptureSummaryPayload = {
   summary?: string;
@@ -115,6 +114,85 @@ async function syncMeetingActionItems(params: {
 }
 
 /**
+ * Auto-share meeting summary to integrations the user has enabled in autoShareTargets preferences.
+ * Only fires integrations the user has explicitly opted into — same logic as execute-run.ts.
+ */
+async function triggerAutoShare(
+  userId: string,
+  title: string,
+  summary: Record<string, unknown>,
+  transcript: string
+) {
+  if (!db) return;
+
+  const [prefs] = await db
+    .select({ autoShareTargets: userPreferences.autoShareTargets })
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId))
+    .limit(1);
+
+  const targets = prefs?.autoShareTargets as Record<string, boolean> | null;
+  if (!targets) return;
+
+  const enabledTargets = new Set(
+    Object.entries(targets)
+      .filter(([, enabled]) => enabled)
+      .map(([key]) => key)
+  );
+
+  if (enabledTargets.size === 0) return;
+
+  const { listEnabledIntegrationsByUser } = await import("@/lib/db/queries/integrations");
+  const allEnabled = await listEnabledIntegrationsByUser(userId);
+  const filtered = allEnabled.filter((i) => enabledTargets.has(i.type));
+
+  if (filtered.length === 0) return;
+
+  const { sendSlackSummary } = await import("@/lib/integrations/slack");
+  const { sendGmailSummary } = await import("@/lib/integrations/gmail");
+  const { createNotionPage } = await import("@/lib/integrations/notion");
+  const { createJiraTickets } = await import("@/lib/integrations/jira");
+  const { getActiveGoogleIntegration } = await import("@/lib/google/integration");
+
+  for (const integration of filtered) {
+    const config = (integration.config ?? {}) as Record<string, string>;
+    try {
+      switch (integration.type) {
+        case "slack":
+          await sendSlackSummary(config, title, summary);
+          console.log("[auto-share] slack ✓");
+          break;
+        case "gmail": {
+          const googleIntegration = await getActiveGoogleIntegration(userId);
+          const accessToken = googleIntegration?.accessToken;
+          if (accessToken) {
+            await sendGmailSummary(config, title, summary, accessToken);
+            console.log("[auto-share] gmail ✓");
+          }
+          break;
+        }
+        case "notion":
+          await createNotionPage(config, title, summary, transcript);
+          console.log("[auto-share] notion ✓");
+          break;
+        case "jira": {
+          const actionItemsList = Array.isArray(summary.action_items)
+            ? (summary.action_items as Array<Record<string, unknown>>)
+            : [];
+          if (actionItemsList.length > 0) {
+            await createJiraTickets(config, title, actionItemsList);
+            console.log("[auto-share] jira ✓");
+          }
+          break;
+        }
+      }
+    } catch (err) {
+      console.error(`[auto-share] ${integration.type} failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+/**
  * Persists bot pipeline updates to the meeting session row.
  * On `completed`, writes transcript, summary, recording URL, and kicks off insights + integrations.
  * Uses the session owner's `userId` from the database (required for Drizzle's owner-scoped update).
@@ -192,14 +270,13 @@ export async function persistBotCaptureStatusUpdate(
         console.error("[DB] Insights generation error:", error instanceof Error ? error.message : error)
       );
 
-    void triggerIntegrations(
+    void triggerAutoShare(
       ownerUserId,
-      meetingSessionId,
       title,
-      { ...(payload.summary as unknown as Record<string, unknown>) },
+      payload.summary as unknown as Record<string, unknown>,
       payload.transcript ?? ""
     ).catch((error) =>
-      console.error("[DB] Integration trigger error:", error instanceof Error ? error.message : error)
+      console.error("[DB] Auto-share error:", error instanceof Error ? error.message : error)
     );
 
     console.log("[DB] Saved successfully (completed)");

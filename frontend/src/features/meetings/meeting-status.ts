@@ -7,6 +7,9 @@
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 
+// Structural type covering both GoogleCalendarMeeting and UnifiedCalendarMeeting
+type CalendarMeetingLike = Pick<GoogleCalendarMeeting, "id" | "title" | "startTime" | "endTime" | "meetLink">;
+
 export type MeetingDisplayStatus = {
   label: string;
   color: string;
@@ -19,7 +22,7 @@ export type MeetingDisplayStatus = {
 };
 
 export function getMeetingDisplayStatus(
-  meeting: GoogleCalendarMeeting,
+  meeting: CalendarMeetingLike,
   session: MeetingSessionRecord | null | undefined
 ): MeetingDisplayStatus {
   // PRIORITY 1: bot session exists — use session state
@@ -152,7 +155,7 @@ export function getMeetingDisplayStatus(
  * Matches by externalCalendarEventId first, then by meetingLink URL.
  */
 export function findSessionForMeeting(
-  meeting: GoogleCalendarMeeting,
+  meeting: CalendarMeetingLike,
   sessions: MeetingSessionRecord[]
 ): MeetingSessionRecord | null {
   // Match by calendar event ID (most reliable)

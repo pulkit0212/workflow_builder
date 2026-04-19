@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertTriangle, CheckCircle2, Circle, Clipboard, Clock3, Download, FileAudio2, FileText, Mic, Square, Trash2, WandSparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Circle, Clipboard, Clock3, Download, FileAudio2, FileText, Mic, Pause, Play, Square, Trash2, Volume2, WandSparkles } from "lucide-react";
 import { ActionItemsCard } from "@/components/tools/action-items-card";
 import { KeyPointsCard } from "@/components/tools/key-points-card";
 import { ResultState } from "@/components/tools/result-state";
@@ -62,6 +62,75 @@ type RecordedAudio = {
   previewUrl: string;
   durationMs: number;
 };
+
+function AudioPlayer({ src }: { src: string }) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  function fmt(s: number) {
+    if (!isFinite(s) || isNaN(s)) return "0:00";
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  }
+
+  function togglePlay() {
+    const el = audioRef.current;
+    if (!el) return;
+    if (isPlaying) { el.pause(); } else { void el.play(); }
+  }
+
+  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const el = audioRef.current;
+    if (!el) return;
+    const val = Number(e.target.value);
+    el.currentTime = val;
+    setCurrentTime(val);
+  }
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  return (
+    <div className="mt-4 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <audio
+        ref={audioRef}
+        src={src}
+        onTimeUpdate={() => setCurrentTime(audioRef.current?.currentTime ?? 0)}
+        onDurationChange={() => setDuration(audioRef.current?.duration ?? 0)}
+        onLoadedMetadata={() => setDuration(audioRef.current?.duration ?? 0)}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => setIsPlaying(false)}
+      />
+      <button
+        type="button"
+        onClick={togglePlay}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6c63ff] text-white transition hover:bg-[#5b52e0]"
+      >
+        {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 translate-x-px" />}
+      </button>
+      <span className="w-10 shrink-0 text-xs tabular-nums text-slate-500">{fmt(currentTime)}</span>
+      <div className="relative flex-1">
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+          <div className="h-full rounded-full bg-[#6c63ff] transition-all" style={{ width: `${progress}%` }} />
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.01}
+          value={currentTime}
+          onChange={handleSeek}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+      </div>
+      <span className="w-10 shrink-0 text-right text-xs tabular-nums text-slate-500">{fmt(duration)}</span>
+      <Volume2 className="h-4 w-4 shrink-0 text-slate-400" />
+    </div>
+  );
+}
 
 function MeetingSummarizerLoadingState(props: {
   title?: string;
@@ -642,12 +711,12 @@ export function MeetingSummarizerWorkspace({
                     onClick={() => handleAudioModeSelection(modeOption.value)}
                     className={
                       isSelected
-                        ? "rounded-[1.35rem] border border-sky-300 bg-white px-4 py-4 text-left shadow-sm transition-all"
+                        ? "rounded-[1.35rem] border border-[#c4b5fd] bg-white px-4 py-4 text-left shadow-sm transition-all"
                         : "rounded-[1.35rem] border border-transparent bg-transparent px-4 py-4 text-left transition-all hover:border-slate-200 hover:bg-white/80"
                     }
                   >
                     <div className="flex items-start gap-3">
-                      <div className={isSelected ? "rounded-2xl bg-sky-50 p-3 text-sky-700" : "rounded-2xl bg-white p-3 text-slate-500"}>
+                      <div className={isSelected ? "rounded-2xl bg-[#f5f3ff] p-3 text-[#6c63ff]" : "rounded-2xl bg-white p-3 text-slate-500"}>
                         <Icon className="h-5 w-5" />
                       </div>
                       <div className="space-y-1">
@@ -660,7 +729,7 @@ export function MeetingSummarizerWorkspace({
               })}
             </div>
 
-            <div className="flex flex-col gap-4 rounded-[1.75rem] border border-sky-100 bg-gradient-to-br from-sky-50 to-white p-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-4 rounded-[1.75rem] border border-[#ede9fe] bg-gradient-to-br from-[#f5f3ff] to-white p-5 sm:flex-row sm:items-start sm:justify-between">
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-slate-950">Paste a meeting transcript and generate a saved structured summary.</p>
                 <p className="max-w-2xl text-sm leading-6 text-slate-600">
@@ -702,7 +771,7 @@ export function MeetingSummarizerWorkspace({
                     }}
                     rows={8}
                     placeholder={"Paste a meeting transcript here.\n\nHelpful format:\nRahul: I'll send the revised deck by Friday.\nMaya: I can take the customer follow-up next week.\nArjun: Let's recap the final action items before we close."}
-                    className="w-full resize-none overflow-hidden rounded-[1.75rem] border border-slate-200 bg-slate-50/80 px-5 py-4 text-sm leading-7 text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-300 disabled:cursor-not-allowed disabled:opacity-80"
+                    className="w-full resize-none overflow-hidden rounded-[1.75rem] border border-slate-200 bg-slate-50/80 px-5 py-4 text-sm leading-7 text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#c4b5fd] disabled:cursor-not-allowed disabled:opacity-80"
                     disabled={isPending}
                     {...transcriptField}
                   />
@@ -722,7 +791,7 @@ export function MeetingSummarizerWorkspace({
                           key={stepItem.step}
                           className={
                             state === "current"
-                              ? "rounded-[1.35rem] border border-sky-300 bg-white px-4 py-4 shadow-sm"
+                              ? "rounded-[1.35rem] border border-[#c4b5fd] bg-white px-4 py-4 shadow-sm"
                               : state === "complete"
                                 ? "rounded-[1.35rem] border border-emerald-200 bg-emerald-50/70 px-4 py-4"
                                 : "rounded-[1.35rem] border border-transparent bg-white/70 px-4 py-4"
@@ -766,33 +835,35 @@ export function MeetingSummarizerWorkspace({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-3">
-                        {audioFlowState !== "recording" ? (
+                        {audioFlowState !== "recording" && audioFlowState !== "transcript_ready_for_review" && audioFlowState !== "summarizing" && audioFlowState !== "completed" ? (
                           <Button type="button" onClick={handleStartRecording} disabled={isPending}>
                             <Mic className="h-4 w-4" />
                             Start Recording
                           </Button>
-                        ) : (
+                        ) : audioFlowState === "recording" ? (
                           <Button type="button" variant="secondary" onClick={handleStopRecording}>
                             <Square className="h-4 w-4" />
                             Stop Recording
                           </Button>
-                        )}
-                        {recordedAudio ? (
+                        ) : null}
+                        {recordedAudio && audioFlowState !== "transcript_ready_for_review" && audioFlowState !== "summarizing" && audioFlowState !== "completed" ? (
                           <Button type="button" variant="ghost" onClick={resetRecordingState} disabled={isPending}>
                             <Trash2 className="h-4 w-4" />
                             Discard Recording
                           </Button>
                         ) : null}
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          onClick={handleTranscribeRecording}
-                          disabled={!recordedAudio || audioFlowState === "recording" || audioFlowState === "transcribing" || audioFlowState === "summarizing" || isPending}
-                          className="min-w-[12rem] whitespace-nowrap px-5"
-                        >
-                          <WandSparkles className="h-4 w-4" />
-                          {audioFlowState === "transcribing" ? "Generating transcript..." : "Transcribe"}
-                        </Button>
+                        {audioFlowState !== "transcript_ready_for_review" && audioFlowState !== "summarizing" && audioFlowState !== "completed" ? (
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            onClick={handleTranscribeRecording}
+                            disabled={!recordedAudio || audioFlowState === "recording" || audioFlowState === "transcribing" || isPending}
+                            className="min-w-[12rem] whitespace-nowrap px-5"
+                          >
+                            <WandSparkles className="h-4 w-4" />
+                            {audioFlowState === "transcribing" ? "Generating transcript..." : "Transcribe"}
+                          </Button>
+                        ) : null}
                       </div>
 
                       {recordedAudio ? (
@@ -805,9 +876,7 @@ export function MeetingSummarizerWorkspace({
                               </p>
                             </div>
                           </div>
-                          <audio controls className="mt-4 w-full" src={recordedAudio.previewUrl}>
-                            Your browser does not support audio playback.
-                          </audio>
+                          <AudioPlayer src={recordedAudio.previewUrl} />
                         </div>
                       ) : null}
                     </div>
@@ -855,9 +924,9 @@ export function MeetingSummarizerWorkspace({
             </div>
 
             {audioNotice ? (
-              <div className="rounded-3xl border border-sky-200 bg-sky-50 px-4 py-4 text-sm text-sky-800">
+              <div className="rounded-3xl border border-[#ede9fe] bg-[#f5f3ff] px-4 py-4 text-sm text-[#4c1d95]">
                 <div className="flex items-start gap-3">
-                  <FileAudio2 className="mt-0.5 h-4 w-4 shrink-0" />
+                  <FileAudio2 className="mt-0.5 h-4 w-4 shrink-0 text-[#6c63ff]" />
                   <div className="space-y-1">
                     <p className="font-medium">
                       {audioFlowState === "transcript_ready_for_review" || audioFlowState === "completed"

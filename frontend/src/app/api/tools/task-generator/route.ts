@@ -3,6 +3,11 @@ import { z } from "zod";
 import { apiError, apiSuccess } from "@/lib/api-responses";
 import { callAI } from "@/lib/ai/provider";
 import { handleUserSafeAIError } from "@/lib/ai/errorHandler";
+import { createAiRun } from "@/lib/db/mutations/ai-runs";
+import { ensureToolRecord } from "@/lib/db/queries/tools";
+import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
+import { ensureDatabaseReady } from "@/lib/db/bootstrap";
+import { toolRegistry } from "@/lib/ai/tool-registry";
 
 export const runtime = "nodejs";
 const logPrefix = "[Task Generator]";
@@ -141,13 +146,34 @@ export async function POST(request: Request) {
 
     const normalized = taskGeneratorOutputSchema.parse(parsedOutput);
 
-    return apiSuccess({
+    const result = {
       success: true,
       tasks: normalized.tasks,
       summary: normalized.summary,
       total_tasks: normalized.total_tasks || normalized.tasks.length,
       unextractable: normalized.unextractable || ""
-    });
+    };
+
+    // Persist to ai_runs (fire-and-forget)
+    void (async () => {
+      try {
+        await ensureDatabaseReady();
+        const user = await syncCurrentUserToDatabase(userId);
+        const toolRecord = await ensureToolRecord(toolRegistry["task-generator"]);
+        await createAiRun({
+          userId: user.id,
+          toolId: toolRecord.id,
+          title: normalized.summary.slice(0, 80).trim() || "Task list",
+          status: "completed",
+          inputJson: parsed.data as Record<string, unknown>,
+          outputJson: { tasks: normalized.tasks, summary: normalized.summary, total_tasks: result.total_tasks, unextractable: result.unextractable },
+          model: "gemini",
+          tokensUsed: 0
+        });
+      } catch { /* non-critical */ }
+    })();
+
+    return apiSuccess(result);
   } catch (error) {
     try {
       handleUserSafeAIError(error);

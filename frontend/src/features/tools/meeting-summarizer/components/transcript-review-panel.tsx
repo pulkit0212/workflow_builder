@@ -32,7 +32,7 @@ export function TranscriptReviewPanel({
       <div className="space-y-5">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-            <FileText className="h-4 w-4 text-sky-600" />
+            <FileText className="h-4 w-4 text-[#6c63ff]" />
             Review transcript
           </div>
           <p className="text-sm leading-6 text-slate-600">
@@ -46,7 +46,7 @@ export function TranscriptReviewPanel({
           rows={12}
           disabled={disabled}
           placeholder="Your transcript will appear here after transcription."
-          className="w-full rounded-[1.75rem] border border-slate-200 bg-slate-50/80 px-5 py-4 text-sm leading-7 text-slate-900 outline-none placeholder:text-slate-400 focus:border-sky-300 disabled:cursor-not-allowed disabled:opacity-80"
+          className="w-full rounded-[1.75rem] border border-slate-200 bg-slate-50/80 px-5 py-4 text-sm leading-7 text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#c4b5fd] disabled:cursor-not-allowed disabled:opacity-80"
         />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

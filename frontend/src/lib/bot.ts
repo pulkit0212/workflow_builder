@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+declare const __non_webpack_require__: NodeRequire;
+
 type BotStatus =
   | "waiting_for_join"
   | "waiting_for_admission"
@@ -106,8 +108,10 @@ let botModule: LegacyBotModule | null = null;
 function getBotModule(): LegacyBotModule {
   if (!botModule) {
     const root = resolveLegacyBotRoot();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    botModule = require(root) as LegacyBotModule;
+    // __non_webpack_require__ bypasses webpack bundling and uses Node's native require at runtime
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const nativeRequire = (typeof __non_webpack_require__ !== "undefined" ? __non_webpack_require__ : require) as NodeRequire;
+    botModule = nativeRequire(root) as LegacyBotModule;
   }
   return botModule;
 }

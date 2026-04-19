@@ -6,6 +6,8 @@ type GoogleCalendarEvent = {
   summary?: string;
   status?: string;
   hangoutLink?: string;
+  description?: string;
+  location?: string;
   start?: {
     dateTime?: string;
     date?: string;
@@ -32,33 +34,68 @@ type GoogleCalendarEventResponse = GoogleCalendarEvent & {
 const googleCalendarLogPrefix = "[google-calendar]";
 
 function isGoogleMeetLink(value: string | null | undefined) {
-  if (!value) {
-    return false;
-  }
-
+  if (!value) return false;
   try {
     const url = new URL(value);
     return /^meet\.google\.com$/i.test(url.host);
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
-function resolveMeetLink(event: GoogleCalendarEvent): string | null {
+function isZoomLink(value: string | null | undefined) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.hostname === "zoom.us" || url.hostname.endsWith(".zoom.us");
+  } catch { return false; }
+}
+
+function isTeamsLink(value: string | null | undefined) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.hostname.includes("teams.microsoft.com") || url.hostname.includes("teams.live.com");
+  } catch { return false; }
+}
+
+function detectProvider(url: string | null | undefined): "google_meet" | "zoom_web" | "teams_web" {
+  if (isZoomLink(url)) return "zoom_web";
+  if (isTeamsLink(url)) return "teams_web";
+  return "google_meet";
+}
+
+function resolveMeetingLink(event: GoogleCalendarEvent): { link: string | null; provider: "google_meet" | "zoom_web" | "teams_web" } {
+  // 1. hangoutLink — always Google Meet
   if (event.hangoutLink && isGoogleMeetLink(event.hangoutLink)) {
-    return event.hangoutLink;
+    return { link: event.hangoutLink, provider: "google_meet" };
   }
 
-  return (
-    event.conferenceData?.entryPoints?.find((entryPoint) => {
-      if (entryPoint.entryPointType !== "video") {
-        return false;
-      }
-
-      return isGoogleMeetLink(entryPoint.uri) || /google meet/i.test(entryPoint.label ?? "");
-    })?.uri ??
-    null
+  // 2. conferenceData entryPoints — can be Google Meet, Zoom, or Teams
+  const videoEntry = event.conferenceData?.entryPoints?.find(
+    (ep) => ep.entryPointType === "video" && ep.uri
   );
+  if (videoEntry?.uri) {
+    return { link: videoEntry.uri, provider: detectProvider(videoEntry.uri) };
+  }
+
+  // 3. Any entryPoint with a recognizable URL
+  for (const ep of event.conferenceData?.entryPoints ?? []) {
+    if (!ep.uri) continue;
+    if (isZoomLink(ep.uri) || isTeamsLink(ep.uri) || isGoogleMeetLink(ep.uri)) {
+      return { link: ep.uri, provider: detectProvider(ep.uri) };
+    }
+  }
+
+  // 4. Scan description and location for Zoom/Teams URLs
+  // (Zoom meetings added manually or via description don't always have conferenceData)
+  const textToScan = [event.description ?? "", event.location ?? ""].join(" ");
+  const urlRegex = /https?:\/\/[^\s"<>]+/g;
+  const foundUrls = textToScan.match(urlRegex) ?? [];
+  for (const url of foundUrls) {
+    if (isZoomLink(url)) return { link: url.split("?")[0] ?? url, provider: "zoom_web" };
+    if (isTeamsLink(url)) return { link: url.split("?")[0] ?? url, provider: "teams_web" };
+  }
+
+  return { link: null, provider: "google_meet" };
 }
 
 function getGoogleCalendarMeetingsForRangeUrl(params: {
@@ -76,6 +113,7 @@ function getGoogleCalendarMeetingsForRangeUrl(params: {
   url.searchParams.set("orderBy", "startTime");
   url.searchParams.set("maxResults", "50");
   url.searchParams.set("conferenceDataVersion", "1");
+  url.searchParams.set("fields", "items(id,summary,status,hangoutLink,description,location,start,end,conferenceData)");
 
   return url;
 }
@@ -222,7 +260,7 @@ async function fetchGoogleCalendarEventById(params: {
   console.info(`${googleCalendarLogPrefix} received event by id`, {
     userId: params.userId ?? null,
     meetingId: params.meetingId,
-    hasMeetLink: Boolean(resolveMeetLink(payload))
+    hasMeetLink: Boolean(resolveMeetingLink(payload).link)
   });
 
   return payload;
@@ -231,15 +269,18 @@ async function fetchGoogleCalendarEventById(params: {
 function mapGoogleCalendarEvents(items: GoogleCalendarEvent[]) {
   return items
     .filter((event) => event.status !== "cancelled")
-    .map<GoogleCalendarMeeting>((event) => ({
-      id: event.id ?? crypto.randomUUID(),
-      title: event.summary?.trim() || "Untitled event",
-      startTime: event.start?.dateTime || event.start?.date || "",
-      endTime: event.end?.dateTime || event.end?.date || event.start?.dateTime || event.start?.date || "",
-      meetLink: resolveMeetLink(event),
-      provider: "google_meet",
-      source: "google_calendar"
-    }));
+    .map<GoogleCalendarMeeting>((event) => {
+      const { link, provider } = resolveMeetingLink(event);
+      return {
+        id: event.id ?? crypto.randomUUID(),
+        title: event.summary?.trim() || "Untitled event",
+        startTime: event.start?.dateTime || event.start?.date || "",
+        endTime: event.end?.dateTime || event.end?.date || event.start?.dateTime || event.start?.date || "",
+        meetLink: link,
+        provider,
+        source: "google_calendar",
+      };
+    });
 }
 
 export async function fetchUpcomingGoogleCalendarMeetings(accessToken: string) {

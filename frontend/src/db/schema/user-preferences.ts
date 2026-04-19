@@ -1,4 +1,4 @@
-import { jsonb, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgTable, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
 export const userPreferences = pgTable("user_preferences", {
@@ -8,7 +8,6 @@ export const userPreferences = pgTable("user_preferences", {
     .unique()
     .references(() => users.id, { onDelete: "cascade" }),
 
-  // Email notification preferences (JSONB)
   emailNotifications: jsonb("email_notifications")
     .$type<{
       meetingSummary: boolean;
@@ -24,7 +23,6 @@ export const userPreferences = pgTable("user_preferences", {
       productUpdates: true
     }),
 
-  // AI behavior preferences
   defaultEmailTone: varchar("default_email_tone", { length: 50 })
     .notNull()
     .default("professional"),
@@ -37,7 +35,6 @@ export const userPreferences = pgTable("user_preferences", {
     .notNull()
     .default("en"),
 
-  // Bot settings
   botDisplayName: varchar("bot_display_name", { length: 255 })
     .notNull()
     .default("Artiva Notetaker"),
@@ -46,7 +43,20 @@ export const userPreferences = pgTable("user_preferences", {
     .notNull()
     .default("default"),
 
-  // Timestamps
+  /**
+   * Which integrations to auto-share to immediately after a meeting summary is generated.
+   * e.g. { slack: true, gmail: false, notion: true, jira: false }
+   */
+  autoShareTargets: jsonb("auto_share_targets")
+    .$type<{
+      slack: boolean;
+      gmail: boolean;
+      notion: boolean;
+      jira: boolean;
+    }>()
+    .notNull()
+    .default({ slack: false, gmail: false, notion: false, jira: false }),
+
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

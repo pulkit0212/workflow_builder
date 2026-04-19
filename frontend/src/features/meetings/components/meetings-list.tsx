@@ -2,19 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { getSession, signIn } from "next-auth/react";
 import type { Route } from "next";
 import Link from "next/link";
 import { CalendarDays, CalendarSync, LoaderCircle, Share2 } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
-import { EmptyState } from "@/components/shared/empty-state";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { fetchJoinedMeetings, fetchTodayMeetings, fetchUpcomingMeetings } from "@/features/meetings/api";
+import { fetchJoinedMeetings, fetchUnifiedCalendarFeed } from "@/features/meetings/api";
 import { CalendarMeetingRow } from "@/features/meetings/components/calendar-meeting-row";
 import { findSessionForMeeting } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
-import type { GoogleCalendarMeeting } from "@/lib/google/types";
+import type { UnifiedCalendarMeeting } from "@/lib/calendar/types";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 
 function formatDateHeading(value: Date, prefix: string) {
@@ -45,8 +41,8 @@ function formatUpcomingLabel(date: Date) {
     .toUpperCase()}`;
 }
 
-function groupMeetingsByDate(meetings: GoogleCalendarMeeting[]) {
-  const groups = new Map<string, { date: Date; meetings: GoogleCalendarMeeting[] }>();
+function groupMeetingsByDate(meetings: UnifiedCalendarMeeting[]) {
+  const groups = new Map<string, { date: Date; meetings: UnifiedCalendarMeeting[] }>();
 
   for (const meeting of meetings) {
     const date = new Date(meeting.startTime);
@@ -63,66 +59,17 @@ function groupMeetingsByDate(meetings: GoogleCalendarMeeting[]) {
   return Array.from(groups.values()).sort((left, right) => left.date.getTime() - right.date.getTime());
 }
 
-function ConnectGoogleCalendarCard({
-  isConnecting,
-  actionError,
-  onConnect
-}: {
-  isConnecting: boolean;
-  actionError: string | null;
-  onConnect: () => void;
-}) {
-  return (
-    <Card className="p-6">
-      <div className="space-y-3">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#6c63ff]">Google Calendar</p>
-        <h2>Connect your calendar</h2>
-        <p>Your upcoming Google Calendar sessions will appear here automatically once Google Calendar is connected.</p>
-        <Button type="button" onClick={onConnect} disabled={isConnecting}>
-          {isConnecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-          Continue with Google
-        </Button>
-        {actionError ? <div className="rounded-xl border border-[#fecaca] bg-[#fef2f2] p-3 text-sm text-[#991b1b]">{actionError}</div> : null}
-      </div>
-    </Card>
-  );
-}
-
-function ReconnectGoogleCalendarCard({
-  isConnecting,
-  onReconnect
-}: {
-  isConnecting: boolean;
-  onReconnect: () => void;
-}) {
-  return (
-    <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
-      <div className="space-y-3">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#b45309]">Google Calendar</p>
-        <p className="text-lg font-semibold text-[#111827]">📅 Google Calendar needs to be reconnected</p>
-        <p className="text-sm text-[#92400e]">Your session has expired.</p>
-        <Button type="button" onClick={onReconnect} disabled={isConnecting}>
-          {isConnecting ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-          Reconnect Google Calendar
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
 export function MeetingsList() {
   const searchParams = useSearchParams();
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
-  const [todayMeetings, setTodayMeetings] = useState<GoogleCalendarMeeting[]>([]);
-  const [upcomingMeetings, setUpcomingMeetings] = useState<GoogleCalendarMeeting[]>([]);
+  const [todayMeetings, setTodayMeetings] = useState<UnifiedCalendarMeeting[]>([]);
+  const [upcomingMeetings, setUpcomingMeetings] = useState<UnifiedCalendarMeeting[]>([]);
   const [sessions, setSessions] = useState<MeetingSessionRecord[]>([]);
   const [workspaceMeetings, setWorkspaceMeetings] = useState<MeetingSessionRecord[]>([]);
   const [adminWorkspaces, setAdminWorkspaces] = useState<{ id: string; name: string; role: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isConnectingGoogle, setIsConnectingGoogle] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [needsGoogleConnection, setNeedsGoogleConnection] = useState(false);
-  const [needsGoogleReconnect, setNeedsGoogleReconnect] = useState(false);
+  const [needsCalendarConnection, setNeedsCalendarConnection] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -131,7 +78,7 @@ export function MeetingsList() {
     setError(null);
     try {
       if (activeWorkspaceId) {
-        // Workspace mode: fetch shared meetings only, no Google Calendar
+        // Workspace mode: fetch shared meetings only, no calendar
         const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
         const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
         setWorkspaceMeetings(data.meetings ?? []);
@@ -139,21 +86,38 @@ export function MeetingsList() {
         setUpcomingMeetings([]);
         setSessions([]);
       } else {
-        // Personal mode: Google Calendar
-        const todayResult = await fetchTodayMeetings();
-        setNeedsGoogleConnection(todayResult.status === "not_connected");
-        setNeedsGoogleReconnect(todayResult.status === "auth_required");
-        setTodayMeetings(todayResult.meetings);
-        if (todayResult.status === "connected") {
-          const [upcoming, joined] = await Promise.all([
-            fetchUpcomingMeetings(),
+        // Personal mode: unified calendar feed
+        const now = new Date();
+        const todayStart = new Date(now);
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now);
+        todayEnd.setHours(23, 59, 59, 999);
+
+        const upcomingEnd = new Date(now);
+        upcomingEnd.setDate(now.getDate() + 7);
+        upcomingEnd.setHours(23, 59, 59, 999);
+
+        try {
+          const [todayFeed, upcomingFeed, joined] = await Promise.all([
+            fetchUnifiedCalendarFeed(todayStart, todayEnd),
+            fetchUnifiedCalendarFeed(todayEnd, upcomingEnd),
             fetchJoinedMeetings().catch(() => []),
           ]);
-          setUpcomingMeetings(upcoming);
+          setNeedsCalendarConnection(false);
+          setTodayMeetings(todayFeed.meetings);
+          setUpcomingMeetings(upcomingFeed.meetings);
           setSessions(joined);
-        } else {
-          setUpcomingMeetings([]);
-          setSessions([]);
+        } catch (feedError) {
+          // If the feed fails with a calendar_auth_required-style error, show connect prompt
+          const msg = feedError instanceof Error ? feedError.message : "";
+          if (msg.includes("calendar_auth_required") || msg.includes("not connected")) {
+            setNeedsCalendarConnection(true);
+            setTodayMeetings([]);
+            setUpcomingMeetings([]);
+            setSessions([]);
+          } else {
+            throw feedError;
+          }
         }
       }
     } catch (loadError) {
@@ -179,54 +143,37 @@ export function MeetingsList() {
       .catch(() => {});
   }, [activeWorkspaceId]);
 
-  useEffect(() => {
-    void getSession().then((session) => {
-      if ((session as { error?: string } | null)?.error === "RefreshAccessTokenError") {
-        void signIn("google", { callbackUrl: "/dashboard/meetings" });
-      }
-    });
-  }, []);
-
+  // Handle OAuth callback query params (e.g. ?google=connected or ?error=oauth_failed)
   useEffect(() => {
     const googleStatus = searchParams.get("google");
+    const oauthError = searchParams.get("error");
 
-    if (!googleStatus) {
+    if (oauthError === "oauth_failed" || oauthError === "oauth_cancelled") {
+      setActionError("Calendar connection failed. Please try again from the Integrations page.");
       return;
     }
 
+    if (!googleStatus) return;
+
     if (googleStatus === "connect_failed") {
-      setActionError("Google Calendar connection failed. Try again.");
-      setNeedsGoogleConnection(true);
-      setIsConnectingGoogle(false);
+      setActionError("Calendar connection failed. Try again.");
+      setNeedsCalendarConnection(true);
       return;
     }
 
     if (googleStatus === "missing_context") {
-      setActionError("Google connection context expired. Start the connection flow again.");
-      setNeedsGoogleConnection(true);
-      setIsConnectingGoogle(false);
+      setActionError("Calendar connection context expired. Start the connection flow again.");
+      setNeedsCalendarConnection(true);
       return;
     }
 
     if (googleStatus === "connected") {
       setActionError(null);
-      setIsConnectingGoogle(false);
-      setNeedsGoogleConnection(false);
-      setNeedsGoogleReconnect(false);
+      setNeedsCalendarConnection(false);
       void loadMeetings({ silent: true });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
-
-  function handleConnectGoogle() {
-    setIsConnectingGoogle(true);
-    setActionError(null);
-    void signIn("google", {
-      callbackUrl: "/dashboard/meetings"
-    }).catch((connectError) => {
-      setIsConnectingGoogle(false);
-      setActionError(connectError instanceof Error ? connectError.message : "Failed to start Google sign-in.");
-    });
-  }
 
   function handleSyncCalendar() {
     setIsSyncing(true);
@@ -329,7 +276,7 @@ export function MeetingsList() {
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Meetings</p>
           <h1 className="mt-1 text-2xl font-bold text-slate-900">Meetings</h1>
-          <p className="mt-1 text-sm text-slate-400">Your upcoming Google Calendar sessions</p>
+          <p className="mt-1 text-sm text-slate-400">Your upcoming calendar sessions</p>
         </div>
         <button type="button" onClick={handleSyncCalendar} disabled={isSyncing}
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
@@ -338,29 +285,19 @@ export function MeetingsList() {
         </button>
       </div>
 
-      {needsGoogleReconnect ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">Google Calendar</p>
-          <p className="text-sm font-semibold text-slate-900">📅 Google Calendar needs to be reconnected</p>
-          <p className="text-xs text-amber-700">Your session has expired.</p>
-          <button type="button" onClick={handleConnectGoogle} disabled={isConnectingGoogle}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5b52e0] disabled:opacity-50 transition-colors">
-            {isConnectingGoogle ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-            Reconnect Google Calendar
-          </button>
-        </div>
-      ) : needsGoogleConnection ? (
+      {needsCalendarConnection ? (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center space-y-3">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
             <CalendarDays className="h-7 w-7 text-slate-400" />
           </div>
-          <p className="text-sm font-semibold text-slate-700">Connect Google Calendar</p>
-          <p className="text-xs text-slate-400">Your upcoming sessions will appear here automatically.</p>
-          <button type="button" onClick={handleConnectGoogle} disabled={isConnectingGoogle}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#5b52e0] disabled:opacity-50 transition-colors">
-            {isConnectingGoogle ? <LoaderCircle className="h-4 w-4 animate-spin" /> : null}
-            Continue with Google
-          </button>
+          <p className="text-sm font-semibold text-slate-700">Connect a Calendar</p>
+          <p className="text-xs text-slate-400">Your upcoming sessions will appear here automatically once a calendar is connected.</p>
+          <Link
+            href="/dashboard/integrations"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#5b52e0] transition-colors"
+          >
+            Connect Calendar
+          </Link>
           {actionError && <p className="text-xs text-red-600">{actionError}</p>}
         </div>
       ) : error ? (
@@ -392,7 +329,7 @@ export function MeetingsList() {
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
                 <CalendarDays className="h-8 w-8 text-slate-300" />
                 <p className="mt-2 text-sm font-medium text-slate-600">No meetings scheduled today</p>
-                <p className="mt-0.5 text-xs text-slate-400">Your Google Calendar meetings will appear here.</p>
+                <p className="mt-0.5 text-xs text-slate-400">Your calendar meetings will appear here.</p>
               </div>
             )}
           </section>
@@ -419,7 +356,7 @@ export function MeetingsList() {
               <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
                 <CalendarDays className="h-8 w-8 text-slate-300" />
                 <p className="mt-2 text-sm font-medium text-slate-600">No upcoming meetings</p>
-                <p className="mt-0.5 text-xs text-slate-400">Future Google Calendar meetings will appear here once scheduled.</p>
+                <p className="mt-0.5 text-xs text-slate-400">Future calendar meetings will appear here once scheduled.</p>
               </div>
             )}
           </section>

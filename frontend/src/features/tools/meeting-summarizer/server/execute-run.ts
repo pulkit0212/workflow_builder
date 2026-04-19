@@ -1,7 +1,8 @@
 import { ZodError } from "zod";
+import { eq } from "drizzle-orm";
 import { normalizeMeetingSummarizerOutput } from "@/features/tools/meeting-summarizer/post-process";
 import { meetingSummarizerOutputSchema } from "@/features/tools/meeting-summarizer/schema";
-import { createAiRun } from "@/lib/db/mutations/ai-runs";
+import { computeInputHash, upsertAiRun } from "@/lib/db/mutations/ai-runs";
 import { ensureDatabaseReady } from "@/lib/db/bootstrap";
 import { ensureToolRecord } from "@/lib/db/queries/tools";
 import { getMeetingSummaryProvider } from "@/lib/ai/providers";
@@ -11,6 +12,8 @@ import { ToolExecutionError } from "@/lib/ai/tool-execution-error";
 import { generateRunTitle } from "@/lib/run-title";
 import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
 import { isForeignKeyViolationError, isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { db } from "@/lib/db/client";
+import { userPreferences } from "@/db/schema";
 import type { MeetingSummarizerInput, MeetingSummarizerOutput } from "@/features/tools/meeting-summarizer/types";
 
 const meetingRunLogPrefix = "[meeting-summarizer-run]";
@@ -27,18 +30,18 @@ async function persistFailedRun(params: {
     const tool = toolRegistry["meeting-summarizer"];
     const user = await syncCurrentUserToDatabase(params.clerkUserId);
     const toolRecord = await ensureToolRecord(tool);
+    const inputHash = computeInputHash(user.id, toolRecord.id, params.inputJson);
 
-    await createAiRun({
+    await upsertAiRun({
       userId: user.id,
       toolId: toolRecord.id,
       title: params.title,
       status: "failed",
       inputJson: params.inputJson,
-      outputJson: {
-        error: params.message
-      },
+      outputJson: { error: params.message },
       model: params.model,
-      tokensUsed: params.tokensUsed
+      tokensUsed: params.tokensUsed,
+      inputHash,
     });
   } catch {
     // Preserve the original execution error if failure persistence also breaks.
@@ -119,7 +122,8 @@ export async function executeMeetingSummarizerRun(rawInput: unknown, clerkUserId
   try {
     const user = await syncCurrentUserToDatabase(clerkUserId);
     const toolRecord = await ensureToolRecord(tool);
-    const run = await createAiRun({
+    const inputHash = computeInputHash(user.id, toolRecord.id, inputJson);
+    const run = await upsertAiRun({
       userId: user.id,
       toolId: toolRecord.id,
       title,
@@ -127,8 +131,93 @@ export async function executeMeetingSummarizerRun(rawInput: unknown, clerkUserId
       inputJson,
       outputJson: output as unknown as Record<string, unknown>,
       model,
-      tokensUsed
+      tokensUsed,
+      inputHash,
     });
+
+    // ── Auto-share based on user preferences ──────────────────────────────────
+    void (async () => {
+      try {
+        const database = db;
+        if (!database) return;
+        const [prefs] = await database
+          .select({ autoShareTargets: userPreferences.autoShareTargets })
+          .from(userPreferences)
+          .where(eq(userPreferences.userId, user.id))
+          .limit(1);
+
+        const targets = prefs?.autoShareTargets as Record<string, boolean> | null;
+        if (!targets) return;
+
+        const enabledTargets = new Set(
+          Object.entries(targets)
+            .filter(([, enabled]) => enabled)
+            .map(([key]) => key)
+        );
+
+        if (enabledTargets.size === 0) return;
+
+        const transcript = typeof inputJson.transcript === "string" ? inputJson.transcript : "";
+
+        // triggerIntegrations fires all DB-enabled integrations, but we only want
+        // the ones the user has turned on in autoShareTargets. We temporarily
+        // filter by passing a custom wrapper that respects the preference set.
+        const { listEnabledIntegrationsByUser } = await import("@/lib/db/queries/integrations");
+        const allEnabled = await listEnabledIntegrationsByUser(user.id);
+        const filtered = allEnabled.filter((i) => enabledTargets.has(i.type));
+
+        if (filtered.length === 0) return;
+
+        // Re-use individual send functions directly so we only hit chosen targets
+        const { sendSlackSummary } = await import("@/lib/integrations/slack");
+        const { sendGmailSummary } = await import("@/lib/integrations/gmail");
+        const { createNotionPage } = await import("@/lib/integrations/notion");
+        const { createJiraTickets } = await import("@/lib/integrations/jira");
+        const { getActiveGoogleIntegration } = await import("@/lib/google/integration");
+
+        const summaryOutput = output as unknown as Record<string, unknown>;
+
+        for (const integration of filtered) {
+          const config = (integration.config ?? {}) as Record<string, string>;
+          try {
+            switch (integration.type) {
+              case "slack":
+                await sendSlackSummary(config, title, summaryOutput);
+                console.log("[auto-share] slack ✓");
+                break;
+              case "gmail": {
+                const googleIntegration = await getActiveGoogleIntegration(user.id);
+                const accessToken = googleIntegration?.accessToken;
+                if (accessToken) {
+                  await sendGmailSummary(config, title, summaryOutput, accessToken);
+                  console.log("[auto-share] gmail ✓");
+                }
+                break;
+              }
+              case "notion":
+                await createNotionPage(config, title, summaryOutput, transcript);
+                console.log("[auto-share] notion ✓");
+                break;
+              case "jira": {
+                const actionItems = Array.isArray(summaryOutput.action_items)
+                  ? (summaryOutput.action_items as Array<Record<string, unknown>>)
+                  : [];
+                if (actionItems.length > 0) {
+                  await createJiraTickets(config, title, actionItems);
+                  console.log("[auto-share] jira ✓");
+                }
+                break;
+              }
+            }
+          } catch (integrationErr) {
+            console.error(`[auto-share] ${integration.type} failed:`, integrationErr instanceof Error ? integrationErr.message : integrationErr);
+          }
+        }
+      } catch (err) {
+        console.error("[auto-share] failed:", err instanceof Error ? err.message : err);
+      }
+    })();
+    // ─────────────────────────────────────────────────────────────────────────
 
     return {
       id: run.id,

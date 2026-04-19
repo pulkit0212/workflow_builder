@@ -16,6 +16,8 @@ export const aiRuns = pgTable("ai_runs", {
   outputJson: jsonb("output_json").$type<Record<string, unknown> | null>(),
   model: varchar("model", { length: 100 }),
   tokensUsed: integer("tokens_used").default(0).notNull(),
+  /** SHA-256 hex of (userId + toolId + stable JSON of inputJson). Used to upsert instead of inserting duplicate failed runs. */
+  inputHash: varchar("input_hash", { length: 64 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 });

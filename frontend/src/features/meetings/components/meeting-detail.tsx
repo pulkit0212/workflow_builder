@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
+import React, { type ReactNode, useEffect, useMemo, useState, useTransition } from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,6 +11,7 @@ import {
   LoaderCircle,
   MessageSquareText,
   Mic,
+  Send,
   Sparkles,
   Square,
   TriangleAlert
@@ -29,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { ShareToWorkspaceButton } from "@/features/meetings/components/share-to-workspace-button";
 import { isCalendarMeetingId } from "@/features/meetings/ids";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { MeetingShareModal } from "@/features/meetings/components/meeting-share-modal";
 
 type MeetingDetailProps = {
   meetingId: string;
@@ -354,6 +356,150 @@ function getPlatformConfig(platform: string) {
   return platformConfig[platform] || platformConfig.unknown;
 }
 
+// ── Extracted to avoid SWC parser issues with Fragment closing tags in ternaries ──
+
+type MeetingProcessedContentProps = {
+  meeting: MeetingDetailRecord;
+  speakerStats: Array<{ speaker: string; words: number; percentage: number }>;
+  shareOpen: boolean;
+  setShareOpen: (open: boolean) => void;
+  copyFeedback: string | null;
+  handleCopyActionItemsAsMarkdown: () => void;
+  handleCopyActionItemsAsText: () => void;
+};
+
+function MeetingProcessedContent({
+  meeting,
+  speakerStats,
+  shareOpen,
+  setShareOpen,
+  copyFeedback,
+  handleCopyActionItemsAsMarkdown,
+  handleCopyActionItemsAsText,
+}: MeetingProcessedContentProps) {
+  return (
+    <div className="space-y-6">
+      <Card className="border-l-4 border-l-[#6c63ff] p-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-[#6c63ff]" />
+            <h2>Summary</h2>
+          </div>
+          {meeting.summary && (
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
+            >
+              <Send className="h-3.5 w-3.5" /> Share
+            </button>
+          )}
+        </div>
+        <p className="mt-4 text-[14px] leading-7 text-[#374151]">
+          {meeting.summary || "No summary is available yet for this meeting."}
+        </p>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex items-center justify-between gap-3">
+          <h2>Key Decisions</h2>
+          <Badge variant="neutral">{meeting.keyDecisions.length}</Badge>
+        </div>
+        <div className="mt-4 space-y-3">
+          {(meeting.keyDecisions.length > 0 ? meeting.keyDecisions : ["No key decisions were captured for this meeting."]).map(
+            (decision, index) => (
+              <div key={`${decision}-${index}`} className="rounded-xl bg-[#f9fafb] p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f3ff] text-sm font-semibold text-[#6c63ff]">
+                    {index + 1}
+                  </span>
+                  <p className="flex-1 text-[14px] leading-6 text-[#374151]">{decision}</p>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="h-5 w-5 text-[#6c63ff]" />
+            <h2>Action Items</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={handleCopyActionItemsAsMarkdown}>
+              Copy as Markdown
+            </Button>
+            <Button type="button" variant="ghost" onClick={handleCopyActionItemsAsText}>
+              Copy as Text
+            </Button>
+          </div>
+        </div>
+
+        {copyFeedback ? (
+          <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] p-3 text-sm text-[#4b5563]">{copyFeedback}</div>
+        ) : null}
+
+        {meeting.actionItems.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-dashed border-[#d1d5db] bg-[#f9fafb] p-4 text-sm text-[#6b7280]">
+            No action items were saved for this meeting.
+          </div>
+        ) : (
+          <div className="mt-4 overflow-hidden rounded-xl border border-[#e5e7eb]">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-[#f9fafb]">
+                <tr>
+                  <th className="px-4 py-3 font-semibold text-[#6b7280]">Task</th>
+                  <th className="px-4 py-3 font-semibold text-[#6b7280]">Owner</th>
+                  <th className="px-4 py-3 font-semibold text-[#6b7280]">Due Date</th>
+                  <th className="px-4 py-3 font-semibold text-[#6b7280]">Priority</th>
+                </tr>
+              </thead>
+              <tbody>
+                {meeting.actionItems.map((item, index) => (
+                  <tr key={`${item.task}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
+                    <td className="px-4 py-4 text-[#111827]">{item.task}</td>
+                    <td className="px-4 py-4 text-[#4b5563]">
+                      {item.owner && item.owner.trim()
+                        ? item.owner
+                        : speakerStats.length > 0
+                          ? speakerStats[0].speaker
+                          : "Unassigned"}
+                    </td>
+                    <td className="px-4 py-4 text-[#4b5563]">{item.dueDate || item.deadline || "Not specified"}</td>
+                    <td className="px-4 py-4">
+                      <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", getPriorityTone(item.priority))}>
+                        {item.priority || "Medium"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {meeting.risksAndBlockers.length > 0 && (
+        <Card className="border-l-4 border-l-[#ca8a04] p-6">
+          <div className="flex items-center gap-2">
+            <TriangleAlert className="h-5 w-5 text-[#ca8a04]" />
+            <h2>Risks &amp; Blockers</h2>
+          </div>
+          <div className="mt-4 space-y-3">
+            {meeting.risksAndBlockers.map((item) => (
+              <div key={item} className="rounded-xl bg-[#fffbea] p-4">
+                <p className="text-[14px] leading-6 text-[#713f12]">{item}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const router = useRouter();
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
@@ -368,6 +514,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const [upgradeBlocked, setUpgradeBlocked] = useState<{ reason: "upgrade_required" | "limit_reached" } | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Only poll when the meeting session is actively in-progress
   const activeStates = new Set(["joining", "waiting_for_join", "waiting_for_admission", "joined", "capturing", "processing", "summarizing"]);
@@ -445,11 +592,33 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     });
 
     if (session.state === "completed" || session.state === "failed") {
+      // Fetch immediately for summary/transcript
       void fetchMeetingById(meetingId)
         .then((nextMeeting) => {
           setMeeting(nextMeeting);
           setActionError(null);
           setCopyFeedback(null);
+
+          // If insights not ready yet, retry a few times with delay
+          if (!nextMeeting.insights && session.state === "completed") {
+            let retries = 0;
+            const retryInsights = () => {
+              retries++;
+              if (retries > 5) return;
+              setTimeout(() => {
+                void fetchMeetingById(meetingId)
+                  .then((refreshed) => {
+                    if (refreshed.insights) {
+                      setMeeting(refreshed);
+                    } else {
+                      retryInsights();
+                    }
+                  })
+                  .catch(() => null);
+              }, retries * 3000); // 3s, 6s, 9s, 12s, 15s
+            };
+            retryInsights();
+          }
         })
         .catch(() => null);
     }
@@ -747,6 +916,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         }
       />
 
+      {showProcessedResults &&
       <div className="flex flex-wrap gap-2 rounded-xl border border-[#e5e7eb] bg-white p-2">
         {tabs.map((tab) => (
           <button
@@ -762,6 +932,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
           </button>
         ))}
       </div>
+      }
 
       <Card className="p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -890,111 +1061,16 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
             ) : null}
           </Card>
 
-          <Card className="border-l-4 border-l-[#6c63ff] p-6">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-[#6c63ff]" />
-              <h2>Summary</h2>
-            </div>
-            <p className="mt-4 text-[14px] leading-7 text-[#374151]">
-              {meeting.summary || "No summary is available yet for this meeting."}
-            </p>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex items-center justify-between gap-3">
-              <h2>Key Decisions</h2>
-              <Badge variant="neutral">{meeting.keyDecisions.length}</Badge>
-            </div>
-            <div className="mt-4 space-y-3">
-              {(meeting.keyDecisions.length > 0 ? meeting.keyDecisions : ["No key decisions were captured for this meeting."]).map(
-                (decision, index) => (
-                  <div key={`${decision}-${index}`} className="rounded-xl bg-[#f9fafb] p-4">
-                    <div className="flex items-start gap-3">
-                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f3ff] text-sm font-semibold text-[#6c63ff]">
-                        {index + 1}
-                      </span>
-                      <p className="flex-1 text-[14px] leading-6 text-[#374151]">{decision}</p>
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-          </Card>
-
-          <Card className="p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-2">
-                <CheckSquare className="h-5 w-5 text-[#6c63ff]" />
-                <h2>Action Items</h2>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={handleCopyActionItemsAsMarkdown}>
-                  Copy as Markdown
-                </Button>
-                <Button type="button" variant="ghost" onClick={handleCopyActionItemsAsText}>
-                  Copy as Text
-                </Button>
-              </div>
-            </div>
-
-            {copyFeedback ? (
-              <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] p-3 text-sm text-[#4b5563]">{copyFeedback}</div>
-            ) : null}
-
-            {meeting.actionItems.length === 0 ? (
-              <div className="mt-4 rounded-xl border border-dashed border-[#d1d5db] bg-[#f9fafb] p-4 text-sm text-[#6b7280]">
-                No action items were saved for this meeting.
-              </div>
-            ) : (
-              <div className="mt-4 overflow-hidden rounded-xl border border-[#e5e7eb]">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="bg-[#f9fafb]">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Task</th>
-                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Owner</th>
-                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Due Date</th>
-                      <th className="px-4 py-3 font-semibold text-[#6b7280]">Priority</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {meeting.actionItems.map((item, index) => (
-                      <tr key={`${item.task}-${index}`} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
-                        <td className="px-4 py-4 text-[#111827]">{item.task}</td>
-                        <td className="px-4 py-4 text-[#4b5563]">
-                          {item.owner && item.owner.trim()
-                            ? item.owner
-                            : speakerStats.length > 0
-                              ? speakerStats[0].speaker
-                              : "Unassigned"}
-                        </td>
-                        <td className="px-4 py-4 text-[#4b5563]">{item.dueDate || item.deadline || "Not specified"}</td>
-                        <td className="px-4 py-4">
-                          <span className={cn("rounded-full px-2.5 py-1 text-[11px] font-semibold", getPriorityTone(item.priority))}>
-                            {item.priority || "Medium"}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
-          {meeting.risksAndBlockers.length > 0 ? (
-            <Card className="border-l-4 border-l-[#ca8a04] p-6">
-              <div className="flex items-center gap-2">
-                <TriangleAlert className="h-5 w-5 text-[#ca8a04]" />
-                <h2>Risks &amp; Blockers</h2>
-              </div>
-              <div className="mt-4 space-y-3">
-                {meeting.risksAndBlockers.map((item) => (
-                  <div key={item} className="rounded-xl bg-[#fffbea] p-4">
-                    <p className="text-[14px] leading-6 text-[#713f12]">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
+          {showProcessedResults ? (
+            <MeetingProcessedContent
+              meeting={meeting}
+              speakerStats={speakerStats}
+              shareOpen={shareOpen}
+              setShareOpen={setShareOpen}
+              copyFeedback={copyFeedback}
+              handleCopyActionItemsAsMarkdown={handleCopyActionItemsAsMarkdown}
+              handleCopyActionItemsAsText={handleCopyActionItemsAsText}
+            />
           ) : null}
 
           {!showProcessedResults && meeting.status !== "failed" ? (
@@ -1335,6 +1411,18 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
           )}
         </div>
       ) : null}
+
+      {shareOpen && meeting.summary && (
+        <MeetingShareModal
+          meeting={{
+            title: meeting.title,
+            summary: meeting.summary,
+            actionItems: meeting.actionItems,
+            transcript: meeting.transcript,
+          }}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
     </div>
   );
 }

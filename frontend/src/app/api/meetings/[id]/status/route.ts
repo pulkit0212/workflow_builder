@@ -46,15 +46,6 @@ export async function GET(request: Request, context: RouteContext) {
     await ensureDatabaseReady();
     const user = await syncCurrentUserToDatabase(userId);
     const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
-    if (!workspaceId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Workspace is required.",
-        },
-        { status: 400 }
-      );
-    }
     const { id } = await context.params;
     const session = await getMeetingSessionByIdForUser(id, user.id, workspaceId);
     const sessionsFile = path.join(process.cwd(), "tmp", "bot-sessions.json");

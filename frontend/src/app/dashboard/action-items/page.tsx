@@ -4,21 +4,22 @@ import { useEffect, useRef, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import type { Route } from "next";
 import Link from "next/link";
-import { ArrowRight, CheckSquare, Download, ListChecks, X } from "lucide-react";
+import {
+  AlertTriangle, ArrowRight, CheckCircle2, CheckSquare,
+  Download, ListChecks, Loader2, Trash2, X,
+} from "lucide-react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SkeletonList } from "@/components/SkeletonCard";
-import { SectionHeader } from "@/components/shared/section-header";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
+import { cn } from "@/lib/utils";
 
 const ITEMS_PER_PAGE = 10;
 
-type ActionItemTab = "all" | "high_priority" | "my_items" | "this_week";
+type ActionItemTab = "all" | "high_priority" | "this_week";
 type SourceFilter = "all" | "meeting" | "task-generator" | "document";
 type ItemStatus = "pending" | "in_progress" | "done" | "hold";
 
@@ -35,51 +36,105 @@ type ActionItemRow = {
   createdAt: string;
 };
 
-const STATUS_OPTIONS: { value: ItemStatus; label: string; color: string; bg: string }[] = [
-  { value: "pending", label: "Pending", color: "#6b7280", bg: "#f3f4f6" },
-  { value: "in_progress", label: "In Progress", color: "#2563eb", bg: "#eff6ff" },
-  { value: "done", label: "Done", color: "#16a34a", bg: "#f0fdf4" },
-  { value: "hold", label: "On Hold", color: "#ca8a04", bg: "#fefce8" },
+const STATUS_OPTIONS: { value: ItemStatus; label: string; color: string; bg: string; ring: string }[] = [
+  { value: "pending",    label: "Pending",     color: "#6b7280", bg: "#f3f4f6", ring: "#d1d5db" },
+  { value: "in_progress",label: "In Progress", color: "#2563eb", bg: "#eff6ff", ring: "#bfdbfe" },
+  { value: "done",       label: "Done",        color: "#16a34a", bg: "#f0fdf4", ring: "#bbf7d0" },
+  { value: "hold",       label: "On Hold",     color: "#ca8a04", bg: "#fefce8", ring: "#fde68a" },
 ];
 
 function getStatusStyle(status: string) {
   return STATUS_OPTIONS.find((s) => s.value === status) ?? STATUS_OPTIONS[0];
 }
 
+function getPriorityClass(priority: string) {
+  if (priority === "High") return "bg-red-50 text-red-600 ring-red-200";
+  if (priority === "Low") return "bg-emerald-50 text-emerald-600 ring-emerald-200";
+  return "bg-amber-50 text-amber-600 ring-amber-200";
+}
+
 function formatDate(value: string) {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function getEmptyStateCopy(activeTab: ActionItemTab) {
-  switch (activeTab) {
-    case "high_priority": return { title: "No high priority items", description: "High priority tasks from your meetings will appear here", icon: ListChecks };
-    case "my_items": return { title: "No items assigned to you", description: "Items where your name is mentioned as owner will appear here", icon: ListChecks };
-    case "this_week": return { title: "No items from this week", description: "Record meetings this week to see tasks here", icon: ListChecks };
-    default: return { title: "No action items yet", description: "Record a meeting to automatically extract tasks", icon: CheckSquare };
-  }
+function getSourceLabel(source: string) {
+  if (source === "meeting") return "Meeting";
+  if (source === "task-generator") return "Task Gen";
+  if (source === "document") return "Document";
+  return source;
 }
 
 function exportToCSV(items: ActionItemRow[]) {
-  const headers = ["Task", "Owner", "Due Date", "Priority", "Status", "Meeting", "Date"];
-  const rows = items.map((item) => [
-    item.task, item.owner, item.dueDate, item.priority, item.status,
-    item.meetingTitle || "Manual", new Date(item.createdAt).toLocaleDateString()
-  ]);
+  const headers = ["Task", "Owner", "Due Date", "Priority", "Status", "Source", "Date"];
+  const rows = items.map((item) => [item.task, item.owner, item.dueDate, item.priority, item.status, item.source, new Date(item.createdAt).toLocaleDateString()]);
   const csv = [headers, ...rows].map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob([csv], { type: "text/csv" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url;
-  a.download = `action-items-${new Date().toISOString().split("T")[0]}.csv`;
-  a.click();
+  a.href = url; a.download = `action-items-${new Date().toISOString().split("T")[0]}.csv`; a.click();
   URL.revokeObjectURL(url);
 }
 
 export default function ActionItemsPage() {
   return <ErrorBoundary><ActionItemsContent /></ErrorBoundary>;
 }
+
+// ── Delete confirmation modal ─────────────────────────────────────────────────
+
+function DeleteModal({
+  count,
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: {
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onCancel}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50">
+            <AlertTriangle className="h-5 w-5 text-red-500" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900">
+              Delete {count} action item{count !== 1 ? "s" : ""}?
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">
+              This will permanently remove the selected item{count !== 1 ? "s" : ""} from your action items. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isDeleting}
+            className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isDeleting}
+            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+          >
+            {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {isDeleting ? "Deleting…" : `Delete ${count} item${count !== 1 ? "s" : ""}`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Status dropdown ───────────────────────────────────────────────────────────
 
 function StatusDropdown({ itemId, current, onUpdate }: { itemId: string; current: string; onUpdate: (id: string, status: string) => void }) {
   const [open, setOpen] = useState(false);
@@ -99,19 +154,19 @@ function StatusDropdown({ itemId, current, onUpdate }: { itemId: string; current
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-opacity hover:opacity-80"
-        style={{ background: style.bg, color: style.color }}
+        className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 transition-opacity hover:opacity-80"
+        style={{ background: style.bg, color: style.color, ringColor: style.ring } as React.CSSProperties}
       >
         {style.label}
         <span className="text-[9px]">▾</span>
       </button>
-      {open ? (
-        <div className="absolute left-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-xl border border-[#e5e7eb] bg-white shadow-lg">
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
           {STATUS_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               type="button"
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[#f9fafb]"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50"
               onClick={() => { onUpdate(itemId, opt.value); setOpen(false); }}
             >
               <span className="h-2 w-2 rounded-full" style={{ background: opt.color }} />
@@ -119,10 +174,12 @@ function StatusDropdown({ itemId, current, onUpdate }: { itemId: string; current
             </button>
           ))}
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
+
+// ── Main content ──────────────────────────────────────────────────────────────
 
 function ActionItemsContent() {
   const { user } = useUser();
@@ -137,13 +194,18 @@ function ActionItemsContent() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [exportToast, setExportToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
+  const [deleteModal, setDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  function showToast(msg: string, type: "success" | "error") {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3000);
+  }
 
   async function loadItems(tab = activeTab, page = currentPage, src = sourceFilter) {
     if (!user) { setIsLoading(false); return; }
-    setIsLoading(true);
-    setLoadError(null);
-    setUpgradeRequired(false);
+    setIsLoading(true); setLoadError(null); setUpgradeRequired(false);
     try {
       const params = new URLSearchParams({ tab, page: String(page), limit: String(ITEMS_PER_PAGE), firstName: user.firstName || "", source: src });
       const res = await workspaceFetch(`/api/action-items?${params}`, { cache: "no-store" });
@@ -167,7 +229,6 @@ function ActionItemsContent() {
 
   function handleTabChange(tab: ActionItemTab) { setActiveTab(tab); setCurrentPage(1); }
   function handleSourceChange(src: SourceFilter) { setSourceFilter(src); setCurrentPage(1); }
-
   function toggleSelect(id: string) {
     setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
   }
@@ -179,170 +240,268 @@ function ActionItemsContent() {
     setItems((prev) => prev.map((item) => item.id === id ? { ...item, status } : item));
     try {
       await fetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-    } catch {
-      void loadItems();
+    } catch { void loadItems(); }
+  }
+
+  async function handleDeleteSelected() {
+    setIsDeleting(true);
+    const ids = Array.from(selected);
+    let failed = 0;
+    await Promise.all(ids.map(async (id) => {
+      try {
+        const res = await fetch(`/api/action-items/${id}`, { method: "DELETE" });
+        if (!res.ok) failed++;
+      } catch { failed++; }
+    }));
+    setIsDeleting(false);
+    setDeleteModal(false);
+    if (failed === 0) {
+      showToast(`${ids.length} item${ids.length !== 1 ? "s" : ""} deleted.`, "success");
+    } else {
+      showToast(`${ids.length - failed} deleted, ${failed} failed.`, "error");
     }
+    void loadItems();
   }
 
   async function handleExportSlack() {
-    const ids = [...selected];
     try {
-      const res = await fetch("/api/action-items/export/slack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemIds: ids }) });
+      const res = await fetch("/api/action-items/export/slack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemIds: [...selected] }) });
       const data = await res.json() as { success: boolean; error?: string };
-      setExportToast(data.success ? "Posted to Slack!" : `Failed: ${data.error}`);
-    } catch { setExportToast("Failed to post to Slack."); }
-    setTimeout(() => setExportToast(null), 3000);
+      showToast(data.success ? "Posted to Slack!" : `Failed: ${data.error}`, data.success ? "success" : "error");
+    } catch { showToast("Failed to post to Slack.", "error"); }
   }
 
   async function handleExportJira() {
-    const ids = [...selected];
     try {
-      const res = await fetch("/api/action-items/export/jira", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemIds: ids }) });
+      const res = await fetch("/api/action-items/export/jira", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemIds: [...selected] }) });
       const data = await res.json() as { success: boolean; count?: number; error?: string };
-      setExportToast(data.success ? `Created ${data.count} Jira tickets!` : `Failed: ${data.error}`);
-    } catch { setExportToast("Failed to create Jira tickets."); }
-    setTimeout(() => setExportToast(null), 3000);
+      showToast(data.success ? `Created ${data.count} Jira tickets!` : `Failed: ${data.error}`, data.success ? "success" : "error");
+    } catch { showToast("Failed to create Jira tickets.", "error"); }
   }
 
   const selectedItems = items.filter((i) => selected.has(i.id));
-  const emptyState = getEmptyStateCopy(activeTab);
+  const emptyState = activeTab === "high_priority"
+    ? { title: "No high priority items", description: "High priority tasks will appear here", icon: ListChecks }
+    : activeTab === "this_week"
+      ? { title: "No items from this week", description: "Record meetings this week to see tasks here", icon: ListChecks }
+      : { title: "No action items yet", description: "Record a meeting to automatically extract tasks", icon: CheckSquare };
 
   return (
-    <div className="space-y-6">
-      <SectionHeader eyebrow="Artivaa" title="Action Items" description="All tasks extracted from your meetings" />
+    <div className="space-y-5">
 
-      {/* Tab filters */}
-      <Card className="p-4">
-        <div className="flex flex-wrap gap-2">
-          {([["all", "All"], ["high_priority", "High Priority"], ["my_items", "My Items"], ["this_week", "This Week"]] as [ActionItemTab, string][]).map(([id, label]) => (
-            <Button key={id} type="button" variant={activeTab === id ? "default" : "ghost"} onClick={() => handleTabChange(id)}>{label}</Button>
-          ))}
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f5f3ff] ring-1 ring-[#ede9fe]">
+            <CheckSquare className="h-5 w-5 text-[#6c63ff]" />
+          </div>
+          <div>
+            <h1 className="text-base font-bold text-slate-900">Action Items</h1>
+            <p className="mt-0.5 text-sm text-slate-500">All tasks extracted from your meetings and tools</p>
+          </div>
         </div>
-      </Card>
-
-      {/* Source filter */}
-      <div className="flex flex-wrap gap-2">
-        {([["all", "All"], ["meeting", "From Meetings"], ["task-generator", "Task Generator"], ["document", "Document Analyzer"]] as [SourceFilter, string][]).map(([src, label]) => (
-          <button
-            key={src}
-            type="button"
-            onClick={() => handleSourceChange(src)}
-            className={`rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${sourceFilter === src ? "bg-[#6c63ff] text-white" : "bg-white text-[#6b7280] border border-[#e5e7eb] hover:border-[#6c63ff] hover:text-[#6c63ff]"}`}
-          >
-            {label}
-          </button>
-        ))}
+        {pagination.total > 0 && (
+          <div className="shrink-0 rounded-xl bg-[#f5f3ff] px-3.5 py-2 text-center">
+            <p className="text-lg font-bold text-[#6c63ff]">{pagination.total}</p>
+            <p className="text-[10px] font-semibold text-[#9b8fff]">total items</p>
+          </div>
+        )}
       </div>
 
-      {/* Export action bar */}
-      {selected.size > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 shadow-sm">
-          <span className="text-[13px] font-semibold text-[#111827]">Selected: {selected.size} items</span>
-          <Button type="button" size="sm" variant="secondary" onClick={() => exportToCSV(selectedItems)}>
-            <Download className="h-4 w-4" />
-            Download CSV
-          </Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => void handleExportSlack()}>Post to Slack</Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => void handleExportJira()}>Create Jira Tickets</Button>
-          <Button type="button" size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-            <X className="h-4 w-4" />
-            Clear
-          </Button>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Tab filters */}
+        <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
+          {([["all", "All"], ["high_priority", "High Priority"], ["this_week", "This Week"]] as [ActionItemTab, string][]).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => handleTabChange(id)}
+              className={cn(
+                "px-4 py-2 text-xs font-semibold transition-all",
+                activeTab === id ? "bg-[#6c63ff] text-white" : "text-slate-500 hover:bg-slate-50"
+              )}
+            >
+              {label}
+            </button>
+          ))}
         </div>
-      ) : null}
+
+        {/* Source filters */}
+        <div className="flex overflow-hidden rounded-xl border border-slate-200 bg-white">
+          {([["all", "All"], ["meeting", "Meetings"], ["task-generator", "Task Gen"], ["document", "Documents"]] as [SourceFilter, string][]).map(([src, label]) => (
+            <button
+              key={src}
+              type="button"
+              onClick={() => handleSourceChange(src)}
+              className={cn(
+                "px-4 py-2 text-xs font-semibold transition-all",
+                sourceFilter === src ? "bg-[#6c63ff] text-white" : "text-slate-500 hover:bg-slate-50"
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Selection action bar */}
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-[#c4b5fd] bg-[#f5f3ff] px-5 py-3">
+          <span className="text-sm font-semibold text-[#6c63ff]">{selected.size} selected</span>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => exportToCSV(selectedItems)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              <Download className="h-3.5 w-3.5" /> Export CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportSlack()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Post to Slack
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExportJira()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            >
+              Create Jira Tickets
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          </div>
+          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-slate-400 hover:text-slate-600 transition">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* Toast */}
-      {exportToast ? (
-        <div className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-[13px] font-medium text-[#111827] shadow-sm">{exportToast}</div>
-      ) : null}
+      {toast && (
+        <div className={cn(
+          "fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-lg",
+          toast.type === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-600"
+        )}>
+          {toast.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+          {toast.msg}
+        </div>
+      )}
 
+      {/* Content */}
       {isLoading ? (
         <SkeletonList count={6} />
       ) : upgradeRequired ? (
-        <Card className="border-[#fde68a] bg-[#fffbeb] p-6">
-          <div className="space-y-4">
-            <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#b45309]">Locked Feature</p>
-            <h2 className="text-2xl font-bold text-[#111827]">Action items require Pro or Elite</h2>
-            <p className="max-w-2xl text-sm leading-6 text-[#92400e]">Upgrade to view and manage action items extracted from meetings.</p>
-            <div className="flex flex-wrap gap-3">
-              <Button asChild><Link href="/dashboard/billing">Upgrade now <ArrowRight className="h-4 w-4" /></Link></Button>
-              <Button asChild variant="secondary"><Link href="/dashboard/tools">Keep using tools</Link></Button>
-            </div>
+        <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 p-8 space-y-4">
+          <p className="text-xs font-bold uppercase tracking-widest text-amber-600">Locked Feature</p>
+          <h2 className="text-xl font-bold text-slate-900">Action items require Pro or Elite</h2>
+          <p className="max-w-xl text-sm leading-6 text-amber-700">Upgrade to view and manage action items extracted from meetings.</p>
+          <div className="flex flex-wrap gap-3">
+            <Button asChild><Link href="/dashboard/billing">Upgrade now <ArrowRight className="h-4 w-4" /></Link></Button>
+            <Button asChild variant="secondary"><Link href="/dashboard/tools">Keep using tools</Link></Button>
           </div>
-        </Card>
+        </div>
       ) : loadError ? (
-        <Card className="border-[#fecaca] bg-[#fef2f2] p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-[#991b1b]">Unable to load action items</p>
-              <p className="mt-2 text-sm text-[#991b1b]">{loadError}</p>
-            </div>
-            <Button type="button" variant="outline" onClick={() => void loadItems()}>Retry</Button>
-          </div>
-        </Card>
+        <div className="flex items-center justify-between gap-4 rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">{loadError}</p>
+          <Button type="button" variant="outline" onClick={() => void loadItems()}>Retry</Button>
+        </div>
       ) : items.length === 0 ? (
         <EmptyState icon={emptyState.icon} title={emptyState.title} description={emptyState.description} />
       ) : (
         <>
-          <Card className="overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead className="bg-[#f9fafb] text-left text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">
-                      <input type="checkbox" checked={selected.size === items.length && items.length > 0} onChange={toggleAll} className="h-4 w-4 rounded border-[#d1d5db]" />
-                    </th>
-                    <th className="px-4 py-3 font-semibold">Task</th>
-                    <th className="px-4 py-3 font-semibold">Owner</th>
-                    <th className="px-4 py-3 font-semibold">Priority</th>
-                    <th className="px-4 py-3 font-semibold">Status</th>
-                    <th className="px-4 py-3 font-semibold">Due Date</th>
-                    <th className="px-4 py-3 font-semibold">Source</th>
-                    <th className="px-4 py-3 font-semibold">Meeting</th>
-                    <th className="px-4 py-3 font-semibold">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((row, index) => (
-                    <tr key={row.id} className={index % 2 === 0 ? "bg-white" : "bg-[#fafafa]"}>
-                      <td className="px-4 py-4">
-                        <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)} className="h-4 w-4 rounded border-[#d1d5db]" />
-                      </td>
-                      <td className="px-4 py-4 text-slate-900">{row.task}</td>
-                      <td className="px-4 py-4 text-slate-600">
-                        <div className="inline-flex items-center gap-2">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#f5f3ff] text-[10px] font-semibold text-[#6c63ff]">
-                            {row.owner.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "U"}
-                          </span>
-                          <span>{row.owner}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <Badge variant={row.priority === "High" ? "danger" : row.priority === "Low" ? "available" : "pending"}>{row.priority}</Badge>
-                      </td>
-                      <td className="px-4 py-4">
-                        <StatusDropdown itemId={row.id} current={row.status || "pending"} onUpdate={handleStatusUpdate} />
-                      </td>
-                      <td className="px-4 py-4 text-slate-600">{row.dueDate}</td>
-                      <td className="px-4 py-4">
-                        <span className="rounded-full bg-[#f3f4f6] px-2 py-0.5 text-[11px] font-medium text-[#6b7280]">
-                          {row.source === "meeting" ? "Meeting" : row.source === "task-generator" ? "Task Gen" : row.source === "document" ? "Document" : row.source}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-slate-600">
-                        {row.meetingId && row.meetingTitle ? (
-                          <Link href={`/dashboard/meetings/${row.meetingId}` as Route} className="font-medium text-[#111827] hover:text-[#6c63ff]">{row.meetingTitle}</Link>
-                        ) : <span className="text-[#9ca3af]">—</span>}
-                      </td>
-                      <td className="px-4 py-4 text-slate-600">{formatDate(row.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            {/* Table header */}
+            <div className="hidden border-b border-slate-100 bg-slate-50/80 md:grid md:grid-cols-[40px_minmax(0,1fr)_140px_100px_130px_130px_100px_100px] md:items-center">
+              <div className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={selected.size === items.length && items.length > 0}
+                  onChange={toggleAll}
+                  className="h-4 w-4 rounded border-slate-300 accent-[#6c63ff]"
+                />
+              </div>
+              {["Task", "Owner", "Priority", "Status", "Due Date", "Source", "Date"].map((col) => (
+                <p key={col} className="px-3 py-3 text-xs font-semibold uppercase tracking-widest text-slate-400">{col}</p>
+              ))}
             </div>
-          </Card>
-          <Pagination currentPage={currentPage} totalPages={pagination.totalPages} totalItems={pagination.total} pageSize={pagination.limit} itemLabel="items" onPageChange={setCurrentPage} />
+
+            {/* Rows */}
+            <div className="divide-y divide-slate-50">
+              {items.map((row) => (
+                <div
+                  key={row.id}
+                  className={cn(
+                    "grid grid-cols-1 gap-2 px-4 py-3.5 transition-colors hover:bg-[#faf9ff] md:grid-cols-[40px_minmax(0,1fr)_140px_100px_130px_130px_100px_100px] md:items-center",
+                    selected.has(row.id) && "bg-[#f5f3ff]"
+                  )}
+                >
+                  <div>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleSelect(row.id)}
+                      className="h-4 w-4 rounded border-slate-300 accent-[#6c63ff]"
+                    />
+                  </div>
+                  <p className="text-sm font-medium text-slate-900">{row.task}</p>
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#f5f3ff] text-[10px] font-bold text-[#6c63ff]">
+                      {row.owner.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "U"}
+                    </span>
+                    <span className="text-xs text-slate-600">{row.owner}</span>
+                  </div>
+                  <span className={cn("inline-flex w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", getPriorityClass(row.priority))}>
+                    {row.priority}
+                  </span>
+                  <StatusDropdown itemId={row.id} current={row.status || "pending"} onUpdate={handleStatusUpdate} />
+                  <span className="text-xs text-slate-500">{row.dueDate || "—"}</span>
+                  <span className="inline-flex w-fit rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                    {getSourceLabel(row.source)}
+                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-slate-400">{formatDate(row.createdAt)}</span>
+                    <button
+                      type="button"
+                      onClick={() => { setSelected(new Set([row.id])); setDeleteModal(true); }}
+                      className="rounded-lg p-1 text-slate-300 transition hover:bg-red-50 hover:text-red-500"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.total}
+            pageSize={pagination.limit}
+            itemLabel="items"
+            onPageChange={setCurrentPage}
+          />
         </>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deleteModal && (
+        <DeleteModal
+          count={selected.size}
+          onConfirm={() => void handleDeleteSelected()}
+          onCancel={() => setDeleteModal(false)}
+          isDeleting={isDeleting}
+        />
       )}
     </div>
   );
