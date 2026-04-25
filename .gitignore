@@ -1,12 +1,72 @@
-node_modules
-.next
-out
-dist
-.turbo
+# ============================================
+# ARTIVAA AI — MONOREPO ROOT .gitignore
+# ============================================
+
+# Dependencies - never commit
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+**/.next/
+
+# Environment files - NEVER commit secrets
 .env
 .env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Logs
 *.log
-tmp
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
 .DS_Store
-frontend/node_modules
-backend/node_modules
+Thumbs.db
+*.swp
+*.swo
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.suo
+*.user
+
+# TypeScript build artifacts
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Private recordings - audio files, NEVER commit
+**/private/recordings/*.wav
+**/private/recordings/*.mp3
+**/private/recordings/*.mp4
+**/private/recordings/*.webm
+
+# Temp / agent audio files
+.tmp/
+**/.tmp/
+**/tmp/audio/
+**/tmp/bot-profile/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# Misc
+.turbo/
+.vercel
+pnpm-lock.yaml
+package-lock.json

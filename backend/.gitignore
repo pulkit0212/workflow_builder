@@ -1,0 +1,46 @@
+# Dependencies - never commit these
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+
+# Environment files - never commit secrets
+.env
+.env.local
+**/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Private recordings - audio files should never be in git
+**/private/recordings/
+**/private/recordings/*.wav
+express-api/private/
+
+# Bot temp files
+**/tmp/audio/
+**/tmp/bot-profile/
+**/tmp/
+
+# TypeScript
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
