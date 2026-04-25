@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -354,6 +355,7 @@ export default function SettingsPage() {
   const clerk = useClerk();
   const { session } = useSession();
   const toastTimer = useRef<number | null>(null);
+  const apiFetch = useApiFetch();
 
   const [activeTab, setActiveTab] = useState<ActiveTab>("profile");
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
@@ -435,18 +437,20 @@ export default function SettingsPage() {
     async function loadData() {
       setIsLoading(true);
       try {
-        const [subRes, usageRes, prefsRes, paymentsRes] = await Promise.all([
-          fetch("/api/subscription", { cache: "no-store" }),
-          fetch("/api/settings/usage", { cache: "no-store" }),
-          fetch("/api/settings/preferences", { cache: "no-store" }),
-          fetch("/api/settings/payments", { cache: "no-store" }),
+        const [subRes, usageRes, prefsRes] = await Promise.all([
+          apiFetch("/api/subscription", { cache: "no-store" }),
+          apiFetch("/api/settings/usage", { cache: "no-store" }),
+          apiFetch("/api/settings/preferences", { cache: "no-store" }),
         ]);
 
         if (!isMounted) return;
 
         if (subRes.ok) {
           const payload = (await subRes.json()) as SubscriptionResponse | { success?: false };
-          if (payload.success) setSubscription(payload as SubscriptionResponse);
+          if (payload.success) {
+            setSubscription(payload as SubscriptionResponse);
+            setPayments((payload as SubscriptionResponse).payments ?? []);
+          }
         }
 
         if (usageRes.ok) {
@@ -477,10 +481,6 @@ export default function SettingsPage() {
           }
         }
 
-        if (paymentsRes.ok) {
-          const payload = (await paymentsRes.json()) as { success?: boolean; payments?: PaymentRecord[] };
-          if (payload.success && payload.payments) setPayments(payload.payments);
-        }
       } catch {
         showToast("Failed to load settings data.", "error");
       } finally {
@@ -550,12 +550,12 @@ export default function SettingsPage() {
       };
 
       const [prefsRes, botRes] = await Promise.all([
-        fetch("/api/settings/preferences", {
-          method: "POST",
+        apiFetch("/api/settings/preferences", {
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(prefsBody),
         }),
-        fetch("/api/settings/bot", {
+        apiFetch("/api/settings/bot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(botBody),
@@ -609,13 +609,13 @@ export default function SettingsPage() {
 
   async function deleteMeetingData() {
     try {
-      const res = await fetch("/api/usage/data", { method: "DELETE" });
+      const res = await apiFetch("/api/usage/data", { method: "DELETE" });
       if (!res.ok) throw new Error();
       setIsDeleteDataOpen(false);
       showToast("All meeting data deleted.", "success");
       const [subRes, usageRes] = await Promise.all([
-        fetch("/api/subscription", { cache: "no-store" }),
-        fetch("/api/settings/usage", { cache: "no-store" }),
+        apiFetch("/api/subscription", { cache: "no-store" }),
+        apiFetch("/api/settings/usage", { cache: "no-store" }),
       ]);
       if (subRes.ok) {
         const p = (await subRes.json()) as SubscriptionResponse | { success?: false };

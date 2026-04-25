@@ -1,127 +1,132 @@
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { z } from "zod";
-import { apiError, apiSuccess } from "@/lib/api-responses";
-import { ensureDatabaseReady } from "@/lib/db/bootstrap";
-import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
-import { getIntegrationByUserAndType } from "@/lib/db/queries/integrations";
-import { getActiveGoogleIntegration } from "@/lib/google/integration";
 import { sendSlackSummary } from "@/lib/integrations/slack";
-import { sendGmailSummary } from "@/lib/integrations/gmail";
-import { createNotionPage } from "@/lib/integrations/notion";
 import { createJiraTickets } from "@/lib/integrations/jira";
+import { createNotionPage } from "@/lib/integrations/notion";
 
-export const runtime = "nodejs";
+type ShareTarget = "slack" | "gmail" | "notion" | "jira";
 
-const shareSchema = z.object({
-  targets: z.array(z.enum(["slack", "gmail", "notion", "jira"])).min(1),
-  title: z.string(),
-  summary: z.string(),
-  actionItems: z.array(z.object({
-    task: z.string(),
-    owner: z.string().optional(),
-    dueDate: z.string().optional(),
-    deadline: z.string().optional(),
-    priority: z.string().optional(),
-  })).optional().default([]),
-  transcript: z.string().nullable().optional(),
-});
+type ShareResult = { success: boolean; message: string };
 
-export async function POST(request: Request) {
-  const { userId } = await auth();
-  if (!userId) return apiError("Unauthorized.", 401);
-
+export async function POST(req: NextRequest) {
   try {
-    await ensureDatabaseReady();
-    const user = await syncCurrentUserToDatabase(userId);
+    const { getToken } = await auth();
+    const token = await getToken();
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-    const body = await request.json();
-    const parsed = shareSchema.safeParse(body);
-    if (!parsed.success) return apiError("Invalid request.", 400);
-
-    const { targets, title, summary, actionItems, transcript } = parsed.data;
-
-    // Build the summary object in the format the integration libs expect
-    const summaryOutput: Record<string, unknown> = {
-      summary,
-      action_items: actionItems.map((item) => ({
-        task: item.task,
-        owner: item.owner ?? "Unassigned",
-        due_date: item.dueDate ?? item.deadline ?? "Not specified",
-        priority: item.priority ?? "Medium",
-      })),
-      key_points: [],
+    const body = await req.json() as {
+      targets: ShareTarget[];
+      title: string;
+      summary: string;
+      actionItems: Array<{ task: string; owner?: string; dueDate?: string; deadline?: string; priority?: string }>;
+      transcript: string | null;
     };
 
-    const results: Record<string, { success: boolean; message: string }> = {};
+    const { targets, title, summary, actionItems, transcript } = body;
+
+    // Fetch integration configs from Express backend
+    const intRes = await fetch(`${apiUrl}/api/integrations`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+
+    if (!intRes.ok) {
+      return NextResponse.json({ results: Object.fromEntries(targets.map((t) => [t, { success: false, message: "Failed to load integration config." }])) });
+    }
+
+    const integrations = (await intRes.json()) as Array<{ type: string; enabled: boolean; config: Record<string, unknown> }>;
+    const configMap = Object.fromEntries(integrations.map((i) => [i.type, i.config ?? {}]));
+
+    // Build summary object for legacy integration libs
+    const summaryObj = {
+      summary,
+      action_items: actionItems.map((i) => ({
+        task: i.task,
+        owner: i.owner ?? "Unassigned",
+        due_date: i.dueDate ?? i.deadline ?? "Not specified",
+        priority: i.priority ?? "Medium",
+      })),
+      key_points: [] as string[],
+      key_decisions: [] as string[],
+    };
+
+    const results: Record<string, ShareResult> = {};
 
     for (const target of targets) {
-      const integration = await getIntegrationByUserAndType(user.id, target);
-
-      if (!integration?.enabled) {
-        results[target] = { success: false, message: `${target} is not connected or enabled.` };
-        continue;
-      }
-
-      const config = (integration.config ?? {}) as Record<string, string>;
-
+      const config = configMap[target] ?? {};
       try {
         switch (target) {
           case "slack":
-            await sendSlackSummary(config, title, summaryOutput);
-            results.slack = { success: true, message: "Posted to Slack." };
+            await sendSlackSummary(config, title, summaryObj);
+            results[target] = { success: true, message: "Posted to Slack." };
             break;
 
           case "gmail": {
-            const googleIntegration = await getActiveGoogleIntegration(user.id);
-            const accessToken = googleIntegration?.accessToken;
-            if (!accessToken) {
-              results.gmail = { success: false, message: "Google account not connected." };
+            // Get Google access token from backend
+            const tokenRes = await fetch(`${apiUrl}/api/google/access-token`, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            const tokenData = await tokenRes.json() as { accessToken?: string };
+            if (!tokenData.accessToken) {
+              results[target] = { success: false, message: "Google account not connected. Please connect Google in Integrations." };
               break;
             }
-            await sendGmailSummary(config, title, summaryOutput, accessToken);
-            results.gmail = { success: true, message: "Email sent." };
+            // Send email via Gmail REST API directly
+            const recipients = String(config.recipients ?? "").split(",").map((r) => r.trim()).filter(Boolean);
+            if (recipients.length === 0) {
+              results[target] = { success: false, message: "No recipients configured. Add recipients in Integrations → Gmail → Configure." };
+              break;
+            }
+            const actionItemsHtml = summaryObj.action_items.length > 0
+              ? summaryObj.action_items.map((i) => `<li><b>${i.task}</b> — ${i.owner} (Due: ${i.due_date})</li>`).join("")
+              : "<li>No action items</li>";
+            const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px"><h2>📋 ${title}</h2><p>${summary}</p><h3>✅ Action Items</h3><ul>${actionItemsHtml}</ul><p style="color:#9ca3af;font-size:12px">Powered by Artivaa</p></div>`;
+            const emailContent = [`To: ${recipients.join(", ")}`, "Content-Type: text/html; charset=utf-8", "MIME-Version: 1.0", `Subject: Meeting Summary: ${title}`, "", htmlBody].join("\n");
+            const encoded = Buffer.from(emailContent).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+            const gmailRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${tokenData.accessToken}`, "Content-Type": "application/json" },
+              body: JSON.stringify({ raw: encoded }),
+            });
+            if (!gmailRes.ok) {
+              const err = await gmailRes.json() as { error?: { message?: string; code?: number } };
+              const isAuthError = gmailRes.status === 401 || gmailRes.status === 403;
+              results[target] = {
+                success: false,
+                message: isAuthError
+                  ? "Google token expired. Go to Integrations → Google Calendar → Disconnect, then reconnect."
+                  : (err.error?.message ?? "Gmail send failed.")
+              };
+            } else {
+              results[target] = { success: true, message: "Email sent." };
+            }
             break;
           }
 
           case "notion":
-            await createNotionPage(config, title, summaryOutput, transcript ?? "");
-            results.notion = { success: true, message: "Page created in Notion." };
+            await createNotionPage(config, title, summaryObj, transcript ?? "");
+            results[target] = { success: true, message: "Notion page created." };
             break;
 
-          case "jira": {
+          case "jira":
             if (actionItems.length === 0) {
-              results.jira = { success: false, message: "No action items to create tickets for." };
+              results[target] = { success: false, message: "No action items to create tickets for." };
               break;
             }
-            const tickets = await createJiraTickets(
-              config,
-              title,
-              actionItems.map((item) => ({
-                task: item.task,
-                owner: item.owner ?? "Unassigned",
-                due_date: item.dueDate ?? item.deadline ?? "Not specified",
-                priority: item.priority ?? "Medium",
-              }))
-            );
-            results.jira = {
-              success: tickets.length > 0,
-              message: tickets.length > 0
-                ? `Created ${tickets.length} ticket${tickets.length !== 1 ? "s" : ""}: ${tickets.join(", ")}`
-                : "No tickets created.",
-            };
+            await createJiraTickets(config, title, summaryObj.action_items as Array<Record<string, unknown>>);
+            results[target] = { success: true, message: `${actionItems.length} ticket(s) created.` };
             break;
-          }
+
+          default:
+            results[target] = { success: false, message: "Unknown integration." };
         }
       } catch (err) {
-        results[target] = {
-          success: false,
-          message: err instanceof Error ? err.message : `Failed to share to ${target}.`,
-        };
+        results[target] = { success: false, message: err instanceof Error ? err.message : "Unknown error." };
       }
     }
 
-    return apiSuccess({ results });
-  } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Share failed.", 500);
+    return NextResponse.json({ results });
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Server error" }, { status: 500 });
   }
 }

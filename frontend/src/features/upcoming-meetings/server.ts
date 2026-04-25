@@ -1,12 +1,8 @@
 import { fetchUpcomingGoogleCalendarMeetings } from "@/lib/google/calendar";
-import { getActiveGoogleIntegration } from "@/lib/google/integration";
 
-export async function getUpcomingGoogleCalendarMeetingsForUser(userId: string) {
-  const integration = await getActiveGoogleIntegration(userId);
-
-  if (!integration?.accessToken) {
-    return [];
-  }
-
-  return fetchUpcomingGoogleCalendarMeetings(integration.accessToken);
+// Fetches upcoming Google Calendar meetings using an access token obtained from the Express API.
+// The token is passed in from the caller (server component or API route) that already has it.
+export async function getUpcomingGoogleCalendarMeetingsForUser(accessToken: string) {
+  if (!accessToken) return [];
+  return fetchUpcomingGoogleCalendarMeetings(accessToken);
 }

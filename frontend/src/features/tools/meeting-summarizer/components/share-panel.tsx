@@ -6,6 +6,7 @@ import {
   Loader2, Send, X, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApiFetch } from "@/hooks/useApiFetch";
 
 type IntegrationType = "slack" | "gmail" | "notion" | "jira";
 type Integration = { type: IntegrationType; enabled: boolean; config: Record<string, unknown> };
@@ -28,6 +29,7 @@ const INTEGRATION_META: Record<IntegrationType, { label: string; icon: string; w
 };
 
 export function SharePanel({ runId, output, onClose }: SharePanelProps) {
+  const apiFetch = useApiFetch();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selected, setSelected] = useState<Set<IntegrationType>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -36,20 +38,32 @@ export function SharePanel({ runId, output, onClose }: SharePanelProps) {
   const actionItemCount = output.action_items?.length ?? 0;
 
   useEffect(() => {
-    let mounted = true;
+    let cancelled = false;
     async function load() {
+      setIsLoading(true);
       try {
-        const res = await fetch("/api/integrations", { cache: "no-store" });
-        const data = (await res.json()) as { integrations?: Integration[] };
-        if (!mounted) return;
-        const enabled = (data.integrations ?? []).filter((i) => i.enabled);
+        const [res, googleRes] = await Promise.all([
+          apiFetch("/api/integrations", { cache: "no-store" }),
+          apiFetch("/api/google/integration", { cache: "no-store" }),
+        ]);
+        if (cancelled) return;
+        const data = (await res.json()) as Integration[] | { integrations?: Integration[] };
+        const list: Integration[] = Array.isArray(data) ? data : (data.integrations ?? []);
+        const googleData = googleRes.ok ? (await googleRes.json()) as { integration?: { connected: boolean } } : null;
+        const isGoogleConnected = googleData?.integration?.connected ?? false;
+        const enabled = list.filter((i) => {
+          if (!i.enabled) return false;
+          if (i.type === "gmail" && !isGoogleConnected) return false;
+          return true;
+        });
+        if (cancelled) return;
         setIntegrations(enabled);
         setSelected(new Set(enabled.map((i) => i.type)));
       } catch { /* silent */ }
-      finally { if (mounted) setIsLoading(false); }
+      finally { if (!cancelled) setIsLoading(false); }
     }
     void load();
-    return () => { mounted = false; };
+    return () => { cancelled = true; };
   }, []);
 
   function toggle(type: IntegrationType) {
@@ -64,7 +78,7 @@ export function SharePanel({ runId, output, onClose }: SharePanelProps) {
     if (selected.size === 0) return;
     setIsSharing(true);
     try {
-      const res = await fetch(`/api/ai-runs/${runId}/share`, {
+      const res = await apiFetch(`/api/ai-runs/${runId}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targets: Array.from(selected) }),

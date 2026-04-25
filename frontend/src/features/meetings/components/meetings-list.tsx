@@ -12,6 +12,7 @@ import { findSessionForMeeting } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { UnifiedCalendarMeeting } from "@/lib/calendar/types";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 function formatDateHeading(value: Date, prefix: string) {
   return `${prefix} — ${value.toLocaleDateString("en-US", {
@@ -62,6 +63,8 @@ function groupMeetingsByDate(meetings: UnifiedCalendarMeeting[]) {
 export function MeetingsList() {
   const searchParams = useSearchParams();
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [todayMeetings, setTodayMeetings] = useState<UnifiedCalendarMeeting[]>([]);
   const [upcomingMeetings, setUpcomingMeetings] = useState<UnifiedCalendarMeeting[]>([]);
   const [sessions, setSessions] = useState<MeetingSessionRecord[]>([]);
@@ -79,7 +82,7 @@ export function MeetingsList() {
     try {
       if (activeWorkspaceId) {
         // Workspace mode: fetch shared meetings only, no calendar
-        const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
+        const res = await apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`);
         const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
         setWorkspaceMeetings(data.meetings ?? []);
         setTodayMeetings([]);
@@ -128,20 +131,21 @@ export function MeetingsList() {
   }
 
   useEffect(() => {
+    if (!isAuthReady) return;
     void loadMeetings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, isAuthReady]);
 
   // Fetch admin workspaces once for the share button
   useEffect(() => {
-    if (activeWorkspaceId) return; // only needed in personal mode
-    fetch("/api/workspaces", { cache: "no-store" })
+    if (activeWorkspaceId || !isAuthReady) return;
+    apiFetch("/api/workspaces", { cache: "no-store" })
       .then((r) => r.json())
       .then((d: { workspaces?: { id: string; name: string; role: string }[] }) => {
-        setAdminWorkspaces((d.workspaces ?? []).filter((w) => w.role === "admin"));
+        setAdminWorkspaces(d.workspaces ?? []);
       })
       .catch(() => {});
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, isAuthReady]);
 
   // Handle OAuth callback query params (e.g. ?google=connected or ?error=oauth_failed)
   useEffect(() => {

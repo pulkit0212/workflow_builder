@@ -4,8 +4,8 @@ async function joinGoogleMeet(page, meetingUrl) {
   console.log("[GoogleMeet] Navigating to:", meetingUrl);
 
   await page.goto(meetingUrl, {
-    waitUntil: "networkidle",
-    timeout: 30000
+    waitUntil: "domcontentloaded",
+    timeout: 60000
   });
   await page.waitForTimeout(4000);
 

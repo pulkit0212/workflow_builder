@@ -164,7 +164,7 @@ export function hasProcessedMeetingContent(meeting: Pick<MeetingDetailRecord, "t
   return Boolean(
     meeting.transcript?.trim() ||
       meeting.summary?.trim() ||
-      meeting.keyPoints.length > 0 ||
-      meeting.actionItems.length > 0
+      (meeting.keyPoints?.length ?? 0) > 0 ||
+      (meeting.actionItems?.length ?? 0) > 0
   );
 }

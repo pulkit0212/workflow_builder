@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 export type DashboardProfile = {
   id: string;
@@ -25,42 +26,28 @@ type ProfileApiResponse = {
 export function DashboardAccount({ initialProfile, compact = false }: DashboardAccountProps) {
   const [profile, setProfile] = useState(initialProfile);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let isMounted = true;
 
     async function loadProfile() {
       setIsRefreshing(true);
-
       try {
-        const response = await fetch("/api/profile/me", {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store"
-        });
-
-        if (!response.ok) {
-          return;
-        }
-
+        const response = await apiFetch("/api/profile/me", { method: "GET", cache: "no-store" });
+        if (!response.ok) return;
         const data = (await response.json()) as ProfileApiResponse;
-
-        if (isMounted && data.success) {
-          setProfile(data.profile);
-        }
+        if (isMounted && data.success) setProfile(data.profile);
       } finally {
-        if (isMounted) {
-          setIsRefreshing(false);
-        }
+        if (isMounted) setIsRefreshing(false);
       }
     }
 
     void loadProfile();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    return () => { isMounted = false; };
+  }, [isAuthReady]);
 
   return (
     <div

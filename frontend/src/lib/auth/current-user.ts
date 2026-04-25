@@ -1,12 +1,18 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
 import type { Route } from "next";
 import { redirect } from "next/navigation";
-import type { AppUser } from "@/lib/db/queries/users";
-import { getUserByClerkUserId, upsertUserByClerkIdentity } from "@/lib/db/queries/users";
-import { getUserSubscription } from "@/lib/subscription.server";
 
 const signInRoute = "/sign-in" as Route;
-const authLogPrefix = "[auth-sync]";
+
+export type AppUser = {
+  id: string;
+  clerkUserId: string;
+  email: string;
+  fullName: string | null;
+  plan: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export type CurrentClerkUser = {
   clerkUserId: string;
@@ -14,110 +20,60 @@ export type CurrentClerkUser = {
   fullName: string | null;
 };
 
-function getPrimaryEmailAddress(clerkUser: Awaited<ReturnType<typeof currentUser>>) {
-  return clerkUser?.emailAddresses.find((email) => email.id === clerkUser.primaryEmailAddressId)?.emailAddress ?? null;
-}
-
-function getFullName(clerkUser: Awaited<ReturnType<typeof currentUser>>) {
-  if (!clerkUser) {
-    return null;
-  }
-
-  const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim();
-  return name || clerkUser.username || null;
-}
-
 export async function getCurrentClerkUser(expectedClerkUserId?: string): Promise<CurrentClerkUser | null> {
-  console.info(`${authLogPrefix} resolving current Clerk user`, {
-    expectedClerkUserId: expectedClerkUserId ?? null
-  });
   const session = await auth();
-
-  if (!session.userId) {
-    console.warn(`${authLogPrefix} no authenticated Clerk session`);
-    return null;
-  }
-
+  if (!session.userId) return null;
   if (expectedClerkUserId && session.userId !== expectedClerkUserId) {
-    console.error(`${authLogPrefix} authenticated user mismatch`, {
-      sessionUserId: session.userId,
-      expectedClerkUserId
-    });
     throw new Error("Authenticated user mismatch.");
   }
 
   const clerkUser = await currentUser();
+  if (!clerkUser) return null;
 
-  if (!clerkUser) {
-    console.error(`${authLogPrefix} Clerk currentUser() returned null`, {
-      sessionUserId: session.userId
-    });
-    throw new Error("Authenticated Clerk user not found.");
-  }
+  const primaryEmail = clerkUser.emailAddresses.find(
+    (e) => e.id === clerkUser.primaryEmailAddressId
+  )?.emailAddress ?? null;
 
-  const primaryEmail = getPrimaryEmailAddress(clerkUser);
+  if (!primaryEmail) return null;
 
-  if (!primaryEmail) {
-    console.error(`${authLogPrefix} Clerk user is missing a primary email`, {
-      clerkUserId: clerkUser.id
-    });
-    throw new Error("Authenticated user does not have a primary email address.");
-  }
+  const fullName = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ").trim() || null;
 
-  console.info(`${authLogPrefix} resolved Clerk user`, {
-    clerkUserId: clerkUser.id
-  });
-
-  return {
-    clerkUserId: clerkUser.id,
-    email: primaryEmail,
-    fullName: getFullName(clerkUser)
-  };
+  return { clerkUserId: clerkUser.id, email: primaryEmail, fullName };
 }
 
-export async function requireCurrentClerkUser(expectedClerkUserId?: string) {
+export async function requireCurrentClerkUser(expectedClerkUserId?: string): Promise<CurrentClerkUser> {
   const clerkUser = await getCurrentClerkUser(expectedClerkUserId);
-
-  if (!clerkUser) {
-    redirect(signInRoute);
-  }
-
+  if (!clerkUser) redirect(signInRoute);
   return clerkUser;
 }
 
+// Kept for backward compat — returns a minimal AppUser-shaped object from Clerk only.
+// The real DB sync happens in the Express backend on every authenticated request.
 export async function syncCurrentUserToDatabase(expectedClerkUserId?: string): Promise<AppUser> {
   const clerkUser = await requireCurrentClerkUser(expectedClerkUserId);
-  console.info(`${authLogPrefix} syncing Clerk user to database`, {
-    clerkUserId: clerkUser.clerkUserId
-  });
-
-  const subscription = await getUserSubscription(clerkUser.clerkUserId);
-  const appUser = await upsertUserByClerkIdentity({
-    ...clerkUser,
-    plan: subscription.plan
-  });
-
-  console.info(`${authLogPrefix} synced app user`, {
-    clerkUserId: appUser.clerkUserId,
-    appUserId: appUser.id
-  });
-
-  return appUser;
+  return {
+    id: clerkUser.clerkUserId,
+    clerkUserId: clerkUser.clerkUserId,
+    email: clerkUser.email,
+    fullName: clerkUser.fullName,
+    plan: "free",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 }
 
 export async function getCurrentAppUser(options?: {
   expectedClerkUserId?: string;
-  sync?: boolean;
 }): Promise<AppUser | null> {
   const clerkUser = await getCurrentClerkUser(options?.expectedClerkUserId);
-
-  if (!clerkUser) {
-    return null;
-  }
-
-  if (options?.sync ?? true) {
-    return upsertUserByClerkIdentity(clerkUser);
-  }
-
-  return getUserByClerkUserId(clerkUser.clerkUserId);
+  if (!clerkUser) return null;
+  return {
+    id: clerkUser.clerkUserId,
+    clerkUserId: clerkUser.clerkUserId,
+    email: clerkUser.email,
+    fullName: clerkUser.fullName,
+    plan: "free",
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
 }

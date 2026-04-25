@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { planDefinitions } from "@/lib/subscription";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 type SubscriptionResponse = {
   success: true;
@@ -72,18 +73,21 @@ function FeatureValue({ value }: { value: boolean | string }) {
 
 export default function BillingPage() {
   const { user } = useUser();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [subscription, setSubscription] = useState<SubscriptionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activePlan, setActivePlan] = useState<"pro" | "elite" | null>(null);
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let isMounted = true;
     async function load() {
       setIsLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/subscription", { cache: "no-store" });
+        const res = await apiFetch("/api/subscription", { cache: "no-store" });
         const payload = await res.json() as SubscriptionResponse | { success?: false; message?: string };
         if (!isMounted) return;
         if (!res.ok || !("success" in payload) || !payload.success) {
@@ -98,7 +102,7 @@ export default function BillingPage() {
     }
     void load();
     return () => { isMounted = false; };
-  }, []);
+  }, [isAuthReady]);
 
   const currentPlan = subscription?.plan ?? "free";
   const currentPlanDef = planDefinitions[currentPlan];
@@ -114,7 +118,7 @@ export default function BillingPage() {
   async function handleUpgrade(plan: "pro" | "elite") {
     try {
       setActivePlan(plan);
-      const res = await fetch("/api/payment/create-order", {
+      const res = await apiFetch("/api/payment/create-order", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ plan })
       });
@@ -135,7 +139,7 @@ export default function BillingPage() {
         key: data.keyId, amount: data.amount, currency: data.currency,
         name: "Artivaa", description: `${plan} Plan - Monthly`, order_id: data.orderId,
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
-          const v = await fetch("/api/payment/verify", {
+          const v = await apiFetch("/api/payment/verify", {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...response, plan })
           });

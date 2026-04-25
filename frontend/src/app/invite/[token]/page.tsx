@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
+import { clientApiFetch } from "@/lib/api-client";
 
 type ValidateResult = {
   workspaceId: string;
@@ -37,7 +38,7 @@ export default function InviteAcceptPage() {
 
     async function handleInvite() {
       // Step 1: Validate token
-      const validateRes = await fetch(`/api/invite/validate?token=${encodeURIComponent(token)}`);
+      const validateRes = await clientApiFetch(`/api/invite/validate?token=${encodeURIComponent(token)}`);
       if (!validateRes.ok) {
         const data = await validateRes.json().catch(() => ({})) as { details?: { code?: string } };
         const code = data?.details?.code;
@@ -62,7 +63,7 @@ export default function InviteAcceptPage() {
       }
 
       // Step 3: Accept invite
-      const acceptRes = await fetch("/api/invite/accept", {
+      const acceptRes = await clientApiFetch("/api/invite/accept", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token })

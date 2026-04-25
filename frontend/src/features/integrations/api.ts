@@ -1,3 +1,4 @@
+import { clientApiFetch } from "@/lib/api-client";
 import type { GoogleCalendarMeeting } from "@/lib/google/types";
 import type {
   GoogleCalendarResponse,
@@ -11,7 +12,7 @@ function getErrorMessage(payload: IntegrationErrorResponse) {
 }
 
 export async function fetchGoogleIntegrationStatus() {
-  const response = await fetch("/api/google/integration", {
+  const response = await clientApiFetch("/api/google/integration", {
     cache: "no-store"
   });
   const payload = (await response.json()) as GoogleIntegrationResponse | IntegrationErrorResponse;
@@ -24,7 +25,7 @@ export async function fetchGoogleIntegrationStatus() {
 }
 
 export async function disconnectGoogleIntegration() {
-  const response = await fetch("/api/google/integration", {
+  const response = await clientApiFetch("/api/google/integration", {
     method: "DELETE"
   });
   const payload = (await response.json()) as { success: true } | IntegrationErrorResponse;
@@ -35,7 +36,7 @@ export async function disconnectGoogleIntegration() {
 }
 
 export async function fetchGoogleCalendarMeetings() {
-  const response = await fetch("/api/google/calendar", {
+  const response = await clientApiFetch("/api/google/calendar", {
     cache: "no-store"
   });
   const payload = (await response.json()) as GoogleCalendarResponse | IntegrationErrorResponse;

@@ -4,6 +4,7 @@ import type {
   MeetingSummarizerOutput,
   MeetingTranscriptionProvider
 } from "@/features/tools/meeting-summarizer/types";
+import { clientApiFetch } from "@/lib/api-client";
 
 export type ToolRunResponse<TOutput> = {
   success: true;
@@ -91,7 +92,7 @@ function getErrorMessage(payload: ToolErrorResponse) {
 }
 
 export async function runMeetingSummarizer(input: MeetingSummarizerInput) {
-  const response = await fetch("/api/tools/meeting-summarizer/run", {
+  const response = await clientApiFetch("/api/tools/meeting-summarizer/run", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -120,14 +121,18 @@ export async function runMeetingSummarizer(input: MeetingSummarizerInput) {
   return payload;
 }
 
-export async function transcribeMeetingRecording(file: File, provider: MeetingTranscriptionProvider) {
+export async function transcribeMeetingRecording(
+  file: File,
+  provider: MeetingTranscriptionProvider,
+  apiFetch: (path: string, init?: RequestInit) => Promise<Response>
+) {
   const formData = new FormData();
   formData.append("audio", file);
   formData.append("provider", provider);
 
-  const response = await fetch("/api/tools/meeting-summarizer/transcribe", {
+  const response = await apiFetch("/api/tools/meeting-summarizer/transcribe", {
     method: "POST",
-    body: formData
+    body: formData,
   });
 
   const payload = (await response.json()) as MeetingTranscriptionResponse | ToolErrorResponse;

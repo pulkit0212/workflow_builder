@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
-import { requireCurrentClerkUser } from "@/lib/auth/current-user";
+import { redirect } from "next/navigation";
+import type { Route } from "next";
 
 export async function requireAuth() {
   const session = await auth();
-  await requireCurrentClerkUser(session.userId ?? undefined);
-
+  if (!session.userId) redirect("/sign-in" as Route);
   return session;
 }

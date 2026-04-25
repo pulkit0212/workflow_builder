@@ -1,3 +1,4 @@
+import { clientApiFetch } from "@/lib/api-client";
 import type { MeetingSessionErrorResponse } from "@/features/meeting-assistant/types";
 import type { MeetingFollowUpResponse } from "@/features/meeting-followup/types";
 
@@ -11,7 +12,7 @@ function getErrorMessage(payload: MeetingSessionErrorResponse) {
 }
 
 export async function generateMeetingFollowUp(meetingId: string) {
-  const response = await fetch("/api/meeting/followup", {
+  const response = await clientApiFetch("/api/meeting/followup", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

@@ -9,6 +9,7 @@ import { getMeetingDisplayStatus } from "@/features/meetings/meeting-status";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { UnifiedCalendarMeeting } from "@/lib/calendar/types";
 import { useRef, useState } from "react";
+import { useApiFetch } from "@/hooks/useApiFetch";
 
 function formatTimeRange(startTime: string, endTime: string) {
   const start = new Date(startTime);
@@ -47,6 +48,7 @@ type CalendarMeetingRowProps = {
 
 export function CalendarMeetingRow({ meeting, session, adminWorkspaces = [] }: CalendarMeetingRowProps) {
   const router = useRouter();
+  const apiFetch = useApiFetch();
   const detailHref = `/dashboard/meetings/${encodeCalendarMeetingId(meeting.id)}` as Route;
   const status = getMeetingDisplayStatus(meeting, session);
   const platform = getPlatformFromMeeting(meeting);
@@ -60,6 +62,53 @@ export function CalendarMeetingRow({ meeting, session, adminWorkspaces = [] }: C
   const [isSharing, setIsSharing] = useState(false);
   const [sharedNow, setSharedNow] = useState(false);
   const showSharedBadge = isAlreadyShared || sharedNow;
+  const [isStartingBot, setIsStartingBot] = useState(false);
+
+  async function handleStartNotetaker() {
+    if (!meeting.meetLink) {
+      showToast("This meeting has no join link.", "error");
+      return;
+    }
+    setIsStartingBot(true);
+    try {
+      // 1. Create or reuse an app meeting session from this calendar event
+      const createRes = await apiFetch("/api/meetings", {
+        method: "POST",
+        body: JSON.stringify({
+          title: meeting.title,
+          meetingLink: meeting.meetLink,
+          provider: platform === "zoom" ? "zoom_web" : platform === "teams" ? "teams_web" : "google_meet",
+          scheduledStartTime: meeting.startTime,
+          scheduledEndTime: meeting.endTime,
+          externalCalendarEventId: meeting.id,  // enables upsert — no duplicate
+          status: "scheduled",
+        }),
+      });
+      if (!createRes.ok) {
+        showToast("Failed to create meeting session.", "error");
+        return;
+      }
+      const created = await createRes.json() as { id?: string };
+      const sessionId = created.id;
+      if (!sessionId) {
+        showToast("Failed to create meeting session.", "error");
+        return;
+      }
+      // 2. Start the bot on the new session
+      const startRes = await apiFetch(`/api/meetings/${sessionId}/bot/start`, { method: "POST" });
+      if (!startRes.ok) {
+        const errData = await startRes.json().catch(() => ({})) as { error?: string };
+        showToast(errData.error ?? "Failed to start bot.", "error");
+        return;
+      }
+      // 3. Navigate to the session detail page
+      router.push(`/dashboard/meetings/${sessionId}` as import("next").Route);
+    } catch {
+      showToast("Failed to start AI Notetaker.", "error");
+    } finally {
+      setIsStartingBot(false);
+    }
+  }
 
   function showToast(message: string, type: "success" | "error") {
     setToast({ message, type });
@@ -76,9 +125,8 @@ export function CalendarMeetingRow({ meeting, session, adminWorkspaces = [] }: C
         platform === "teams" ? "teams_web" :
         platform === "outlook" ? "teams_web" :
         "google_meet";
-      const res = await fetch("/api/meetings/share-calendar", {
+      const res = await apiFetch("/api/meetings/share-calendar", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           workspaceId: selectedWorkspaceId,
           title: meeting.title,
@@ -147,9 +195,15 @@ export function CalendarMeetingRow({ meeting, session, adminWorkspaces = [] }: C
           </button>
         )}
         {status.showStartNotetaker && (
-          <Link href={detailHref} className="inline-flex items-center rounded-xl bg-[#6c63ff] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5b52e0] transition-colors">
+          <button
+            type="button"
+            onClick={() => void handleStartNotetaker()}
+            disabled={isStartingBot}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5b52e0] transition-colors disabled:opacity-60"
+          >
+            {isStartingBot ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             Start AI Notetaker
-          </Link>
+          </button>
         )}
         {status.showStopRecording && session && (
           <button type="button" onClick={() => router.push(`/dashboard/meetings/${session.id}` as Route)}

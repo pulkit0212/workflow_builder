@@ -1,73 +1,73 @@
-import { db } from "@/lib/db/client";
-import { userIntegrations } from "@/db/schema";
-import { eq } from "drizzle-orm";
 import { googleCalendarClient } from "./google";
 import { microsoftTeamsClient, microsoftOutlookClient } from "./microsoft";
 import type { CalendarProvider, CalendarFeedResponse, UnifiedCalendarMeeting } from "./types";
 
 type UserIntegrationRow = {
-  id: string;
-  userId: string;
   provider: string;
-  email: string | null;
-  scopes: string | null;
   accessToken: string | null;
   refreshToken: string | null;
   expiry: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
 };
 
 const CALENDAR_PROVIDERS: CalendarProvider[] = ["google", "microsoft_teams", "microsoft_outlook"];
 
 function getClientForProvider(provider: CalendarProvider) {
   switch (provider) {
-    case "google":
-      return googleCalendarClient;
-    case "microsoft_teams":
-      return microsoftTeamsClient;
-    case "microsoft_outlook":
-      return microsoftOutlookClient;
+    case "google": return googleCalendarClient;
+    case "microsoft_teams": return microsoftTeamsClient;
+    case "microsoft_outlook": return microsoftOutlookClient;
+  }
+}
+
+// Fetch connected calendar integrations from Express API
+async function fetchCalendarIntegrations(token: string): Promise<UserIntegrationRow[]> {
+  const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+  if (!BASE_URL) return [];
+
+  try {
+    const res = await fetch(`${BASE_URL}/api/calendar/status`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return [];
+
+    const data = await res.json() as { connections?: Record<string, boolean> };
+    const connections = data.connections ?? {};
+
+    // Return rows for connected providers — tokens are fetched per-provider when needed
+    return CALENDAR_PROVIDERS
+      .filter((p) => connections[p])
+      .map((p) => ({
+        provider: p,
+        accessToken: null, // will be fetched via token refresh flow
+        refreshToken: null,
+        expiry: null,
+      }));
+  } catch {
+    return [];
   }
 }
 
 export async function fetchUnifiedCalendarFeed(
   userId: string,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  token?: string
 ): Promise<CalendarFeedResponse> {
-  if (!db) {
-    return { meetings: [] };
-  }
+  if (!token) return { meetings: [] };
 
-  // Query all calendar provider rows for this user
-  let integrations: UserIntegrationRow[] = [];
-  try {
-    integrations = await db
-      .select()
-      .from(userIntegrations)
-      .where(eq(userIntegrations.userId, userId))
-      .then((rows) => rows.filter((r) => CALENDAR_PROVIDERS.includes(r.provider as CalendarProvider)));
-  } catch (err) {
-    console.error("[calendar-feed] DB query failed:", err);
-    return { meetings: [] };
-  }
+  const integrations = await fetchCalendarIntegrations(token);
+  const connected = integrations.filter((r) => r.provider);
 
-  // Only include providers that have a non-null access_token
-  const connected = integrations.filter((r) => r.accessToken != null);
+  if (connected.length === 0) return { meetings: [] };
 
-  if (connected.length === 0) {
-    return { meetings: [] };
-  }
-
-  // Fan out to each provider in parallel
   const results = await Promise.allSettled(
     connected.map((integration) => {
       const provider = integration.provider as CalendarProvider;
       const client = getClientForProvider(provider);
       return client.fetchMeetings({
-        accessToken: integration.accessToken!,
-        refreshToken: integration.refreshToken ?? null,
+        accessToken: integration.accessToken ?? "",
+        refreshToken: integration.refreshToken,
         userId,
         startDate,
         endDate,
@@ -88,46 +88,24 @@ export async function fetchUnifiedCalendarFeed(
     }
   });
 
-  // Sort merged results by startTime ascending
   meetings.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Deduplicate: when multiple calendar providers return the same event (e.g. Teams + Outlook
-  // both connected to the same Microsoft account), keep only one copy.
-  // Dedup key: normalized title + start hour:minute (ignore seconds/nanoseconds).
-  // Priority: microsoft_teams > microsoft_outlook > google
   const PROVIDER_PRIORITY: Record<string, number> = {
-    microsoft_teams: 0,
-    microsoft_outlook: 1,
-    google: 2,
+    microsoft_teams: 0, microsoft_outlook: 1, google: 2,
   };
-
-  function normalizeStartTime(iso: string): string {
-    // Truncate to minute precision: "2026-04-18T07:30" — ignores seconds/nanoseconds
-    return iso.slice(0, 16);
-  }
 
   const seen = new Map<string, UnifiedCalendarMeeting>();
   for (const m of meetings) {
-    const key = `${m.title.toLowerCase().trim()}|${normalizeStartTime(m.startTime)}`;
+    const key = `${m.title.toLowerCase().trim()}|${m.startTime.slice(0, 16)}`;
     const existing = seen.get(key);
-    if (!existing) {
+    if (!existing || (PROVIDER_PRIORITY[m.provider] ?? 99) < (PROVIDER_PRIORITY[existing.provider] ?? 99)) {
       seen.set(key, m);
-    } else {
-      const existingPriority = PROVIDER_PRIORITY[existing.provider] ?? 99;
-      const newPriority = PROVIDER_PRIORITY[m.provider] ?? 99;
-      if (newPriority < existingPriority) {
-        seen.set(key, m);
-      }
     }
   }
-  const dedupedMeetings = Array.from(seen.values());
-  // Re-sort after dedup
-  dedupedMeetings.sort((a, b) => a.startTime.localeCompare(b.startTime));
 
+  const dedupedMeetings = Array.from(seen.values()).sort((a, b) => a.startTime.localeCompare(b.startTime));
   const response: CalendarFeedResponse = { meetings: dedupedMeetings };
-  if (failedProviders.length > 0) {
-    response.partialFailure = { failedProviders };
-  }
+  if (failedProviders.length > 0) response.partialFailure = { failedProviders };
 
   return response;
 }

@@ -1,3 +1,4 @@
+import { clientApiFetch } from "@/lib/api-client";
 import type { MeetingSessionErrorResponse } from "@/features/meeting-assistant/types";
 
 type SendMeetingEmailResponse = {
@@ -10,7 +11,7 @@ function getErrorMessage(payload: MeetingSessionErrorResponse) {
 }
 
 export async function sendMeetingEmail(meetingId: string, recipients: string[]) {
-  const response = await fetch("/api/meeting/send-email", {
+  const response = await clientApiFetch("/api/meeting/send-email", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"

@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatHistoryDateTime } from "@/features/history/helpers";
 import { cn } from "@/lib/utils";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 import type { AiRunDetailResponse, AiRunErrorResponse } from "@/features/history/types";
 
 type RunDetail = AiRunDetailResponse["run"];
@@ -38,6 +39,8 @@ function ShareModal({
   output: { summary?: string; action_items?: Array<{ task: string; owner?: string; priority?: string }> };
   onClose: () => void;
 }) {
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selected, setSelected] = useState<Set<IntegrationType>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -46,13 +49,15 @@ function ShareModal({
   const actionItemCount = output.action_items?.length ?? 0;
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let mounted = true;
     async function load() {
       try {
-        const res = await fetch("/api/integrations", { cache: "no-store" });
-        const data = (await res.json()) as { integrations?: Integration[] };
+        const res = await apiFetch("/api/integrations", { cache: "no-store" });
+        const data = (await res.json()) as Integration[] | { integrations?: Integration[] };
         if (!mounted) return;
-        const enabled = (data.integrations ?? []).filter((i) => i.enabled);
+        const list: Integration[] = Array.isArray(data) ? data : (data.integrations ?? []);
+        const enabled = list.filter((i) => i.enabled);
         setIntegrations(enabled);
         setSelected(new Set(enabled.map((i) => i.type)));
       } catch { /* silent */ }
@@ -60,7 +65,7 @@ function ShareModal({
     }
     void load();
     return () => { mounted = false; };
-  }, []);
+  }, [isAuthReady]);
 
   function toggle(type: IntegrationType) {
     setSelected((prev) => {
@@ -74,7 +79,7 @@ function ShareModal({
     if (selected.size === 0) return;
     setIsSharing(true);
     try {
-      const res = await fetch(`/api/ai-runs/${runId}/share`, {
+      const res = await apiFetch(`/api/ai-runs/${runId}/share`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targets: Array.from(selected) }),
@@ -417,6 +422,8 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
 };
 
 export function HistoryRunDetail({ runId }: { runId: string }) {
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -425,11 +432,12 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
   const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let isMounted = true;
     async function loadRun() {
       setIsLoading(true); setError(null); setNotFound(false);
       try {
-        const response = await fetch(`/api/ai-runs/${runId}`, { cache: "no-store" });
+        const response = await apiFetch(`/api/ai-runs/${runId}`, { cache: "no-store" });
         const payload = (await response.json()) as AiRunDetailResponse | AiRunErrorResponse;
         if (!response.ok || !payload.success) {
           if (response.status === 403) { if (isMounted) setUpgradeRequired(true); return; }
@@ -445,7 +453,7 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
     }
     void loadRun();
     return () => { isMounted = false; };
-  }, [runId]);
+  }, [runId, isAuthReady]);
 
   if (isLoading) return <HistoryRunDetailSkeleton />;
 

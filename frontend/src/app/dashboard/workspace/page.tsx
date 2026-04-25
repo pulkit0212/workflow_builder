@@ -1,6 +1,7 @@
 "use client";
 
 import { InviteMembersCard } from "@/components/workspace/InviteMembersCard";
+import { PendingMoveRequests } from "@/features/workspaces/components/pending-move-requests";
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
@@ -9,6 +10,7 @@ import {
   Users, Loader2, Trash2, LogOut, Shield, User, Eye,
   Plus, ArrowRight
 } from "lucide-react";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -82,6 +84,8 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg"
 function WorkspaceListView() {
   const router = useRouter();
   const { switchToWorkspace, refreshWorkspaces } = useWorkspaceContext();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [workspaces, setWorkspaces] = useState<WorkspaceListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,10 +98,11 @@ function WorkspaceListView() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/workspaces");
+      const res = await apiFetch("/api/workspaces");
       if (!res.ok) throw new Error("Failed to load workspaces.");
-      const data = await res.json() as { workspaces: WorkspaceListItem[] };
-      setWorkspaces(data.workspaces ?? []);
+      const raw = await res.json() as WorkspaceListItem[] | { success: boolean; workspaces: WorkspaceListItem[] };
+      const data = Array.isArray(raw) ? raw : ((raw as { workspaces?: WorkspaceListItem[] }).workspaces ?? []);
+      setWorkspaces(data);
     } catch {
       setError("Failed to load workspaces.");
     } finally {
@@ -105,7 +110,7 @@ function WorkspaceListView() {
     }
   }, []);
 
-  useEffect(() => { fetchWorkspaces(); }, [fetchWorkspaces]);
+  useEffect(() => { if (isAuthReady) fetchWorkspaces(); }, [fetchWorkspaces, isAuthReady]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -113,7 +118,7 @@ function WorkspaceListView() {
     setCreating(true);
     setCreateError(null);
     try {
-      const res = await fetch("/api/workspaces", {
+      const res = await apiFetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim(), members: [] }),
@@ -123,11 +128,11 @@ function WorkspaceListView() {
         setCreateError((payload as { message?: string }).message ?? "Failed to create workspace.");
         return;
       }
-      const payload = await res.json() as { workspace: WorkspaceListItem };
+      const payload = await res.json() as WorkspaceListItem;
       setNewName("");
       setShowCreate(false);
-      await refreshWorkspaces();          // update switcher list first
-      switchToWorkspace(payload.workspace.id); // then select the new workspace
+      await refreshWorkspaces();
+      switchToWorkspace(payload.id);
       router.refresh();
     } catch {
       setCreateError("Failed to create workspace.");
@@ -277,6 +282,8 @@ function WorkspaceListView() {
 function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
   const { switchToPersonal, refreshWorkspaces } = useWorkspaceContext();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
 
   const [data, setData] = useState<WorkspaceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -304,15 +311,15 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
     setError(null);
     setData(null); // clear stale data immediately on each fetch
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}`);
+      const res = await apiFetch(`/api/workspaces/${workspaceId}`);
       if (!res.ok) {
         const payload = await res.json().catch(() => ({}));
         setError((payload as { message?: string }).message ?? "Failed to load workspace.");
         return;
       }
-      const payload = await res.json() as { workspace: WorkspaceData };
-      setData(payload.workspace);
-      setNewName(payload.workspace.name);
+      const payload = await res.json() as WorkspaceData;
+      setData(payload);
+      setNewName(payload.name);
     } catch {
       setError("Failed to load workspace.");
     } finally {
@@ -320,7 +327,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
     }
   }, [workspaceId]);
 
-  useEffect(() => { fetchWorkspace(); }, [fetchWorkspace]);
+  useEffect(() => { if (isAuthReady) fetchWorkspace(); }, [fetchWorkspace, isAuthReady]);
 
   // Reset stale state when workspace changes
   useEffect(() => {
@@ -339,7 +346,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
     if (!newName.trim()) return;
     setNameLoading(true); setNameError(null); setNameSuccess(false);
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}`, {
+      const res = await apiFetch(`/api/workspaces/${workspaceId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       });
@@ -353,7 +360,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
   async function handleRemoveMember(memberId: string) {
     setActionLoading(memberId); setActionError(null);
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, { method: "DELETE" });
       if (!res.ok) { const p = await res.json().catch(() => ({})); setActionError((p as { message?: string }).message ?? "Failed to remove."); return; }
       await fetchWorkspace();
     } catch { setActionError("Failed to remove member."); }
@@ -363,7 +370,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
   async function handleChangeRole(memberId: string, role: string) {
     setActionLoading(memberId); setActionError(null);
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+      const res = await apiFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role }),
       });
       if (!res.ok) { const p = await res.json().catch(() => ({})); setActionError((p as { message?: string }).message ?? "Failed to change role."); return; }
@@ -382,7 +389,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
         setConfirmModal(null);
         setActionLoading("leave"); setActionError(null);
         try {
-          const res = await fetch(`/api/workspaces/${workspaceId}/leave`, { method: "POST" });
+          const res = await apiFetch(`/api/workspaces/${workspaceId}/leave`, { method: "POST" });
           if (!res.ok) { const p = await res.json().catch(() => ({})); setActionError((p as { message?: string }).message ?? "Failed to leave."); return; }
           switchToPersonal();
           await refreshWorkspaces();
@@ -404,7 +411,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
         setConfirmModal(null);
         setActionLoading("delete"); setActionError(null);
         try {
-          const res = await fetch(`/api/workspaces/${workspaceId}`, { method: "DELETE" });
+          const res = await apiFetch(`/api/workspaces/${workspaceId}`, { method: "DELETE" });
           if (!res.ok) { const p = await res.json().catch(() => ({})); setActionError((p as { message?: string }).message ?? "Failed to delete."); return; }
           switchToPersonal();
           await refreshWorkspaces();
@@ -436,7 +443,7 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
   async function confirmTransfer() {
     setTransferLoading(true); setTransferError(null);
     try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/transfer-ownership`, {
+      const res = await apiFetch(`/api/workspaces/${workspaceId}/transfer-ownership`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newOwnerMemberId: transferMemberId }),
       });
       if (!res.ok) { const p = await res.json().catch(() => ({})); setTransferError((p as { message?: string }).message ?? "Failed to transfer."); return; }
@@ -593,6 +600,21 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
               })}
             </div>
           </Card>
+
+          {/* Pending Move Requests — admin only */}
+          {isAdmin && (
+            <Card className="overflow-hidden">
+              <div className="border-b border-slate-100 px-5 py-4">
+                <p className="text-sm font-semibold text-slate-800">Pending Move Requests</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Review and approve or reject meeting share requests from workspace members.
+                </p>
+              </div>
+              <div className="px-5 py-4">
+                <PendingMoveRequests workspaceId={workspaceId} />
+              </div>
+            </Card>
+          )}
 
           {/* Transfer Admin Rights — only show when there are other members to transfer to */}
           {isAdmin && activeMembers.filter((m) => m.role !== "admin" && m.role !== "owner").length > 0 && (

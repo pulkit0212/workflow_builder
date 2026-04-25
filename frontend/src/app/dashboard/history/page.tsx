@@ -19,6 +19,7 @@ import { Pagination } from "@/components/shared/pagination";
 import { ResultState } from "@/components/tools/result-state";
 import { Button } from "@/components/ui/button";
 import { formatHistoryDate, formatPreview } from "@/features/history/helpers";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 const ITEMS_PER_PAGE = 8;
 
@@ -86,6 +87,8 @@ function ToolChip({ slug, name }: { slug: string; name: string }) {
 }
 
 export default function HistoryPage() {
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [runs, setRuns] = useState<HistoryRun[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -93,12 +96,13 @@ export default function HistoryPage() {
   const [upgradeRequired, setUpgradeRequired] = useState(false);
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let isMounted = true;
     async function loadRuns() {
       setIsLoading(true);
       setUpgradeRequired(false);
       try {
-        const response = await fetch("/api/ai-runs", { cache: "no-store" });
+        const response = await apiFetch("/api/ai-runs", { cache: "no-store" });
         const payload = (await response.json()) as
           | { success: true; runs: HistoryRun[] }
           | { success: false; message: string };
@@ -118,7 +122,7 @@ export default function HistoryPage() {
     }
     void loadRuns();
     return () => { isMounted = false; };
-  }, []);
+  }, [isAuthReady]);
 
   const totalPages = Math.max(Math.ceil(runs.length / ITEMS_PER_PAGE), 1);
   const paginatedRuns = useMemo(

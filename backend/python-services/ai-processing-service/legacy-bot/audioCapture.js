@@ -7,6 +7,7 @@ const AUDIO_DIR = path.join(process.cwd(), "tmp", "audio");
 const MIN_AUDIO_BYTES = 32 * 1024;
 const STARTUP_WAIT_MS = 2_500;
 const STDERR_TAIL_LIMIT = 20;
+const SILENCE_THRESHOLD_DB = -60;
 
 function ensureAudioDir() {
   if (!fs.existsSync(AUDIO_DIR)) {
@@ -14,11 +15,99 @@ function ensureAudioDir() {
   }
 }
 
-function startRecording(meetingId) {
+/**
+ * Runs a 2-second ffmpeg probe on the given audio source and parses the RMS
+ * level from the astats filter output.
+ *
+ * @param {string} audioSource - PulseAudio source name (Linux) or device name
+ * @returns {Promise<{ level: number|null, isSilent: boolean }>}
+ *   level: RMS level in dBFS, or null if parsing failed
+ *   isSilent: true if level < SILENCE_THRESHOLD_DB; false on parse failure (fail open)
+ */
+async function checkAudioLevel(audioSource) {
+  const isMac = process.platform === "darwin";
+  const isLinux = process.platform === "linux";
+
+  let probeArgs;
+  if (isLinux) {
+    probeArgs = ["-f", "pulse", "-i", audioSource, "-t", "2", "-af", "astats", "-f", "null", "-"];
+  } else if (isMac) {
+    probeArgs = ["-f", "avfoundation", "-i", `:${audioSource}`, "-t", "2", "-af", "astats", "-f", "null", "-"];
+  } else {
+    // Unsupported platform — fail open
+    return { level: null, isSilent: false };
+  }
+
+  return new Promise((resolve) => {
+    let stderrOutput = "";
+    let probe;
+
+    try {
+      probe = spawn("ffmpeg", probeArgs, { stdio: ["ignore", "ignore", "pipe"] });
+    } catch (err) {
+      console.warn("[Audio] checkAudioLevel: failed to spawn ffmpeg probe:", err.message);
+      return resolve({ level: null, isSilent: false });
+    }
+
+    probe.stderr.on("data", (chunk) => {
+      stderrOutput += chunk.toString();
+    });
+
+    probe.on("error", (err) => {
+      console.warn("[Audio] checkAudioLevel: probe error:", err.message);
+      resolve({ level: null, isSilent: false });
+    });
+
+    probe.once("close", () => {
+      // Look for "RMS level dB:" in astats output
+      const match = stderrOutput.match(/RMS level dB:\s*(-inf|[-\d.]+)/i);
+      if (!match) {
+        console.warn("[Audio] checkAudioLevel: could not parse RMS level from probe output");
+        return resolve({ level: null, isSilent: false });
+      }
+
+      const rawValue = match[1];
+      const level = rawValue === "-inf" ? -Infinity : parseFloat(rawValue);
+
+      if (Number.isNaN(level)) {
+        console.warn("[Audio] checkAudioLevel: RMS level parsed as NaN");
+        return resolve({ level: null, isSilent: false });
+      }
+
+      const isSilent = level < SILENCE_THRESHOLD_DB;
+      console.log(`[Audio] checkAudioLevel: RMS level = ${level} dBFS, isSilent = ${isSilent}`);
+      resolve({ level, isSilent });
+    });
+  });
+}
+
+async function startRecording(meetingId) {
   ensureAudioDir();
   const outputPath = path.join(AUDIO_DIR, `meeting-${meetingId}.wav`);
   const isMac = process.platform === "darwin";
   const isLinux = process.platform === "linux";
+
+  // ── Pre-recording audio level check ──────────────────────────────────────
+  if (isLinux || isMac) {
+    const audioSourceForCheck = isLinux
+      ? (process.env.MEETING_AUDIO_SOURCE || "default")
+      : "BlackHole 2ch";
+
+    const { level, isSilent } = await checkAudioLevel(audioSourceForCheck);
+
+    if (isSilent) {
+      console.warn(
+        `[Audio] Pre-recording check: audio source "${audioSourceForCheck}" appears silent ` +
+        `(RMS level = ${level} dBFS, threshold = ${SILENCE_THRESHOLD_DB} dBFS). Aborting recording.`
+      );
+      return { success: false, error: "silent_audio_source", errorCode: "silent_audio_source" };
+    }
+
+    if (level === null) {
+      console.warn("[Audio] Pre-recording check: could not determine audio level — proceeding anyway (fail open)");
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   let ffmpegArgs;
 
@@ -235,4 +324,4 @@ async function waitForRecordingToFlush(outputPath, options = {}) {
   };
 }
 
-module.exports = { startRecording, stopRecording, waitForRecordingToFlush, getAudioFileInfo };
+module.exports = { startRecording, stopRecording, waitForRecordingToFlush, getAudioFileInfo, checkAudioLevel };

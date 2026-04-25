@@ -14,6 +14,7 @@ export type MeetingDetailStatus =
   | "failed";
 
 export type MeetingDetailRecord = {
+  externalCalendarEventId: undefined;
   id: string;
   meetingSessionId: string | null;
   calendarEventId: string | null;
@@ -85,6 +86,7 @@ export type MeetingStatusResponse = {
   summary: MeetingStructuredSummary | null;
   insights: Record<string, unknown> | null;
   chapters: Array<Record<string, unknown>> | null;
+  autoShareFailures: Array<{ integration: string; error: string }> | null;
   updatedAt: string;
   platform: string;
   platformName: string;

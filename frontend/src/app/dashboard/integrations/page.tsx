@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, CheckCircle, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 const INTEGRATIONS_CONFIG = [
   {
@@ -109,6 +110,8 @@ type ToastState = { msg: string; type: "success" | "error" };
 
 export default function IntegrationsPage() {
   const searchParams = useSearchParams();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
 
   const [integrations, setIntegrations] = useState<Record<string, any>>({});
   const [configs, setConfigs] = useState<Record<string, any>>({});
@@ -117,6 +120,7 @@ export default function IntegrationsPage() {
   const [testing, setTesting] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
+  const [isGoogleConnected, setIsGoogleConnected] = useState(false);
 
   const [calendarStatus, setCalendarStatus] = useState<CalendarStatus>({
     google: false,
@@ -126,31 +130,63 @@ export default function IntegrationsPage() {
   const [calendarStatusLoading, setCalendarStatusLoading] = useState(true);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
+  // After Google OAuth, NextAuth session holds the access token.
+  // Fetch it via the session endpoint and persist to the backend if not yet stored.
+  const persistedRef = useRef(false);
+  useEffect(() => {
+    if (!isAuthReady || persistedRef.current) return;
+    persistedRef.current = true;
+    void (async () => {
+      try {
+        const sessionRes = await fetch("/api/auth/session");
+        if (!sessionRes.ok) return;
+        const session = await sessionRes.json() as { accessToken?: string; user?: { email?: string } };
+        if (!session?.accessToken) return;
+        await apiFetch("/api/google/integration", {
+          method: "POST",
+          body: JSON.stringify({
+            accessToken: session.accessToken,
+            refreshToken: null,
+            email: session.user?.email ?? null,
+            scopes: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+            expiresAt: null,
+          }),
+        });
+        void fetchCalendarStatus();
+      } catch { /* non-critical */ }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthReady]);
+
   function showToast(msg: string, type: ToastState["type"]) {
     setToast({ msg, type });
     window.setTimeout(() => setToast(null), 3500);
   }
 
-  // Handle OAuth error query params on mount
+  // Handle OAuth error/success query params on mount
   useEffect(() => {
     const error = searchParams.get("error");
+    const connected = searchParams.get("connected");
     if (error === "oauth_cancelled") {
       showToast("Calendar connection was cancelled. You can try again anytime.", "error");
     } else if (error === "oauth_failed") {
       showToast("Calendar connection failed. Please try again or contact support.", "error");
+    } else if (connected) {
+      showToast("Calendar connected successfully.", "success");
+      if (isAuthReady) void fetchCalendarStatus();
     }
-  }, [searchParams]);
+  }, [searchParams, isAuthReady]);
 
-  useEffect(() => { void fetchIntegrations(); }, []);
-  useEffect(() => { void fetchCalendarStatus(); }, []);
+  useEffect(() => { if (isAuthReady) void fetchIntegrations(); }, [isAuthReady]);
+  useEffect(() => { if (isAuthReady) void fetchCalendarStatus(); }, [isAuthReady]);
 
   async function fetchCalendarStatus() {
     setCalendarStatusLoading(true);
     try {
-      const res = await fetch("/api/calendar/status", { cache: "no-store" });
+      const res = await apiFetch("/api/calendar/status", { cache: "no-store" });
       if (res.ok) {
-        const data = await res.json() as CalendarStatus;
-        setCalendarStatus(data);
+        const data = await res.json() as { success: boolean; connections: CalendarStatus };
+        setCalendarStatus(data.connections);
       }
     } catch {
       // silently fail — calendar section will show disconnected state
@@ -161,11 +197,18 @@ export default function IntegrationsPage() {
 
   async function fetchIntegrations() {
     try {
-      const res = await fetch("/api/integrations", { cache: "no-store" });
-      const data = await res.json() as { integrations?: any[] };
+      const [intRes, googleRes] = await Promise.all([
+        apiFetch("/api/integrations", { cache: "no-store" }),
+        apiFetch("/api/google/integration", { cache: "no-store" }),
+      ]);
+      const data = await intRes.json() as any[];
       const iMap: Record<string, any> = {}, cMap: Record<string, any> = {};
-      for (const i of data.integrations || []) { iMap[i.type] = i; cMap[i.type] = i.config || {}; }
+      for (const i of Array.isArray(data) ? data : []) { iMap[i.type] = i; cMap[i.type] = i.config || {}; }
       setIntegrations(iMap); setConfigs(cMap);
+      if (googleRes.ok) {
+        const gData = await googleRes.json() as { integration?: { connected: boolean } };
+        setIsGoogleConnected(gData.integration?.connected ?? false);
+      }
     } catch { showToast("Failed to load integrations", "error"); }
     finally { setLoading(false); }
   }
@@ -173,13 +216,13 @@ export default function IntegrationsPage() {
   async function saveIntegration(type: string, enabled: boolean) {
     setSaving(type);
     try {
-      const res = await fetch("/api/integrations", {
+      const res = await apiFetch("/api/integrations", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, enabled, config: configs[type] || {} })
       });
-      const data = await res.json() as { success?: boolean; integration?: any; message?: string };
-      if (res.ok && data.success) { setIntegrations(c => ({ ...c, [type]: data.integration })); showToast(`${type} saved!`, "success"); }
-      else showToast(data.message || "Failed to save", "error");
+      const data = await res.json() as { type?: string; enabled?: boolean; error?: string; message?: string };
+      if (res.ok && data.type) { setIntegrations(c => ({ ...c, [type]: data })); showToast(`${type} saved!`, "success"); }
+      else showToast(data.error || data.message || "Failed to save", "error");
     } catch { showToast("Failed to save", "error"); }
     finally { setSaving(null); }
   }
@@ -187,7 +230,7 @@ export default function IntegrationsPage() {
   async function testIntegration(type: string) {
     setTesting(type);
     try {
-      const res = await fetch("/api/integrations/test", {
+      const res = await apiFetch("/api/integrations/test", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, config: configs[type] || {} })
       });
@@ -197,10 +240,41 @@ export default function IntegrationsPage() {
     finally { setTesting(null); }
   }
 
+  async function connectCalendar(provider: string) {
+    if (provider === "google") {
+      // Auth.js v5 requires a POST to initiate provider signin — submit a hidden form
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = "/api/auth/signin/google";
+      const csrfInput = document.createElement("input");
+      csrfInput.type = "hidden";
+      csrfInput.name = "csrfToken";
+      // fetch the CSRF token first
+      try {
+        const csrfRes = await fetch("/api/auth/csrf");
+        const { csrfToken } = await csrfRes.json() as { csrfToken: string };
+        csrfInput.value = csrfToken;
+      } catch {
+        csrfInput.value = "";
+      }
+      const callbackInput = document.createElement("input");
+      callbackInput.type = "hidden";
+      callbackInput.name = "callbackUrl";
+      callbackInput.value = "/dashboard/integrations";
+      form.appendChild(csrfInput);
+      form.appendChild(callbackInput);
+      document.body.appendChild(form);
+      form.submit();
+      return;
+    }
+    // Microsoft providers go through Express which redirects to the custom OAuth route
+    window.location.href = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001"}/api/calendar/connect/${provider}`;
+  }
+
   async function disconnectCalendar(provider: string) {
     setDisconnecting(provider);
     try {
-      const res = await fetch(`/api/calendar/disconnect/${provider}`, { method: "POST" });
+      const res = await apiFetch(`/api/calendar/disconnect/${provider}`, { method: "POST" });
       if (res.ok) {
         showToast("Calendar disconnected successfully.", "success");
         await fetchCalendarStatus();
@@ -332,13 +406,14 @@ export default function IntegrationsPage() {
                         Disconnect
                       </button>
                     ) : (
-                      <a
-                        href={`/api/calendar/connect/${provider}`}
+                      <button
+                        type="button"
+                        onClick={() => void connectCalendar(provider)}
                         className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:border-[#6c63ff]/30 hover:bg-[#faf9ff] hover:text-[#6c63ff] transition-all"
                       >
                         <ArrowRight className="h-3.5 w-3.5" />
                         Connect
-                      </a>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -430,6 +505,30 @@ export default function IntegrationsPage() {
                 {/* Expanded config */}
                 {isExpanded && (
                   <div className="border-t border-slate-100 px-5 pb-5 pt-4 space-y-4">
+                    {/* Gmail: Google account connection required */}
+                    {integration.type === "gmail" && !isGoogleConnected && (
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
+                        <span className="text-lg">⚠️</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-amber-800">Google account required</p>
+                          <p className="mt-0.5 text-xs text-amber-700">Gmail uses your connected Google account to send emails. Connect Google first.</p>
+                          <button
+                            type="button"
+                            onClick={() => void connectCalendar("google")}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+                          >
+                            <ArrowRight className="h-3.5 w-3.5" /> Connect Google Account
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {integration.type === "gmail" && isGoogleConnected && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-2">
+                        <span className="text-sm">✅</span>
+                        <p className="text-xs font-semibold text-emerald-700">Google account connected — emails will be sent from your account.</p>
+                      </div>
+                    )}
+
                     {/* Setup guide */}
                     <div className="rounded-xl bg-slate-50 p-4">
                       <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-500">Setup Guide</p>

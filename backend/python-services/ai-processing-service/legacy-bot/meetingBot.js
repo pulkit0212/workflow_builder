@@ -105,17 +105,28 @@ async function watchMeetingEnd(page, platform, meetingId, onMeetingEnd) {
     "access denied"
   ];
 
+  // Require 2 consecutive end detections to avoid false positives
+  let endConfirmCount = 0;
+
   const checkInterval = setInterval(() => {
     void (async () => {
       try {
         const hasEnded = await watchFn(page);
 
         if (hasEnded) {
-          console.log("[Bot] Meeting end detected");
-          clearInterval(checkInterval);
-          onMeetingEnd(meetingId, "ended");
+          endConfirmCount++;
+          if (endConfirmCount >= 2) {
+            console.log("[Bot] Meeting end confirmed (2 consecutive detections)");
+            clearInterval(checkInterval);
+            onMeetingEnd(meetingId, "ended");
+          } else {
+            console.log("[Bot] Meeting end detected (waiting for confirmation)");
+          }
           return;
         }
+
+        // Reset counter if meeting is still active
+        endConfirmCount = 0;
 
         const bodyText = await page
           .evaluate(() => document.body?.innerText?.toLowerCase() || "")
@@ -133,7 +144,7 @@ async function watchMeetingEnd(page, platform, meetingId, onMeetingEnd) {
         onMeetingEnd(meetingId, "page_closed");
       }
     })();
-  }, 30000);
+  }, 15000); // Check every 15s instead of 30s for faster detection
 
   return checkInterval;
 }

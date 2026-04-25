@@ -13,18 +13,14 @@ import { getMeetingSessionProviderLabel, getMeetingSessionStatusLabel } from "@/
 import type { ReportsResponse } from "@/features/meetings/api";
 import { formatMeetingDateTime, formatMeetingDuration, getMeetingSummaryPreview } from "@/features/meetings/helpers";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
-import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
+import { useApiFetch } from "@/hooks/useApiFetch";
 
 type StatusFilter = "all" | "completed" | "recording" | "failed";
 type DateFilter = "all" | "week" | "month";
 
 function getParticipants(meeting: MeetingSessionRecord) {
-  const owners = Array.from(new Set(meeting.actionItems.map((item) => item.owner).filter(Boolean)));
-
-  if (owners.length > 0) {
-    return owners as string[];
-  }
-
+  const owners = Array.from(new Set((meeting.actionItems ?? []).map((item) => item.owner).filter(Boolean)));
+  if (owners.length > 0) return owners as string[];
   return ["Artivaa"];
 }
 
@@ -154,7 +150,7 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
         ) : null}
         {(meeting.actionItems?.length ?? 0) > 0 && (
           <span className="mt-2 inline-flex items-center rounded-full bg-[#6c63ff]/10 px-2 py-0.5 text-[11px] font-semibold text-[#6c63ff] ring-1 ring-[#6c63ff]/20">
-            {meeting.actionItems.length} action item{meeting.actionItems.length !== 1 ? "s" : ""}
+            {meeting.actionItems!.length} action item{meeting.actionItems!.length !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -174,7 +170,7 @@ function ReportCard({ meeting }: { meeting: MeetingSessionRecord }) {
 
 export function ReportsList() {
   const { activeWorkspaceId } = useWorkspaceContext();
-  const workspaceFetch = useWorkspaceFetch();
+  const apiFetch = useApiFetch();
   const [reports, setReports] = useState<MeetingSessionRecord[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -206,7 +202,7 @@ export function ReportsList() {
       date: params.date,
       search: params.search,
     });
-    const response = await workspaceFetch(`/api/meetings/reports?${query.toString()}`, {
+    const response = await apiFetch(`/api/meetings/reports?${query.toString()}`, {
       cache: "no-store",
     });
     const payload = (await response.json()) as ReportsResponse | { success: false; message: string; details?: { error?: string } };

@@ -7,6 +7,7 @@ import { DashboardAccount, type DashboardProfile } from "@/components/layout/das
 import { DashboardMobileNav } from "@/components/layout/dashboard-mobile-nav";
 import { hasClerkPublishableKey } from "@/lib/auth/clerk-env";
 import { cn } from "@/lib/utils";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 const pageTitles: Array<{ match: (pathname: string) => boolean; title: string }> = [
   { match: (pathname) => pathname === "/dashboard", title: "Dashboard" },
@@ -38,6 +39,7 @@ type DashboardHeaderProps = {
 export function DashboardHeader({ profile }: DashboardHeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const apiFetch = useApiFetch();
   const pageTitle = pageTitles.find((item) => item.match(pathname))?.title ?? "Artivaa";
 
   const [query, setQuery] = useState("");
@@ -55,7 +57,7 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
     debounceRef.current = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
+        const res = await apiFetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
         const data = (await res.json()) as { results?: SearchResult[] };
         setResults(data.results ?? []);
         setIsOpen(true);

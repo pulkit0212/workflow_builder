@@ -1,83 +1,32 @@
-import { auth } from "@clerk/nextjs/server";
-import { apiError, apiSuccess } from "@/lib/api-responses";
-import { ensureDatabaseReady } from "@/lib/db/bootstrap";
-import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
-import { createWorkspaceSchema } from "@/features/workspaces/schema";
-import { createWorkspace as createWorkspaceRecord } from "@/lib/db/mutations/workspaces";
-import { listWorkspacesForUser } from "@/lib/db/queries/workspaces";
+import { NextRequest, NextResponse } from "next/server";
+import { apiFetch } from "@/lib/api-client.server";
 
-export async function GET() {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return apiError("Unauthorized.", 401);
-  }
-
+export async function GET(_req: NextRequest) {
   try {
-    await ensureDatabaseReady();
-    const user = await syncCurrentUserToDatabase(userId);
-    const workspaces = await listWorkspacesForUser(user.id);
-
-    return apiSuccess({
-      success: true,
-      workspaces: workspaces.map((workspace) => ({
-        ...workspace,
-        createdAt: workspace.createdAt.toISOString()
-      }))
-    });
-  } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Failed to load workspaces.", 500);
+    const backendRes = await apiFetch("/api/workspaces", { cache: "no-store" });
+    const data = await backendRes.json();
+    return NextResponse.json(data, { status: backendRes.status });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(request: Request) {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return apiError("Unauthorized.", 401);
-  }
-
-  let body: unknown;
-
+export async function POST(req: NextRequest) {
   try {
-    body = await request.json();
-  } catch {
-    return apiError("Request body must be valid JSON.", 400);
-  }
-
-  const parsed = createWorkspaceSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return apiError("Invalid workspace input.", 400, parsed.error.flatten());
-  }
-
-  try {
-    await ensureDatabaseReady();
-    const user = await syncCurrentUserToDatabase(userId);
-    const workspace = await createWorkspaceRecord({
-      ownerId: user.id,
-      name: parsed.data.name,
-      members: parsed.data.members
+    const body = await req.json();
+    const backendRes = await apiFetch("/api/workspaces", {
+      method: "POST",
+      body: JSON.stringify(body),
     });
-
-    const memberCount = parsed.data.members.filter((member) => member.userId !== user.id).length + 1;
-
-    return apiSuccess(
-      {
-        success: true,
-        workspace: {
-          id: workspace.id,
-          name: workspace.name,
-          ownerId: workspace.ownerId,
-          createdAt: workspace.createdAt.toISOString(),
-          role: "owner",
-          memberCount,
-          meetingCount: 0
-        }
-      },
-      201
+    const data = await backendRes.json();
+    return NextResponse.json(data, { status: backendRes.status });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500 }
     );
-  } catch (error) {
-    return apiError(error instanceof Error ? error.message : "Failed to create workspace.", 500);
   }
 }

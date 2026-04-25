@@ -4,12 +4,18 @@ const { spawn } = require("node:child_process");
 const { Pool } = require("pg");
 const { joinMeeting, leaveMeeting, watchMeetingEnd } = require("./meetingBot");
 const { getAudioFileInfo, startRecording, stopRecording, waitForRecordingToFlush } = require("./audioCapture");
-const { summarizeMeeting, summarizeWithRetry } = require("./summarize");
+const { summarizeMeeting, summarizeWithRetry, generateInsights, generateChapters } = require("./summarize");
 const { logger } = require("./logger");
 
-// Load .env.local for DATABASE_URL when running outside Next.js
+// Load env — check bot's own .env first, then repo root .env.local
 try {
-  require("dotenv").config({ path: path.join(process.cwd(), ".env.local") });
+  const botEnv = path.join(__dirname, ".env");
+  const rootEnv = path.join(__dirname, "../../../../..", ".env.local");
+  if (fs.existsSync(botEnv)) {
+    require("dotenv").config({ path: botEnv });
+  } else if (fs.existsSync(rootEnv)) {
+    require("dotenv").config({ path: rootEnv });
+  }
 } catch {
   // dotenv optional — DATABASE_URL may already be in environment
 }
@@ -148,6 +154,11 @@ async function saveSessionToDB(meetingId, data) {
  * Requirements: 2.6
  */
 async function deleteSession(meetingId) {
+  // Only mark as deleted if not already in a terminal state (completed/failed)
+  const existing = await getSessionFromDB(meetingId);
+  if (existing && (existing.status === "completed" || existing.status === "failed")) {
+    return; // Don't overwrite terminal status
+  }
   await saveSessionToDB(meetingId, { status: "deleted" });
 }
 
@@ -280,12 +291,26 @@ async function releaseActiveResources(meetingId, session) {
 async function transcribeAsync(audioPath) {
   return new Promise((resolve, reject) => {
     const transcribeScript = path.join(BOT_DIR, "transcribe.py");
-    const proc = spawn('python3', [transcribeScript, audioPath]);
+    // Use venv python if available, fall back to system python3
+    const venvPython = path.join(process.env.HOME || "", ".whisper-venv/bin/python3");
+    const pythonBin = fs.existsSync(venvPython) ? venvPython : "python3";
+    const proc = spawn(pythonBin, [transcribeScript, audioPath]);
     let stdout = '';
     let stderr = '';
     proc.stdout.on('data', d => stdout += d);
     proc.stderr.on('data', d => stderr += d);
-    proc.on('close', code => code === 0 ? resolve(stdout) : reject(new Error(stderr)));
+    proc.on('close', code => {
+      const trimmed = stdout.trim();
+      // If stdout has JSON content, resolve regardless of exit code
+      // (Whisper/tqdm can exit non-zero even on success)
+      if (trimmed && trimmed.startsWith('{')) {
+        resolve(trimmed);
+      } else if (code === 0) {
+        resolve(trimmed);
+      } else {
+        reject(new Error(stderr || `Process exited with code ${code}`));
+      }
+    });
   });
 }
 
@@ -740,10 +765,26 @@ async function stopBot(meetingId, onStatusUpdate) {
       actionItemCount: Array.isArray(summary.action_items) ? summary.action_items.length : 0,
     });
 
+    logger.info("Stop", "Generating insights and chapters", { sessionId: meetingId });
+    const meetingDurationSec = meetingDurationSeconds ?? (
+      session?.recordingStartedAt
+        ? Math.round((Date.now() - new Date(session.recordingStartedAt).getTime()) / 1000)
+        : 0
+    );
+
+    const [insights, chapters] = await Promise.all([
+      generateInsights(transcript, meetingDurationSec).catch(() => null),
+      generateChapters(transcript, meetingDurationSec).catch(() => []),
+    ]);
+
+    if (insights) {
+      botLog(meetingId, "insights_generated", { engagementScore: insights.engagementScore });
+    }
+
     logger.info("Stop", "Saving to database", { sessionId: meetingId });
     // Save participants extracted by Gemini
     if (Array.isArray(summary.participants) && summary.participants.length > 0) {
-      await saveSessionToDB(meetingId, { participants: summary.participants });
+      await saveSessionToDB(meetingId, { participants: JSON.stringify(summary.participants) });
     }
 
     // Save action items to action_items table (non-fatal)
@@ -792,13 +833,39 @@ async function stopBot(meetingId, onStatusUpdate) {
       recordingEndedAt,
       transcript,
       summary,
+      insights: insights ?? undefined,
+      chapters: chapters ?? undefined,
       meetingDurationSeconds: meetingDurationSeconds ?? null,
       outputPath: session.outputPath,
     });
     logger.info("Stop", "Meeting completed successfully", { sessionId: meetingId });
 
-    // Cleanup: delete temp audio file after successful copy to private/recordings/
+    // Copy temp audio to private/recordings/ before cleanup, then update DB path
+    const RECORDINGS_DIR = path.join(PROJECT_ROOT, "..", "..", "express-api", "private", "recordings");
+    let finalRecordingPath = session.outputPath;
     if (session.outputPath && fs.existsSync(session.outputPath)) {
+      try {
+        if (!fs.existsSync(RECORDINGS_DIR)) {
+          fs.mkdirSync(RECORDINGS_DIR, { recursive: true });
+        }
+        const destPath = path.join(RECORDINGS_DIR, `meeting-${meetingId}.wav`);
+        fs.copyFileSync(session.outputPath, destPath);
+        finalRecordingPath = destPath;
+        console.log("[Cleanup] Copied audio to:", destPath);
+        // Update DB with the permanent path
+        if (dbPool) {
+          await dbPool.query(
+            `UPDATE meeting_sessions SET recording_file_path = $1 WHERE id = $2`,
+            [destPath, meetingId]
+          );
+        }
+      } catch (e) {
+        console.warn("[Cleanup] Could not copy to recordings dir:", e instanceof Error ? e.message : e);
+      }
+    }
+
+    // Cleanup: delete temp audio file after successful copy to private/recordings/
+    if (session.outputPath && fs.existsSync(session.outputPath) && finalRecordingPath !== session.outputPath) {
       try {
         fs.unlinkSync(session.outputPath);
         console.log("[Cleanup] Deleted temp audio:", session.outputPath);
@@ -839,9 +906,13 @@ async function stopBot(meetingId, onStatusUpdate) {
 }
 
 /**
- * On bot process startup, finds any sessions stuck in 'capturing' or 'waiting_for_join'
- * from a previous run and marks them as failed if their ffmpeg process is no longer alive.
- * Requirements: 2.7, 3.10
+ * On bot process startup, finds any sessions stuck in 'capturing', 'waiting_for_join',
+ * 'processing', or 'summarizing' from a previous run and marks them as failed.
+ * - For 'capturing'/'waiting_for_join': checks if ffmpeg process is still alive; marks
+ *   failed only if the process is gone.
+ * - For 'processing'/'summarizing': no ffmpeg_pid to check — marks failed unconditionally
+ *   since the server restart means the in-flight work is lost.
+ * Requirements: 2.8, 3.8
  */
 async function recoverStuckSessions() {
   if (!dbPool) {
@@ -851,7 +922,7 @@ async function recoverStuckSessions() {
 
   try {
     const result = await dbPool.query(
-      "SELECT id, ffmpeg_pid FROM meeting_sessions WHERE status IN ('capturing', 'waiting_for_join')"
+      "SELECT id, ffmpeg_pid, status FROM meeting_sessions WHERE status IN ('capturing', 'waiting_for_join', 'processing', 'summarizing')"
     );
 
     if (result.rows.length === 0) {
@@ -864,10 +935,11 @@ async function recoverStuckSessions() {
     for (const row of result.rows) {
       const meetingId = row.id;
       const ffmpegPid = row.ffmpeg_pid;
-      const isAlive = ffmpegPid != null && isProcessRunning(ffmpegPid);
+      const status = row.status;
 
-      if (!isAlive) {
-        console.log(`[Bot] recoverStuckSessions: marking session ${meetingId} as failed (pid ${ffmpegPid} not running)`);
+      if (status === "processing" || status === "summarizing") {
+        // No ffmpeg process to check — server restart means in-flight work is lost
+        console.log(`[Bot] recoverStuckSessions: marking session ${meetingId} (status=${status}) as failed (server restart)`);
         await saveSessionToDB(meetingId, {
           status: "failed",
           errorCode: "server_restart",
@@ -875,7 +947,20 @@ async function recoverStuckSessions() {
           failedAt: new Date().toISOString(),
         });
       } else {
-        console.log(`[Bot] recoverStuckSessions: session ${meetingId} has live pid ${ffmpegPid} — leaving untouched`);
+        // 'capturing' or 'waiting_for_join': check if ffmpeg is still alive
+        const isAlive = ffmpegPid != null && isProcessRunning(ffmpegPid);
+
+        if (!isAlive) {
+          console.log(`[Bot] recoverStuckSessions: marking session ${meetingId} as failed (pid ${ffmpegPid} not running)`);
+          await saveSessionToDB(meetingId, {
+            status: "failed",
+            errorCode: "server_restart",
+            failureReason: "Server restarted while session was active",
+            failedAt: new Date().toISOString(),
+          });
+        } else {
+          console.log(`[Bot] recoverStuckSessions: session ${meetingId} has live pid ${ffmpegPid} — leaving untouched`);
+        }
       }
     }
   } catch (err) {
@@ -884,5 +969,141 @@ async function recoverStuckSessions() {
 }
 
 recoverStuckSessions();
+
+// ─── HTTP Server — Express backend calls POST /start and POST /stop ──────────
+
+const http = require("node:http");
+
+async function onStatusUpdate(meetingId, status, extra = {}) {
+  if (!dbPool) return;
+
+  // Deduplicate: recordingFilePath and outputPath both map to recording_file_path
+  const recordingFilePath = extra.recordingFilePath ?? extra.outputPath ?? undefined;
+
+  const columnMap = {
+    errorCode: "error_code",
+    failureReason: "failure_reason",
+    failedAt: "failed_at",
+    recordingStartedAt: "recording_started_at",
+    recordingEndedAt: "recording_ended_at",
+    transcript: "transcript",
+    meetingDurationSeconds: "meeting_duration",
+  };
+
+  const setClauses = [`status = $1`, `updated_at = NOW()`];
+  const values = [status];
+  let idx = 2;
+
+  if (recordingFilePath !== undefined) {
+    setClauses.push(`recording_file_path = $${idx++}`);
+    values.push(recordingFilePath);
+  }
+
+  for (const [key, col] of Object.entries(columnMap)) {
+    if (Object.prototype.hasOwnProperty.call(extra, key) && extra[key] !== undefined) {
+      setClauses.push(`${col} = $${idx++}`);
+      values.push(extra[key]);
+    }
+  }
+
+  // Handle summary object
+  if (extra.summary) {
+    const s = extra.summary;
+    const fields = [
+      ["summary", s.summary ?? null],
+      ["key_points", JSON.stringify(s.key_points ?? s.key_topics ?? [])],
+      ["key_decisions", JSON.stringify(s.key_decisions ?? [])],
+      ["action_items", JSON.stringify(s.action_items ?? [])],
+      ["risks_and_blockers", JSON.stringify(s.risks_and_blockers ?? [])],
+    ];
+    for (const [col, val] of fields) {
+      setClauses.push(`${col} = $${idx++}`);
+      values.push(val);
+    }
+  }
+
+  // Save AI-generated insights (from generateInsights call)
+  if (extra.insights) {
+    setClauses.push(`insights = $${idx++}`);
+    values.push(JSON.stringify(extra.insights));
+  }
+
+  // Save AI-generated chapters
+  if (extra.chapters && Array.isArray(extra.chapters) && extra.chapters.length > 0) {
+    setClauses.push(`chapters = $${idx++}`);
+    values.push(JSON.stringify(extra.chapters));
+  }
+
+  values.push(meetingId);
+  const sql = `UPDATE meeting_sessions SET ${setClauses.join(", ")} WHERE id = $${idx}`;
+  try {
+    await dbPool.query(sql, values);
+  } catch (err) {
+    console.error(`[Bot] onStatusUpdate failed for ${meetingId}:`, err.message);
+  }
+}
+
+const server = http.createServer(async (req, res) => {
+  const chunks = [];
+  req.on("data", c => chunks.push(c));
+  req.on("end", async () => {
+    let body = {};
+    try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* ignore */ }
+
+    res.setHeader("Content-Type", "application/json");
+
+    if (req.method === "POST" && req.url === "/start") {
+      const { meetingId } = body;
+      if (!meetingId) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "meetingId required" }));
+        return;
+      }
+      // Fetch meeting link from DB
+      let meetingUrl = body.meetingUrl;
+      if (!meetingUrl && dbPool) {
+        try {
+          const r = await dbPool.query("SELECT meeting_link FROM meeting_sessions WHERE id = $1", [meetingId]);
+          meetingUrl = r.rows[0]?.meeting_link ?? null;
+        } catch { /* ignore */ }
+      }
+      if (!meetingUrl) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "meeting link not found" }));
+        return;
+      }
+      res.writeHead(202);
+      res.end(JSON.stringify({ status: "accepted" }));
+      // Start bot async
+      startBot(meetingId, meetingUrl, onStatusUpdate).catch(err =>
+        console.error("[Server] startBot error:", err.message)
+      );
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/stop") {
+      const { meetingId } = body;
+      if (!meetingId) {
+        res.writeHead(400);
+        res.end(JSON.stringify({ error: "meetingId required" }));
+        return;
+      }
+      res.writeHead(202);
+      res.end(JSON.stringify({ status: "accepted" }));
+      stopBot(meetingId, onStatusUpdate).catch(err =>
+        console.error("[Server] stopBot error:", err.message)
+      );
+      return;
+    }
+
+    res.writeHead(404);
+    res.end(JSON.stringify({ error: "Not found" }));
+  });
+});
+
+const PORT = process.env.BOT_PORT ?? 8000;
+server.listen(PORT, () => {
+  console.log(`[Bot] HTTP server listening on port ${PORT}`);
+});
 
 module.exports = { startBot, stopBot, isProcessRunning, recoverStuckSessions, transcribeAsync, transcribeWithRetry, transcribeQueued };

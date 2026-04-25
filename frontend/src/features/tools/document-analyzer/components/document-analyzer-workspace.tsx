@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/tools/copy-button";
 import { LoadingSpinner } from "@/components/tools/loading-spinner";
 import { cn } from "@/lib/utils";
+import { clientApiFetch } from "@/lib/api-client";
 
 type ExtractOption = "summary" | "actionItems" | "keyPoints" | "decisions" | "risks" | "rawInsights";
 
@@ -245,12 +246,12 @@ export function DocumentAnalyzerWorkspace() {
     try {
       const extractOptionValues = (Object.entries(extractOptions).filter(([, v]) => v).map(([k]) => k) as ExtractOption[]);
       const response = mode === "text" || (!hasFile && hasText)
-        ? await fetch("/api/tools/document-analyzer", {
+        ? await clientApiFetch("/api/tools/document-analyzer", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ text: text.trim(), extractOptions: extractOptionValues }),
           })
-        : await fetch("/api/tools/document-analyzer", {
+        : await clientApiFetch("/api/tools/document-analyzer", {
             method: "POST",
             body: (() => { const fd = new FormData(); fd.append("file", file as File); fd.append("extractOptions", JSON.stringify(extractOptionValues)); return fd; })(),
           });
@@ -270,7 +271,7 @@ export function DocumentAnalyzerWorkspace() {
     setIsSavingItems(true); setError(null);
     try {
       const selectedItems = selectedIndices.map((i) => result.action_items[i]).filter(Boolean);
-      const res = await fetch("/api/action-items/bulk-save", {
+      const res = await clientApiFetch("/api/action-items/bulk-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

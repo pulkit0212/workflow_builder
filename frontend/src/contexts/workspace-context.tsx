@@ -8,6 +8,8 @@ import React, {
   useState,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
+import { createApiFetch } from '@/lib/api-client';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +53,12 @@ const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { getToken, isLoaded } = useAuth();
+
+  const apiFetch = createApiFetch(async () => {
+    if (!isLoaded) await new Promise((r) => setTimeout(r, 500));
+    try { return await getToken(); } catch { return null; }
+  });
 
   // Resolve initial activeWorkspaceId:
   // 1. URL ?workspace param (authoritative)
@@ -85,10 +93,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   // ---------------------------------------------------------------------------
   const refreshWorkspaces = useCallback(async () => {
     try {
-      const res = await fetch('/api/workspaces');
+      const res = await apiFetch('/api/workspaces');
       if (!res.ok) return;
-      const data = (await res.json()) as { workspaces?: WorkspaceInfo[] };
-      const list: WorkspaceInfo[] = data.workspaces ?? [];
+      const data = (await res.json()) as WorkspaceInfo[] | { workspaces?: WorkspaceInfo[] };
+      const list: WorkspaceInfo[] = Array.isArray(data) ? data : (data.workspaces ?? []);
       setWorkspaces(list);
 
       // If active workspace is no longer in the list, fall back to personal

@@ -1,96 +1,32 @@
-import { auth } from "@clerk/nextjs/server";
-import { apiError, apiSuccess } from "@/lib/api-responses";
-import { ensureDatabaseReady } from "@/lib/db/bootstrap";
-import { syncCurrentUserToDatabase } from "@/lib/auth/current-user";
-import { createMeetingSessionSchema } from "@/features/meeting-assistant/schema";
-import { createMeetingSession } from "@/lib/db/mutations/meeting-sessions";
-import { listMeetingSessionsByUser } from "@/lib/db/queries/meeting-sessions";
-import { toMeetingSessionRecord } from "@/features/meeting-assistant/server/session-record";
-import { isMissingDatabaseRelationError } from "@/lib/db/errors";
-import { resolveWorkspaceIdForRequest } from "@/lib/workspaces/server";
+import { NextRequest, NextResponse } from "next/server";
+import { apiFetch } from "@/lib/api-client.server";
 
-export async function GET(request: Request) {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return apiError("Unauthorized.", 401);
-  }
-
+export async function GET(_req: NextRequest) {
   try {
-    await ensureDatabaseReady();
-    const user = await syncCurrentUserToDatabase(userId);
-    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
-
-    // /api/meetings GET always shows only the current user's own meetings
-    // regardless of workspace mode — workspace meetings are shown via /api/workspace/[id]/meetings
-    const meetings = await listMeetingSessionsByUser(user.id, null, {
-      excludeDrafts: true
-    });
-
-    return apiSuccess({
-      success: true,
-      meetings: meetings.map(toMeetingSessionRecord)
-    });
-  } catch (error) {
-    if (isMissingDatabaseRelationError(error)) {
-      return apiError(
-        "Your database tables are not set up yet. Run your database migrations, then try again.",
-        503
-      );
-    }
-
-    return apiError(error instanceof Error ? error.message : "Failed to load meetings.", 500);
+    const backendRes = await apiFetch("/api/meetings", { cache: "no-store" });
+    const data = await backendRes.json();
+    return NextResponse.json(data, { status: backendRes.status });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(request: Request) {
-  const { userId } = await auth();
-
-  if (!userId) {
-    return apiError("Unauthorized.", 401);
-  }
-
-  let body: unknown;
-
+export async function POST(req: NextRequest) {
   try {
-    body = await request.json();
-  } catch {
-    return apiError("Request body must be valid JSON.", 400);
-  }
-
-  const parsed = createMeetingSessionSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return apiError("Invalid meeting session input.", 400, parsed.error.flatten());
-  }
-
-  try {
-    await ensureDatabaseReady();
-    const user = await syncCurrentUserToDatabase(userId);
-    const workspaceId = await resolveWorkspaceIdForRequest(request, user.id);
-
-    const session = await createMeetingSession({
-      userId: user.id,
-      workspaceId: null, // meetings always start in personal — user must explicitly share to workspace
-      provider: parsed.data.provider,
-      title: parsed.data.title,
-      meetingLink: parsed.data.meetingLink,
-      notes: parsed.data.notes || undefined,
-      status: "draft"
+    const body = await req.json();
+    const backendRes = await apiFetch("/api/meetings", {
+      method: "POST",
+      body: JSON.stringify(body),
     });
-
-    return apiSuccess({
-      success: true,
-      session: toMeetingSessionRecord(session)
-    });
-  } catch (error) {
-    if (isMissingDatabaseRelationError(error)) {
-      return apiError(
-        "Your database tables are not set up yet. Run your database migrations, then try again.",
-        503
-      );
-    }
-
-    return apiError(error instanceof Error ? error.message : "Failed to create meeting session.", 500);
+    const data = await backendRes.json();
+    return NextResponse.json(data, { status: backendRes.status });
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Server error" },
+      { status: 500 }
+    );
   }
 }

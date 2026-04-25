@@ -12,6 +12,7 @@ import type {
   MeetingStopResponse
 } from "@/features/meetings/types";
 import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
+import { clientApiFetch } from "@/lib/api-client";
 
 function getMeetingsErrorMessage(payload: MeetingSessionErrorResponse) {
   return payload.message;
@@ -52,6 +53,7 @@ export type TodayMeetingsResult =
     };
 
 export type ReportsResponse = {
+  success?: boolean;
   meetings: MeetingSessionRecord[];
   pagination: {
     total: number;
@@ -62,7 +64,7 @@ export type ReportsResponse = {
 };
 
 export async function fetchBotProfileStatus() {
-  const response = await fetch("/api/bot/profile-status", {
+  const response = await clientApiFetch("/api/bot/profile-status", {
     cache: "no-store"
   });
 
@@ -76,7 +78,7 @@ export async function fetchBotProfileStatus() {
 }
 
 export async function fetchMeetings() {
-  const response = await fetch("/api/meetings", {
+  const response = await clientApiFetch("/api/meetings", {
     cache: "no-store"
   });
   const payload = (await response.json()) as MeetingSessionListResponse | MeetingSessionErrorResponse;
@@ -89,7 +91,7 @@ export async function fetchMeetings() {
 }
 
 export async function fetchTodayMeetings() {
-  const response = await fetch("/api/meetings/today", {
+  const response = await clientApiFetch("/api/meetings/today", {
     cache: "no-store"
   });
   const payload = (await response.json()) as GoogleCalendarMeeting[] | MeetingSessionErrorResponse;
@@ -139,7 +141,7 @@ export async function fetchTodayMeetings() {
 }
 
 export async function fetchJoinedMeetings() {
-  const response = await fetch("/api/meetings/joined", {
+  const response = await clientApiFetch("/api/meetings/joined", {
     cache: "no-store"
   });
   const payload = (await response.json()) as MeetingSessionListResponse | MeetingSessionErrorResponse;
@@ -152,7 +154,7 @@ export async function fetchJoinedMeetings() {
 }
 
 export async function fetchUpcomingMeetings() {
-  const response = await fetch("/api/meetings/upcoming", {
+  const response = await clientApiFetch("/api/meetings/upcoming", {
     cache: "no-store"
   });
   const payload = (await response.json()) as GoogleCalendarMeeting[] | MeetingSessionErrorResponse;
@@ -193,7 +195,7 @@ export async function fetchMeetingReports(params: {
     date: params.date,
     search: params.search
   });
-  const response = await fetch(`/api/meetings/reports?${query.toString()}`, {
+  const response = await clientApiFetch(`/api/meetings/reports?${query.toString()}`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as ReportsResponse | MeetingSessionErrorResponse;
@@ -214,7 +216,7 @@ export async function fetchMeetingReports(params: {
 }
 
 export async function fetchMeetingById(id: string) {
-  const response = await fetch(`/api/meetings/${id}`, {
+  const response = await clientApiFetch(`/api/meetings/${id}`, {
     cache: "no-store",
     credentials: "same-origin"
   });
@@ -232,7 +234,7 @@ export async function fetchMeetingById(id: string) {
 }
 
 export async function startMeetingCapture(id: string, meetingUrl: string) {
-  const response = await fetch(`/api/meetings/${id}/start`, {
+  const response = await clientApiFetch(`/api/meetings/${id}/bot/start`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -241,6 +243,18 @@ export async function startMeetingCapture(id: string, meetingUrl: string) {
       meetingUrl
     })
   });
+
+  // bot/start returns 202 { status: "accepted" } on success, not a MeetingStartResponse
+  if (response.status === 202) {
+    // Fetch the updated meeting to return it
+    const meetingRes = await clientApiFetch(`/api/meetings/${id}`, { cache: "no-store" });
+    const meetingPayload = (await meetingRes.json()) as MeetingDetailResponse | MeetingSessionErrorResponse;
+    if (!meetingRes.ok || !meetingPayload.success) {
+      throw new Error("Bot started but failed to fetch updated meeting.");
+    }
+    return { success: true as const, meeting: meetingPayload.meeting, status: "bot_starting" as const, message: "Bot is starting." };
+  }
+
   const payload = (await response.json()) as MeetingStartResponse | MeetingSessionErrorResponse;
 
   if (!response.ok || !payload.success) {
@@ -261,9 +275,20 @@ export async function startMeetingCapture(id: string, meetingUrl: string) {
 }
 
 export async function stopMeetingCapture(id: string) {
-  const response = await fetch(`/api/meetings/${id}/stop`, {
+  const response = await clientApiFetch(`/api/meetings/${id}/bot/stop`, {
     method: "POST"
   });
+
+  // bot/stop returns 202 { status: "accepted" }
+  if (response.status === 202) {
+    const meetingRes = await clientApiFetch(`/api/meetings/${id}`, { cache: "no-store" });
+    const meetingPayload = (await meetingRes.json()) as MeetingDetailResponse | MeetingSessionErrorResponse;
+    if (!meetingRes.ok || !meetingPayload.success) {
+      throw new Error("Bot stopped but failed to fetch updated meeting.");
+    }
+    return meetingPayload.meeting;
+  }
+
   const payload = (await response.json()) as MeetingStopResponse | MeetingSessionErrorResponse;
 
   if (!response.ok || !payload.success) {
@@ -276,7 +301,7 @@ export async function stopMeetingCapture(id: string) {
 }
 
 export async function fetchMeetingStatus(id: string) {
-  const response = await fetch(`/api/meetings/${id}/status`, {
+  const response = await clientApiFetch(`/api/meetings/${id}/status`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as MeetingStatusResponse | MeetingSessionErrorResponse;
@@ -296,13 +321,20 @@ export async function fetchUnifiedCalendarFeed(startDate: Date, endDate: Date): 
   const params = new URLSearchParams({
     startDate: startDate.toISOString(),
     endDate: endDate.toISOString()
+    // no format param = JSON response
   });
-  const response = await fetch(`/api/meetings/calendar-feed?${params.toString()}`, {
+  const response = await clientApiFetch(`/api/meetings/calendar-feed?${params.toString()}`, {
     cache: "no-store"
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to load calendar feed: ${response.statusText}`);
+    return { meetings: [] };
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/calendar")) {
+    // iCal response — return empty (shouldn't happen without format=ical)
+    return { meetings: [] };
   }
 
   return (await response.json()) as CalendarFeedResponse;

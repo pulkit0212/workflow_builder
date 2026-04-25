@@ -1,5 +1,3 @@
-import { getUserIntegration } from "@/lib/db/queries/user-integrations";
-import { upsertUserIntegration } from "@/lib/db/mutations/user-integrations";
 import type { CalendarClient, UnifiedCalendarMeeting } from "@/lib/calendar/types";
 
 const microsoftLogPrefix = "[microsoft-calendar]";
@@ -120,8 +118,6 @@ async function refreshMicrosoftAccessToken(params: {
   provider: MicrosoftProvider;
   refreshToken: string;
 }): Promise<{ accessToken: string; refreshToken: string; expiry: Date | null }> {
-  const existing = await getUserIntegration(params.userId, params.provider);
-
   const response = await fetch(AZURE_TOKEN_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -134,32 +130,14 @@ async function refreshMicrosoftAccessToken(params: {
   });
 
   if (!response.ok) {
-    console.error(`${microsoftLogPrefix} token refresh failed`, {
-      userId: params.userId,
-      provider: params.provider,
-      status: response.status,
-    });
     throw new MicrosoftCalendarAuthRequiredError();
   }
 
   const payload = (await response.json()) as MicrosoftTokenResponse;
-
-  if (!payload.access_token) {
-    throw new MicrosoftCalendarAuthRequiredError();
-  }
+  if (!payload.access_token) throw new MicrosoftCalendarAuthRequiredError();
 
   const expiry = payload.expires_in ? new Date(Date.now() + payload.expires_in * 1000) : null;
   const newRefreshToken = payload.refresh_token ?? params.refreshToken;
-
-  await upsertUserIntegration({
-    userId: params.userId,
-    provider: params.provider,
-    email: existing?.email ?? null,
-    scopes: existing?.scopes ?? null,
-    accessToken: payload.access_token,
-    refreshToken: newRefreshToken,
-    expiry,
-  });
 
   return { accessToken: payload.access_token, refreshToken: newRefreshToken, expiry };
 }
@@ -217,42 +195,9 @@ async function fetchGraphEvents(params: {
 function createMicrosoftCalendarClient(provider: MicrosoftProvider): CalendarClient {
   return {
     async fetchMeetings({ accessToken, refreshToken, userId, startDate, endDate }) {
-      // Check token expiry and proactively refresh if within 60 seconds
-      const integration = await getUserIntegration(userId, provider);
-      let currentAccessToken = accessToken;
-      let currentRefreshToken = refreshToken;
-
-      if (integration) {
-        const expiryTime = integration.expiry ? integration.expiry.getTime() : null;
-        const needsRefresh = Boolean(
-          integration.refreshToken &&
-            expiryTime &&
-            expiryTime <= Date.now() + 60 * 1000
-        );
-
-        if (needsRefresh && integration.refreshToken) {
-          try {
-            const refreshed = await refreshMicrosoftAccessToken({
-              userId,
-              provider,
-              refreshToken: integration.refreshToken,
-            });
-            currentAccessToken = refreshed.accessToken;
-            currentRefreshToken = refreshed.refreshToken;
-          } catch (err) {
-            console.error(`${microsoftLogPrefix} proactive token refresh failed`, { userId, provider });
-            throw err instanceof MicrosoftCalendarAuthRequiredError
-              ? err
-              : new MicrosoftCalendarAuthRequiredError();
-          }
-        } else if (expiryTime && expiryTime <= Date.now() + 60 * 1000 && !integration.refreshToken) {
-          throw new MicrosoftCalendarAuthRequiredError();
-        }
-      }
-
       const payload = await fetchGraphEvents({
-        accessToken: currentAccessToken,
-        refreshToken: currentRefreshToken,
+        accessToken,
+        refreshToken,
         userId,
         provider,
         startDateTime: startDate.toISOString(),

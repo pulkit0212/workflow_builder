@@ -30,6 +30,7 @@ import type {
 } from "@/features/tools/meeting-summarizer/types";
 import { toolRegistry } from "@/lib/ai/tool-registry";
 import { getUserMediaAudioStream } from "@/lib/media/get-user-media-audio";
+import { useApiFetch } from "@/hooks/useApiFetch";
 
 type MeetingSummarizerWorkspaceProps = {
   initialRun?: ToolRunResponse<MeetingSummarizerOutput>["run"] | null;
@@ -169,6 +170,7 @@ export function MeetingSummarizerWorkspace({
   defaultTranscriptionProvider
 }: MeetingSummarizerWorkspaceProps) {
   const tool = toolRegistry["meeting-summarizer"];
+  const apiFetch = useApiFetch();
   const [latestRun, setLatestRun] = useState(initialRun);
   const [serverError, setServerError] = useState<InlineErrorState>(
     initialError
@@ -496,7 +498,7 @@ export function MeetingSummarizerWorkspace({
     startTransition(async () => {
       try {
         setAudioFlowState("transcribing");
-        const transcription = await transcribeMeetingRecording(recordedAudio.file, transcriptionProvider);
+        const transcription = await transcribeMeetingRecording(recordedAudio.file, transcriptionProvider, apiFetch);
         const transcriptText = transcription.transcript.trim();
 
         if (!transcriptText) {

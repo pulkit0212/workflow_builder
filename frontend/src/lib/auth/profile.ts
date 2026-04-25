@@ -1,6 +1,4 @@
-import { getCurrentClerkUser, getCurrentAppUser, syncCurrentUserToDatabase } from "@/lib/auth/current-user";
-import { isDatabaseConfigured } from "@/lib/db/client";
-import { isMissingDatabaseRelationError } from "@/lib/db/errors";
+import { getCurrentClerkUser } from "@/lib/auth/current-user";
 
 export type AuthenticatedProfile = {
   id: string;
@@ -16,54 +14,16 @@ export async function getCurrentAuthenticatedProfile(options?: {
   sync?: boolean;
 }): Promise<AuthenticatedProfile | null> {
   const clerkUser = await getCurrentClerkUser(options?.expectedClerkUserId);
+  if (!clerkUser) return null;
 
-  if (!clerkUser) {
-    return null;
-  }
-
-  if (!isDatabaseConfigured) {
-    return {
-      id: clerkUser.clerkUserId,
-      clerkUserId: clerkUser.clerkUserId,
-      email: clerkUser.email,
-      fullName: clerkUser.fullName,
-      plan: "free",
-      source: "clerk"
-    };
-  }
-
-  let appUser = null;
-
-  try {
-    appUser = options?.sync ?? true
-      ? await syncCurrentUserToDatabase(clerkUser.clerkUserId)
-      : await getCurrentAppUser({
-          expectedClerkUserId: clerkUser.clerkUserId,
-          sync: false
-        });
-  } catch (error) {
-    if (!isMissingDatabaseRelationError(error)) {
-      throw error;
-    }
-  }
-
-  if (!appUser) {
-    return {
-      id: clerkUser.clerkUserId,
-      clerkUserId: clerkUser.clerkUserId,
-      email: clerkUser.email,
-      fullName: clerkUser.fullName,
-      plan: "free",
-      source: "clerk"
-    };
-  }
-
+  // Return Clerk-based profile — the Express backend handles DB sync on every API call.
+  // The dashboard-account component refreshes the plan from /api/profile/me after load.
   return {
-    id: appUser.id,
-    clerkUserId: appUser.clerkUserId,
-    email: appUser.email,
-    fullName: appUser.fullName,
-    plan: appUser.plan,
-    source: "database"
+    id: clerkUser.clerkUserId,
+    clerkUserId: clerkUser.clerkUserId,
+    email: clerkUser.email,
+    fullName: clerkUser.fullName,
+    plan: "free",
+    source: "clerk",
   };
 }

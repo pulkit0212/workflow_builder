@@ -10,6 +10,7 @@ import { CopyButton } from "@/components/tools/copy-button";
 import { LoadingSpinner } from "@/components/tools/loading-spinner";
 import { cn } from "@/lib/utils";
 import { fetchMeetingReports } from "@/features/meetings/api";
+import { clientApiFetch } from "@/lib/api-client";
 
 type MeetingOption = {
   id: string;
@@ -92,7 +93,7 @@ export function EmailGeneratorWorkspace() {
     if (!context.trim()) { setError("Meeting context is required."); return; }
     setIsGenerating(true); setError(null);
     try {
-      const res = await fetch("/api/tools/email-generator", {
+      const res = await clientApiFetch("/api/tools/email-generator", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ context, emailType, tone, recipients }),

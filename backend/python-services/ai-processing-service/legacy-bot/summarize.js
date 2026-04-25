@@ -1,6 +1,14 @@
 const path = require("node:path");
+const fs = require("node:fs");
 
-require("dotenv").config({ path: path.join(process.cwd(), ".env.local") });
+// Load bot's own .env first, then fall back to repo root .env.local
+const botEnv = path.join(__dirname, ".env");
+const rootEnv = path.join(__dirname, "../../../../..", ".env.local");
+if (fs.existsSync(botEnv)) {
+  require("dotenv").config({ path: botEnv });
+} else if (fs.existsSync(rootEnv)) {
+  require("dotenv").config({ path: rootEnv });
+}
 
 const GEMINI_MODEL = "gemini-2.5-flash";
 
@@ -211,3 +219,131 @@ async function summarizeWithRetry(transcript, maxRetries = 3) {
     }
   }
 }
+
+// ─── Insights Generation ──────────────────────────────────────────────────────
+
+function getEmptyInsights() {
+  return {
+    speakers: [],
+    sentiment: { overall: "neutral", score: 50, timeline: [] },
+    topics: [],
+    wordCloud: [],
+    engagementScore: 0,
+    totalWords: 0,
+    avgWordsPerMinute: 0,
+    keyMoments: [],
+  };
+}
+
+async function generateInsights(transcript, meetingDurationSeconds) {
+  if (!transcript || transcript.length < 50) return getEmptyInsights();
+  if (!process.env.GEMINI_API_KEY) return getEmptyInsights();
+
+  const meetingMinutes = Math.round((meetingDurationSeconds || 0) / 60);
+
+  const prompt = `You are a meeting analytics expert.
+Analyze this meeting transcript and extract detailed insights.
+
+Meeting duration: ${meetingMinutes} minutes
+Transcript:
+${transcript.substring(0, 12000)}
+
+Return ONLY valid JSON, no markdown, no backticks:
+{
+  "speakers": [
+    { "name": "Speaker name or Speaker 1", "talkTimePercent": 45, "wordCount": 350, "sentiment": "positive" }
+  ],
+  "sentiment": {
+    "overall": "positive",
+    "score": 75,
+    "timeline": [
+      { "segment": 1, "label": "positive", "score": 80 }
+    ]
+  },
+  "topics": [
+    { "title": "Topic name", "duration": 5, "summary": "Brief description" }
+  ],
+  "wordCloud": [
+    { "word": "project", "count": 12 }
+  ],
+  "engagementScore": 82,
+  "totalWords": 850,
+  "avgWordsPerMinute": 120,
+  "keyMoments": [
+    { "time": "2:30", "description": "Important decision made" }
+  ]
+}
+
+Rules:
+- speakers: list all distinct speakers, use "Speaker 1", "Speaker 2" if names unknown
+- talkTimePercent must sum to 100
+- sentiment overall: positive/neutral/negative/mixed
+- engagementScore: 0-100
+- wordCloud: top 15 meaningful words
+- topics: 3-6 main topics
+- keyMoments: important decisions or turning points`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    if (!response.ok) return getEmptyInsights();
+    const payload = await response.json();
+    const rawText = (payload.candidates || [])
+      .flatMap(c => (c.content && c.content.parts) || [])
+      .map(p => p.text || "").join("").trim();
+    const cleaned = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (err) {
+    console.error("[Insights] Generation failed:", err instanceof Error ? err.message : err);
+    return getEmptyInsights();
+  }
+}
+
+async function generateChapters(transcript, meetingDurationSeconds) {
+  if (!transcript || transcript.length < 100) return [];
+  if (!process.env.GEMINI_API_KEY) return [];
+
+  const meetingMinutes = Math.round((meetingDurationSeconds || 0) / 60);
+
+  const prompt = `Split this meeting transcript into logical chapters.
+
+Meeting duration: ${meetingMinutes} minutes
+Transcript:
+${transcript.substring(0, 10000)}
+
+Return ONLY valid JSON array, no markdown:
+[
+  { "title": "Chapter title", "startMinute": 0, "endMinute": 5, "summary": "Brief summary" }
+]
+
+Rules: 3-8 chapters, each a distinct topic/phase, summary max 15 words`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": process.env.GEMINI_API_KEY },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      }
+    );
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const rawText = (payload.candidates || [])
+      .flatMap(c => (c.content && c.content.parts) || [])
+      .map(p => p.text || "").join("").trim();
+    const cleaned = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+    return JSON.parse(cleaned);
+  } catch (err) {
+    console.error("[Chapters] Generation failed:", err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+module.exports = Object.assign(module.exports, { generateInsights, generateChapters });

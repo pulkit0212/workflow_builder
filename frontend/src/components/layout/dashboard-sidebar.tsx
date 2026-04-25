@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import type { DashboardProfile } from "@/components/layout/dashboard-account";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 type DashboardNavItem = {
   href: Route;
@@ -73,6 +74,8 @@ function getInitials(value: string | null, email: string) {
 export function DashboardSidebar({ profile }: DashboardSidebarProps) {
   const pathname = usePathname();
   const { activeWorkspace, activeWorkspaceId } = useWorkspaceContext();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [subscription, setSubscription] = useState<SubscriptionBadgeState>({ plan: profile.plan, trialDaysLeft: 0 });
 
   // Show personal-only items when workspace type is 'personal' or no workspace is active
@@ -87,11 +90,12 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
   const secondaryItems = visibleItems.filter((item) => item.section === "secondary");
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let isMounted = true;
 
     async function loadSubscription() {
       try {
-        const response = await fetch("/api/subscription", {
+        const response = await apiFetch("/api/subscription", {
           cache: "no-store"
         });
 
@@ -121,7 +125,7 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
     return () => {
       isMounted = false;
     };
-  }, [profile.plan]);
+  }, [profile.plan, isAuthReady]);
 
   function getBadgeLabel() {
     switch (subscription.plan) {

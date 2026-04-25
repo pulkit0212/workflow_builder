@@ -1,0 +1,1 @@
+ALTER TABLE workspace_move_requests ADD CONSTRAINT workspace_move_requests_meeting_workspace_unique UNIQUE (meeting_id, workspace_id);

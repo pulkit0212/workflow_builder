@@ -14,13 +14,14 @@ import type {
   WorkspaceRecord,
   WorkspaceSearchRecord
 } from "@/features/workspaces/types";
+import { clientApiFetch } from "@/lib/api-client";
 
 function getErrorMessage(payload: WorkspaceErrorResponse) {
   return payload.message;
 }
 
 export async function fetchWorkspaces() {
-  const response = await fetch("/api/workspaces", {
+  const response = await clientApiFetch("/api/workspaces", {
     cache: "no-store"
   });
   const payload = (await response.json()) as
@@ -35,7 +36,7 @@ export async function fetchWorkspaces() {
 }
 
 export async function fetchWorkspaceDetails(workspaceId: string) {
-  const response = await fetch(`/api/workspaces/${workspaceId}`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as
@@ -50,7 +51,7 @@ export async function fetchWorkspaceDetails(workspaceId: string) {
 }
 
 export async function fetchWorkspaceMembers(workspaceId: string) {
-  const response = await fetch(`/api/workspaces/${workspaceId}/members`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}/members`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as
@@ -65,7 +66,7 @@ export async function fetchWorkspaceMembers(workspaceId: string) {
 }
 
 export async function createWorkspace(values: CreateWorkspaceInput) {
-  const response = await fetch("/api/workspaces", {
+  const response = await clientApiFetch("/api/workspaces", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -84,7 +85,7 @@ export async function createWorkspace(values: CreateWorkspaceInput) {
 }
 
 export async function searchUsers(query: string) {
-  const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
+  const response = await clientApiFetch(`/api/users/search?q=${encodeURIComponent(query)}`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as
@@ -99,7 +100,7 @@ export async function searchUsers(query: string) {
 }
 
 export async function searchJoinableWorkspaces(query: string) {
-  const response = await fetch(`/api/workspaces/search?q=${encodeURIComponent(query)}`, {
+  const response = await clientApiFetch(`/api/workspaces/search?q=${encodeURIComponent(query)}`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as
@@ -116,7 +117,7 @@ export async function searchJoinableWorkspaces(query: string) {
 }
 
 export async function requestJoinWorkspace(values: JoinWorkspaceInput) {
-  const response = await fetch(`/api/workspaces/${values.workspaceId}/request-join`, {
+  const response = await clientApiFetch(`/api/workspaces/${values.workspaceId}/request-join`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -138,7 +139,7 @@ export async function createWorkspaceMeeting(
   workspaceId: string,
   values: CreateWorkspaceMeetingInput
 ) {
-  const response = await fetch(`/api/workspaces/${workspaceId}/meetings`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}/meetings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -157,7 +158,7 @@ export async function createWorkspaceMeeting(
 }
 
 export async function addWorkspaceMember(workspaceId: string, values: AddWorkspaceMemberInput) {
-  const response = await fetch(`/api/workspaces/${workspaceId}/members`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}/members`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -180,7 +181,7 @@ export async function updateWorkspaceMember(
   memberId: string,
   values: UpdateWorkspaceMemberInput
 ) {
-  const response = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json"
@@ -201,7 +202,7 @@ export async function updateWorkspaceMember(
 }
 
 export async function removeWorkspaceMember(workspaceId: string, memberId: string) {
-  const response = await fetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}/members/${memberId}`, {
     method: "DELETE"
   });
   const payload = (await response.json()) as
@@ -218,7 +219,7 @@ export async function removeWorkspaceMember(workspaceId: string, memberId: strin
 }
 
 export async function fetchWorkspaceJoinRequests(workspaceId: string) {
-  const response = await fetch(`/api/workspaces/${workspaceId}/join-requests`, {
+  const response = await clientApiFetch(`/api/workspaces/${workspaceId}/join-requests`, {
     cache: "no-store"
   });
   const payload = (await response.json()) as
@@ -239,7 +240,7 @@ export async function acceptWorkspaceJoinRequest(
   requestId: string,
   values: AcceptJoinRequestInput
 ) {
-  const response = await fetch(
+  const response = await clientApiFetch(
     `/api/workspaces/${workspaceId}/join-requests/${requestId}/accept`,
     {
       method: "POST",
@@ -263,7 +264,7 @@ export async function acceptWorkspaceJoinRequest(
 }
 
 export async function rejectWorkspaceJoinRequest(workspaceId: string, requestId: string) {
-  const response = await fetch(
+  const response = await clientApiFetch(
     `/api/workspaces/${workspaceId}/join-requests/${requestId}/reject`,
     {
       method: "POST"

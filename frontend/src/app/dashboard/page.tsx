@@ -13,7 +13,7 @@ import type { MeetingSessionRecord } from "@/features/meeting-assistant/types";
 import type { UnifiedCalendarMeeting } from "@/lib/calendar/types";
 import { cn } from "@/lib/utils";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
-import { useWorkspaceFetch } from "@/hooks/useWorkspaceFetch";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 import type { MeetingSessionListResponse, MeetingSessionErrorResponse } from "@/features/meeting-assistant/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -135,7 +135,8 @@ function StatCard({ label, value, helper, icon, gradient, textColor }: {
 export default function DashboardPage() {
   const { user } = useUser();
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
-  const workspaceFetch = useWorkspaceFetch();
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [reports, setReports] = useState<MeetingSessionRecord[]>([]);
   const [todayMeetings, setTodayMeetings] = useState<UnifiedCalendarMeeting[]>([]);
   const [calendarPartialFailure, setCalendarPartialFailure] = useState<Array<{ provider: string; error: string }>>([]);
@@ -144,7 +145,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function fetchJoinedMeetingsWithContext(): Promise<MeetingSessionRecord[]> {
-    const response = await workspaceFetch("/api/meetings/joined", { cache: "no-store" });
+    const response = await apiFetch("/api/meetings/joined", { cache: "no-store" });
     const payload = (await response.json()) as MeetingSessionListResponse | MeetingSessionErrorResponse;
     if (!response.ok || !payload.success) throw new Error("message" in payload ? payload.message : "Failed to load.");
     return payload.meetings;
@@ -154,7 +155,7 @@ export default function DashboardPage() {
     setIsLoading(true); setError(null);
     try {
       if (activeWorkspaceId) {
-        const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
+        const res = await apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`);
         const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
         setReports(data.meetings ?? []); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
       } else {
@@ -178,12 +179,13 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let mounted = true;
     void (async () => {
       setIsLoading(true); setError(null);
       try {
         if (activeWorkspaceId) {
-          const res = await fetch(`/api/workspace/${activeWorkspaceId}/meetings`);
+          const res = await apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`);
           const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
           if (!mounted) return;
           setReports(data.meetings ?? []); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
@@ -207,7 +209,7 @@ export default function DashboardPage() {
     })();
     return () => { mounted = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, isAuthReady]);
 
   const greeting = useMemo(() => getGreeting(), []);
   const meetingsWithContent = reports.filter(hasContent);

@@ -9,6 +9,7 @@ import { CopyButton } from "@/components/tools/copy-button";
 import { LoadingSpinner } from "@/components/tools/loading-spinner";
 import { cn } from "@/lib/utils";
 import { fetchMeetingReports } from "@/features/meetings/api";
+import { clientApiFetch } from "@/lib/api-client";
 
 type InputMode = "raw" | "voice" | "meeting";
 type OutputFormat = "detailed" | "simple" | "jira";
@@ -196,7 +197,7 @@ export function TaskGeneratorWorkspace() {
     setError(null);
     setStatusMessage(null);
     try {
-      const response = await fetch("/api/tools/task-generator", {
+      const response = await clientApiFetch("/api/tools/task-generator", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ input, mode, teamMembers, dateContext, outputFormat, autoPriority }),
@@ -277,7 +278,7 @@ export function TaskGeneratorWorkspace() {
     setIsSaving(true);
     setError(null);
     try {
-      const response = await fetch("/api/action-items/bulk-save", {
+      const response = await clientApiFetch("/api/action-items/bulk-save", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

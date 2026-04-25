@@ -5,6 +5,7 @@ import type {
   MeetingSessionResponse,
   UpdateMeetingSessionInput
 } from "@/features/meeting-assistant/types";
+import { clientApiFetch } from "@/lib/api-client";
 
 function getSessionErrorMessage(payload: MeetingSessionErrorResponse) {
   if (
@@ -31,7 +32,7 @@ function getSessionErrorMessage(payload: MeetingSessionErrorResponse) {
 }
 
 export async function createMeetingSessionRecord(input: CreateMeetingSessionInput) {
-  const response = await fetch("/api/meetings", {
+  const response = await clientApiFetch("/api/meetings", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
@@ -49,7 +50,7 @@ export async function createMeetingSessionRecord(input: CreateMeetingSessionInpu
 }
 
 export async function updateMeetingSessionRecord(sessionId: string, input: UpdateMeetingSessionInput) {
-  const response = await fetch(`/api/meetings/${sessionId}`, {
+  const response = await clientApiFetch(`/api/meetings/${sessionId}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json"

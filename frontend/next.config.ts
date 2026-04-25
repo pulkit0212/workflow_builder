@@ -27,6 +27,28 @@ const nextConfig: NextConfig = {
   // Monorepo: lockfile at repo root + frontend — pin tracing to repo root to silence warnings.
   outputFileTracingRoot: path.join(__dirname, ".."),
   typedRoutes: true,
+  async rewrites() {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+    return [
+      {
+        source: "/api/calendar/:path*",
+        destination: `${apiUrl}/api/calendar/:path*`,
+      },
+      {
+        source: "/api/integrations/:path*",
+        destination: `${apiUrl}/api/integrations/:path*`,
+      },
+      {
+        source: "/api/tools/:path*",
+        destination: `${apiUrl}/api/tools/:path*`,
+      },
+    ];
+  },
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
   async redirects() {
     return [
       // Removed workspace-specific sub-pages → unified pages (Req 9.9)

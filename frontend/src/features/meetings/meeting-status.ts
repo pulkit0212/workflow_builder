@@ -94,10 +94,13 @@ export function getMeetingDisplayStatus(
   const endTime = new Date(meeting.endTime);
   const preJoinTime = new Date(startTime.getTime() - 15 * 60 * 1000);
 
-  // More than 15 min before start
-  if (now < preJoinTime) {
+  // Check if meeting is today
+  const isToday = startTime.toDateString() === now.toDateString();
+
+  // Meeting time has passed — no recording was made
+  if (now > endTime) {
     return {
-      label: "Upcoming",
+      label: "Ended",
       color: "#6b7280",
       bg: "#f3f4f6",
       pulse: false,
@@ -123,14 +126,14 @@ export function getMeetingDisplayStatus(
     };
   }
 
-  // Meeting time has passed — no recording was made
-  if (now > endTime) {
+  // More than 15 min before start — only show notetaker if meeting is today
+  if (now < preJoinTime) {
     return {
-      label: "Ended",
+      label: "Upcoming",
       color: "#6b7280",
       bg: "#f3f4f6",
       pulse: false,
-      showStartNotetaker: false,
+      showStartNotetaker: isToday,
       showStopRecording: false,
       showViewReport: false,
       showJoin: false,

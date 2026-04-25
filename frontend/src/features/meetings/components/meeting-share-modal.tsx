@@ -6,6 +6,7 @@ import {
   Loader2, Send, X, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 type IntegrationType = "slack" | "gmail" | "notion" | "jira";
 type Integration = { type: IntegrationType; enabled: boolean; config: Record<string, unknown> };
@@ -29,6 +30,8 @@ const INTEGRATION_META: Record<IntegrationType, { label: string; icon: string; w
 };
 
 export function MeetingShareModal({ meeting, onClose }: MeetingShareModalProps) {
+  const apiFetch = useApiFetch();
+  const isAuthReady = useIsAuthReady();
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [selected, setSelected] = useState<Set<IntegrationType>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
@@ -37,13 +40,24 @@ export function MeetingShareModal({ meeting, onClose }: MeetingShareModalProps) 
   const actionItemCount = meeting.actionItems.length;
 
   useEffect(() => {
+    if (!isAuthReady) return;
     let mounted = true;
     async function load() {
       try {
-        const res = await fetch("/api/integrations", { cache: "no-store" });
-        const data = (await res.json()) as { integrations?: Integration[] };
+        const [intRes, googleRes] = await Promise.all([
+          apiFetch("/api/integrations", { cache: "no-store" }),
+          apiFetch("/api/google/integration", { cache: "no-store" }),
+        ]);
+        const data = (await intRes.json()) as Integration[] | { integrations?: Integration[] };
+        const list: Integration[] = Array.isArray(data) ? data : (data.integrations ?? []);
+        const googleData = googleRes.ok ? (await googleRes.json()) as { integration?: { connected: boolean } } : null;
+        const isGoogleConnected = googleData?.integration?.connected ?? false;
+        const enabled = list.filter((i) => {
+          if (!i.enabled) return false;
+          if (i.type === "gmail" && !isGoogleConnected) return false;
+          return true;
+        });
         if (!mounted) return;
-        const enabled = (data.integrations ?? []).filter((i) => i.enabled);
         setIntegrations(enabled);
         setSelected(new Set(enabled.map((i) => i.type)));
       } catch { /* silent */ }
@@ -51,7 +65,7 @@ export function MeetingShareModal({ meeting, onClose }: MeetingShareModalProps) 
     }
     void load();
     return () => { mounted = false; };
-  }, []);
+  }, [isAuthReady]);
 
   function toggle(type: IntegrationType) {
     setSelected((prev) => {
