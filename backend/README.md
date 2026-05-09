@@ -22,7 +22,7 @@ backend/
 │   │   ├── middleware/
 │   │   │   ├── clerk-auth.ts             # Clerk JWT validation
 │   │   │   ├── error-handler.ts          # Global error handler
-│   │   │   ├── rate-limiter.ts           # 100 req/min per user
+│   │   │   ├── rate-limiter.ts           # Shared per-user budget (see middleware)
 │   │   │   └── request-logger.ts         # Morgan request logging
 │   │   ├── routes/                       # API route handlers
 │   │   └── lib/                          # Shared utilities
@@ -88,6 +88,14 @@ GOOGLE_GEMINI_API_KEY=...
 OPENAI_API_KEY=sk-...
 RAZORPAY_KEY_ID=...
 RAZORPAY_KEY_SECRET=...
+RAZORPAY_WEBHOOK_SECRET=...
+GEMINI_API_KEY=...
+```
+
+After provisioning Postgres, apply catalog migrations:
+
+```bash
+npm run migrate:sql
 ```
 
 ### Scripts
@@ -97,6 +105,7 @@ RAZORPAY_KEY_SECRET=...
 | `npm run dev` | Start with ts-node |
 | `npm run build` | Compile TypeScript to `dist/` |
 | `npm start` | Run production build |
+| `npm run migrate:sql` | Apply `src/db/migrations/*.sql` (tracked in `schema_sql_migrations`) |
 | `npm test` | Run test suite |
 
 ### API Domains
@@ -104,6 +113,7 @@ RAZORPAY_KEY_SECRET=...
 | Domain | Routes |
 |--------|--------|
 | Health | `GET /health` |
+| Payments | `POST /api/webhooks/razorpay` (Razorpay webhook; configure in Razorpay Dashboard) |
 | Auth | `POST /api/webhooks/clerk`, `GET /api/profile/me` |
 | Meetings | `GET/POST/PATCH/DELETE /api/meetings`, `/api/meetings/:id/...` |
 | Calendar | `GET /api/calendar/status`, `/api/calendar/connect/:provider` |

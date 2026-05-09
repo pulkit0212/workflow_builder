@@ -4,11 +4,10 @@ import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "rea
 import {
   AlertTriangle, CheckCircle2, CheckSquare, ClipboardList, FileText,
   Lightbulb, PencilLine, RefreshCw, ShieldAlert, Sparkles, UploadCloud,
-  Wand2, X, Zap,
+  Wand2, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useUser } from "@clerk/nextjs";
-import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/tools/copy-button";
 import { LoadingSpinner } from "@/components/tools/loading-spinner";
 import { cn } from "@/lib/utils";
@@ -64,7 +63,8 @@ function buildCopyText(result: DocumentAnalysisResult) {
   ].filter(Boolean).join("\n\n");
 }
 
-function ActionItemsSection({
+/** Action items list — same selection + row layout as Task Generator. */
+function DocumentAnalyzerActionItemsList({
   items,
   isSavingItems,
   actionItemsSaved,
@@ -77,23 +77,13 @@ function ActionItemsSection({
   onSave: (selectedIndices: number[]) => void;
   currentUserName: string;
 }) {
-  // Pre-select items assigned to the current user
-  const myIndices = items.reduce<number[]>((acc, item, i) => {
-    const owner = (item.owner ?? "").toLowerCase().trim();
-    const me = currentUserName.toLowerCase().trim();
-    if (me && owner && (owner.includes(me) || me.includes(owner))) acc.push(i);
-    return acc;
-  }, []);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
 
-  const [selected, setSelected] = useState<Set<number>>(new Set(myIndices));
+  useEffect(() => {
+    setSelected(new Set(items.map((_, i) => i)));
+  }, [items]);
 
   function toggle(i: number) {
-    // Only allow toggling items assigned to the current user
-    const owner = (items[i]?.owner ?? "").toLowerCase().trim();
-    const me = currentUserName.toLowerCase().trim();
-    const isMyItem = me && owner && (owner.includes(me) || me.includes(owner));
-    if (!isMyItem) return;
-
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(i)) next.delete(i); else next.add(i);
@@ -101,71 +91,81 @@ function ActionItemsSection({
     });
   }
 
+  const me = currentUserName.toLowerCase().trim();
+
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-slate-400">
-        Items assigned to you are pre-selected. Only your tasks can be saved to Action Items.
-      </p>
+    <div className="space-y-3">
+      <p className="text-xs text-slate-500">Select any tasks below, then save to Action Items.</p>
       {items.map((item, i) => {
-        const owner = (item.owner ?? "").toLowerCase().trim();
-        const me = currentUserName.toLowerCase().trim();
-        const isMyItem = me && owner && (owner.includes(me) || me.includes(owner));
+        const ownerLc = (item.owner ?? "").toLowerCase().trim();
+        const isMyItem = Boolean(me && ownerLc && ownerLc !== "unassigned" && (ownerLc.includes(me) || me.includes(ownerLc)));
         const isSelected = selected.has(i);
 
         return (
-          <button
-            key={i}
-            type="button"
-            onClick={() => toggle(i)}
-            disabled={!isMyItem}
-            className={cn(
-              "flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-all",
-              !isMyItem
-                ? "cursor-not-allowed border-slate-100 bg-slate-50/40 opacity-50"
-                : isSelected
-                  ? "border-[#6C3FF5] bg-[#f5f3ff]"
-                  : "border-slate-100 bg-slate-50/60 hover:bg-[#faf9ff]"
-            )}
-          >
-            <div className={cn(
-              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
-              !isMyItem
-                ? "border-slate-200 bg-slate-100"
-                : isSelected
-                  ? "border-[#6C3FF5] bg-[#6C3FF5]"
-                  : "border-slate-300 bg-white"
-            )}>
-              {isSelected && isMyItem && (
-                <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
-                  <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              )}
+          <div key={i} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex items-start gap-3 px-4 py-3.5">
+              <button type="button" onClick={() => toggle(i)} className="mt-0.5 shrink-0 cursor-pointer">
+                <div
+                  className={cn(
+                    "flex h-4 w-4 items-center justify-center rounded border transition",
+                    isSelected ? "border-[#6C3FF5] bg-[#6C3FF5]" : "border-slate-300 bg-white hover:border-[#6C3FF5]"
+                  )}
+                >
+                  {isSelected && (
+                    <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
+                      <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f5f3ff] text-[10px] font-bold text-[#6C3FF5]">
+                    {i + 1}
+                  </span>
+                  <p className="text-sm font-medium leading-snug text-slate-900">{item.task}</p>
+                  {isMyItem && (
+                    <span className="rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6C3FF5]">You</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
+                  <span>👤 {item.owner || "Unassigned"}</span>
+                  <span>📅 {item.due_date || "Not specified"}</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", getPriorityClass(item.priority))}>
+                    {item.priority}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="min-w-0 flex-1">
-              <p className={cn("text-sm font-medium", isSelected && isMyItem ? "text-[#6C3FF5]" : "text-slate-900")}>{item.task}</p>
-              <p className="mt-0.5 text-xs text-slate-400">
-                {[item.owner || "Unassigned", item.due_date || "No date"].join(" · ")}
-                {isMyItem && <span className="ml-1.5 rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6C3FF5]">You</span>}
-              </p>
-            </div>
-            <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", getPriorityClass(item.priority))}>
-              {item.priority}
-            </span>
-          </button>
+          </div>
         );
       })}
 
-      <button
-        type="button"
-        onClick={() => onSave(Array.from(selected))}
-        disabled={selected.size === 0 || isSavingItems || actionItemsSaved}
-        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-[#6C3FF5] px-4 py-2.5 text-sm font-semibold text-[#6C3FF5] transition hover:bg-[#f5f3ff] disabled:opacity-50"
-      >
-        {isSavingItems ? <><LoadingSpinner size="sm" /> Saving…</>
-          : actionItemsSaved ? <><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Saved!</>
-          : selected.size === 0 ? "No tasks assigned to you"
-          : <><Zap className="h-4 w-4" /> Save {selected.size} task{selected.size !== 1 ? "s" : ""} to Action Items</>}
-      </button>
+      <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+        <button
+          type="button"
+          onClick={() => onSave(Array.from(selected).sort((a, b) => a - b))}
+          disabled={selected.size === 0 || isSavingItems || actionItemsSaved}
+          className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+        >
+          {isSavingItems ? <LoadingSpinner size="sm" /> : null}
+          {actionItemsSaved ? (
+            <><CheckCircle2 className="h-4 w-4 text-white" /> Saved</>
+          ) : selected.size === 0 ? (
+            "Select tasks to save"
+          ) : (
+            `Save ${selected.size} task${selected.size !== 1 ? "s" : ""} to Action Items`
+          )}
+        </button>
+      </div>
+
+      {actionItemsSaved && (
+        <p className="text-sm text-emerald-700">
+          <a href="/dashboard/action-items?source=document-analyzer" className="font-semibold underline hover:no-underline">
+            View Action Items →
+          </a>
+        </p>
+      )}
     </div>
   );
 }
@@ -256,8 +256,16 @@ export function DocumentAnalyzerWorkspace() {
             body: (() => { const fd = new FormData(); fd.append("file", file as File); fd.append("extractOptions", JSON.stringify(extractOptionValues)); return fd; })(),
           });
 
-      const payload = (await response.json()) as { success: true; result: DocumentAnalysisResult } | { success: false; message?: string };
-      if (!response.ok || !payload.success) throw new Error("message" in payload ? payload.message ?? "Failed." : "Failed.");
+      const payload = (await response.json()) as
+        | { success: true; result: DocumentAnalysisResult }
+        | { success?: boolean; message?: string; error?: string };
+      if (!response.ok || payload.success !== true || !("result" in payload)) {
+        const msg =
+          (typeof payload.error === "string" && payload.error.trim()) ||
+          (typeof payload.message === "string" && payload.message.trim()) ||
+          "Failed.";
+        throw new Error(msg);
+      }
       setResult(payload.result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to analyze document.");
@@ -514,7 +522,7 @@ export function DocumentAnalyzerWorkspace() {
                 {result.action_items.length === 0 ? (
                   <p className="text-sm text-[#9AA0A6]">No action items extracted.</p>
                 ) : (
-                  <ActionItemsSection items={result.action_items} isSavingItems={isSavingItems}
+                  <DocumentAnalyzerActionItemsList items={result.action_items} isSavingItems={isSavingItems}
                     actionItemsSaved={actionItemsSaved} onSave={handleSaveSelectedActionItems} currentUserName={currentUserName} />
                 )}
               </ResultSection>

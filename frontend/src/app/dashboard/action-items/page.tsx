@@ -18,7 +18,7 @@ import { AssigneeCell } from "@/features/action-items/components/AssigneeCell";
 const ITEMS_PER_PAGE = 10;
 
 type ActionItemTab = "all" | "assigned_to_me" | "created_by_me";
-export type WorkspaceRole = "admin" | "member" | "viewer" | "personal";
+export type WorkspaceRole = "admin" | "owner" | "member" | "viewer" | "personal";
 
 // Filter state — priority and status are multi-select arrays
 type FilterState = {
@@ -96,11 +96,24 @@ function DeleteModal({ count, onConfirm, onCancel, isDeleting }: { count: number
 }
 
 // ─── New Task modal ───────────────────────────────────────────────────────────
-function NewTaskModal({ onClose, onSave, isAdmin, members, apiFetch, activeWorkspaceId }: {
+function NewTaskModal({
+  onClose,
+  onSave,
+  workspaceMode,
+  isElevated,
+  members,
+  currentUserId,
+  currentUserLabel,
+  apiFetch,
+  activeWorkspaceId,
+}: {
   onClose: () => void;
   onSave: (data: { task: string; assignee: string; dueDate: string; priority: string; assigneeId: string | null }) => Promise<void>;
-  isAdmin: boolean;
+  workspaceMode: boolean;
+  isElevated: boolean;
   members: WorkspaceMember[];
+  currentUserId: string | null;
+  currentUserLabel: string;
   apiFetch: (path: string, init?: RequestInit & { workspaceId?: string | null }) => Promise<Response>;
   activeWorkspaceId: string | null;
 }) {
@@ -108,12 +121,16 @@ function NewTaskModal({ onClose, onSave, isAdmin, members, apiFetch, activeWorks
   const [owner, setOwner] = useState("");
   const [assigneeId, setAssigneeId] = useState<string | null>(null);
   const [assigneeName, setAssigneeName] = useState("");
+  /** Admin/owner: workspace member user id or "" = unassigned */
+  const [workspaceAssigneeUserId, setWorkspaceAssigneeUserId] = useState("");
+  /** Member/viewer: assign to self vs leave unassigned */
+  const [assignToMe, setAssignToMe] = useState(true);
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
-  // User search state
+  // Personal mode: user search
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; full_name: string | null; email: string }>>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -167,19 +184,51 @@ function NewTaskModal({ onClose, onSave, isAdmin, members, apiFetch, activeWorks
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!task.trim()) { setErr("Task is required."); return; }
+
+    let outAssigneeId: string | null = null;
+    let outAssignee = "Unassigned";
+
+    if (workspaceMode && isElevated) {
+      if (workspaceAssigneeUserId) {
+        outAssigneeId = workspaceAssigneeUserId;
+        const m = members.find((x) => x.id === workspaceAssigneeUserId);
+        outAssignee = m?.name?.trim() || m?.email || "Unknown";
+      } else {
+        outAssignee = "Unassigned";
+      }
+    } else if (workspaceMode && !isElevated) {
+      if (!currentUserId) {
+        setErr("Profile still loading. Try again in a moment.");
+        return;
+      }
+      if (assignToMe) {
+        outAssigneeId = currentUserId;
+        outAssignee = currentUserLabel || "Me";
+      } else {
+        outAssignee = "Unassigned";
+      }
+    } else {
+      outAssigneeId = assigneeId;
+      outAssignee = assigneeName || owner || "Unassigned";
+    }
+
     setSaving(true);
     try {
       await onSave({
         task: task.trim(),
-        assignee: assigneeName || owner || "Unassigned",
+        assignee: outAssignee,
         dueDate: dueDate || "Not specified",
         priority,
-        assigneeId,
+        assigneeId: outAssigneeId,
       });
       onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to save. Please try again.");
+      setSaving(false);
     }
-    catch { setErr("Failed to save. Please try again."); setSaving(false); }
   }
+
+  const showPersonalAssignee = !workspaceMode;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm" onClick={onClose}>
@@ -197,6 +246,33 @@ function NewTaskModal({ onClose, onSave, isAdmin, members, apiFetch, activeWorks
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-[#5F6368] mb-1">Assignee</label>
+              {workspaceMode && isElevated && (
+                <select
+                  value={workspaceAssigneeUserId}
+                  onChange={(e) => setWorkspaceAssigneeUserId(e.target.value)}
+                  className="w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6C3FF5]/30"
+                >
+                  <option value="">Unassigned</option>
+                  {members.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name?.trim() ? m.name : m.email}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {workspaceMode && !isElevated && (
+                <div className="space-y-2 rounded-lg border border-[#DADCE0] px-3 py-2 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="radio" name="ws-assign" checked={assignToMe} onChange={() => setAssignToMe(true)} />
+                    <span>Assign to me{currentUserLabel ? ` (${currentUserLabel})` : ""}</span>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input type="radio" name="ws-assign" checked={!assignToMe} onChange={() => setAssignToMe(false)} />
+                    <span>Unassigned</span>
+                  </label>
+                </div>
+              )}
+              {showPersonalAssignee && (
               <div ref={searchRef} className="relative">
                 <div className="flex items-center gap-1 rounded-lg border border-[#DADCE0] px-3 py-2">
                   <input
@@ -235,7 +311,8 @@ function NewTaskModal({ onClose, onSave, isAdmin, members, apiFetch, activeWorks
                   </div>
                 )}
               </div>
-              {!assigneeId && (
+              )}
+              {showPersonalAssignee && !assigneeId && (
                 <input value={owner} onChange={(e) => setOwner(e.target.value)} placeholder="Or type a name…"
                   className="mt-1 w-full rounded-lg border border-[#DADCE0] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#6C3FF5]/30" />
               )}
@@ -1455,11 +1532,11 @@ function ActionItemsContent() {
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const memberFilterRef = useRef<HTMLDivElement>(null);
 
-  const isAdmin = role === "admin";
+  const isElevated = role === "admin" || role === "owner";
   const isViewer = role === "viewer";
   const isPersonal = role === "personal";
-  const canDelete = isAdmin || isPersonal;
-  const canCreate = !isViewer;
+  const canDelete = isElevated || isPersonal;
+  const canCreate = true;
 
   function showToast(msg: string, type: "success" | "error") {
     setToast({ msg, type });
@@ -1491,22 +1568,41 @@ function ActionItemsContent() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // Load workspace members for admin filter + new task assignee
+  // Load workspace members for admin/owner filter + assignee picker (active only)
   useEffect(() => {
-    if (!activeWorkspaceId || !isAdmin) { setMembers([]); return; }
+    if (!activeWorkspaceId || !isElevated) { setMembers([]); return; }
     void apiFetch(`/api/workspaces/${activeWorkspaceId}`)
       .then((r) => r.json())
-      .then((data: { members?: Array<{ user_id: string; full_name?: string; email?: string }> }) => {
-        setMembers((data.members ?? []).map((m) => ({ id: m.user_id, name: m.full_name ?? "", email: m.email ?? "" })));
+      .then((data: {
+        members?: Array<{
+          userId?: string;
+          status?: string;
+          user?: { id?: string; fullName?: string | null; email?: string | null };
+        }>;
+      }) => {
+        const raw = data.members ?? [];
+        setMembers(
+          raw
+            .filter((m) => m.status === "active")
+            .map((m) => {
+              const id = m.userId ?? m.user?.id ?? "";
+              return {
+                id,
+                name: m.user?.fullName?.trim() ? m.user.fullName : "",
+                email: m.user?.email ?? "",
+              };
+            })
+            .filter((m) => m.id.length > 0)
+        );
       })
       .catch(() => setMembers([]));
-  }, [activeWorkspaceId, isAdmin]);
+  }, [activeWorkspaceId, isElevated]);
 
   async function loadItems(tab = activeTab, mid = memberFilter) {
     if (!isLoaded || !isSignedIn) { setIsLoading(false); return; }
     setIsLoading(true); setLoadError(null); setUpgradeRequired(false);
     try {
-      const targetUser = (activeWorkspaceId && isAdmin && mid !== "all") ? mid : "me";
+      const targetUser = (activeWorkspaceId && isElevated && mid !== "all") ? mid : "me";
       // Fetch ALL items — client handles filtering, pagination, and stats
       const params = new URLSearchParams({ tab, page: "1", limit: "1000" });
       const res = await apiFetch(`/api/action-items/by-user/${targetUser}?${params}`, {
@@ -1716,7 +1812,10 @@ function ActionItemsContent() {
         source: "manual",
       }),
     });
-    if (!res.ok) throw new Error("Failed to create task");
+    const payload = await res.json().catch(() => ({})) as { error?: string; message?: string };
+    if (!res.ok) {
+      throw new Error(typeof payload.error === "string" ? payload.error : payload.message ?? "Failed to create task");
+    }
     showToast("Task created.", "success");
     void loadItems();
   }
@@ -1895,7 +1994,7 @@ function ActionItemsContent() {
             )}
           </div>
           {/* Member filter — admin only */}
-          {isAdmin && members.length > 0 && (
+          {isElevated && members.length > 0 && (
             <div ref={memberFilterRef} className="relative">
               <button type="button" onClick={() => setShowMemberFilter((v) => !v)}
                 className={cn(
@@ -2204,7 +2303,17 @@ function ActionItemsContent() {
           onCancel={() => setDeletingItemId(null)} isDeleting={false} />
       )}
       {newTaskModal && (
-        <NewTaskModal onClose={() => setNewTaskModal(false)} onSave={handleCreateTask} isAdmin={isAdmin} members={members} apiFetch={apiFetch} activeWorkspaceId={activeWorkspaceId} />
+        <NewTaskModal
+          onClose={() => setNewTaskModal(false)}
+          onSave={handleCreateTask}
+          workspaceMode={!isPersonal && !!activeWorkspaceId}
+          isElevated={isElevated}
+          members={members}
+          currentUserId={currentDbUserId}
+          currentUserLabel={currentDbUserName ?? ""}
+          apiFetch={apiFetch}
+          activeWorkspaceId={activeWorkspaceId}
+        />
       )}
       {bulkStatusModal && (
         <BulkStatusModal count={selected.size} onConfirm={(s) => void handleBulkStatus(s)} onClose={() => setBulkStatusModal(false)} />

@@ -1,13 +1,30 @@
 import { Router, Request, Response, NextFunction } from "express";
+import type { PoolClient } from "pg";
 import { pool } from "../db/client";
+import { ForbiddenError } from "../lib/errors";
+import { canUseTeamWorkspace } from "../lib/subscription";
 
 export const usageRouter = Router();
+
+/** Ignore undefined_table so DELETE /data works if legacy tables were dropped manually */
+async function deleteFromTableIfExists(client: PoolClient, text: string, params: unknown[]): Promise<void> {
+  try {
+    await client.query(text, params);
+  } catch (err: unknown) {
+    const code = (err as { code?: string }).code;
+    if (code !== "42P01") throw err;
+  }
+}
 
 // GET /api/usage/stats
 usageRouter.get("/stats", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.appUser.id;
     const workspaceId = (req.query.workspaceId as string) ?? null;
+
+    if (workspaceId && !canUseTeamWorkspace(req.appUser.plan ?? "free")) {
+      return next(new ForbiddenError("Workspace usage stats require an Elite plan."));
+    }
 
     const monthStart = new Date();
     monthStart.setDate(1);
@@ -42,12 +59,15 @@ usageRouter.get("/stats", async (req: Request, res: Response, next: NextFunction
       ),
       pool.query(
         workspaceId
-          ? `SELECT COUNT(*)::int AS value FROM action_items WHERE workspace_id = $1 AND user_id = $2`
-          : `SELECT COUNT(*)::int AS value FROM action_items WHERE user_id = $1`,
+          ? `SELECT COUNT(*)::int AS value FROM action_items WHERE workspace_id = $1 AND reporter_id = $2`
+          : `SELECT COUNT(*)::int AS value FROM action_items WHERE reporter_id = $1`,
         workspaceId ? [workspaceId, userId] : [userId]
       ),
       pool.query(
-        `SELECT COUNT(*)::int AS value FROM uploaded_files WHERE user_id = $1`,
+        `SELECT COUNT(*)::int AS value
+         FROM ai_runs ar
+         INNER JOIN tools t ON ar.tool_id = t.id
+         WHERE ar.user_id = $1 AND t.slug = 'document-analyzer' AND ar.status = 'completed'`,
         [userId]
       ),
     ]);
@@ -75,11 +95,14 @@ usageRouter.delete("/data", async (req: Request, res: Response, next: NextFuncti
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
-      await client.query(`DELETE FROM uploaded_files WHERE user_id = $1`, [userId]);
-      await client.query(`DELETE FROM action_items WHERE user_id = $1`, [userId]);
+      await deleteFromTableIfExists(client, `DELETE FROM uploaded_files WHERE user_id = $1`, [userId]);
+      await client.query(
+        `DELETE FROM action_items WHERE reporter_id = $1 OR assignee_id = $1`,
+        [userId]
+      );
       await client.query(`DELETE FROM meeting_sessions WHERE user_id = $1`, [userId]);
       await client.query(`DELETE FROM ai_runs WHERE user_id = $1`, [userId]);
-      await client.query(`DELETE FROM usage_logs WHERE user_id = $1`, [userId]);
+      await deleteFromTableIfExists(client, `DELETE FROM usage_logs WHERE user_id = $1`, [userId]);
       await client.query(
         `UPDATE subscriptions
          SET meetings_used_this_month = 0, last_reset_date = NOW()

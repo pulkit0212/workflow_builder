@@ -1,0 +1,9 @@
+-- Prefer automated migration instead:
+--   npm run migrate:sql   (applies 015_drop_legacy_unused_tables.sql once)
+--
+-- This file is kept only if you need to run the same DROPs by hand:
+--
+-- DROP TABLE IF EXISTS public.uploaded_files CASCADE;
+-- DROP TABLE IF EXISTS public.usage_logs CASCADE;
+-- DROP TABLE IF EXISTS public.workspace_join_requests CASCADE;
+-- DROP TABLE IF EXISTS public.workspace_meetings CASCADE;

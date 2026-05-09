@@ -39,6 +39,7 @@ type SubscriptionResponse = {
     history: boolean;
     meetingsPerMonth: number;
     unlimited: boolean;
+    teamWorkspace?: boolean;
   };
 };
 
@@ -58,6 +59,7 @@ type UsageStatsResponse = {
     history: boolean;
     meetingsPerMonth: number;
     unlimited: boolean;
+    teamWorkspace?: boolean;
   };
 };
 
@@ -228,6 +230,7 @@ const mockSubscription: SubscriptionResponse = {
     history: true,
     meetingsPerMonth: 5,
     unlimited: false,
+    teamWorkspace: false,
   },
 };
 
@@ -245,8 +248,9 @@ const mockUsageStats: UsageStatsResponse = {
     summary: false,
     actionItems: false,
     history: false,
-    meetingsPerMonth: 3,
+    meetingsPerMonth: 7,
     unlimited: false,
+    teamWorkspace: false,
   },
 };
 

@@ -77,7 +77,7 @@ type DashboardSidebarProps = {
 
 export function DashboardSidebar({ profile }: DashboardSidebarProps) {
   const pathname = usePathname();
-  const { activeWorkspace, activeWorkspaceId } = useWorkspaceContext();
+  const { activeWorkspace, activeWorkspaceId, canUseTeamWorkspace } = useWorkspaceContext();
   const apiFetch = useApiFetch();
   const isAuthReady = useIsAuthReady();
   const [plan, setPlan] = useState(profile.plan);
@@ -151,15 +151,25 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
           />
         ))}
 
-        {/* Create workspace button */}
+        {/* Create workspace — Elite only */}
         <div className="px-2 pt-2 pb-1">
-          <Link
-            href={"/dashboard/workspace" as Route}
-            className="w-full flex items-center justify-center gap-2 bg-[#6C3FF5] text-white py-2 rounded-lg text-sm font-semibold shadow-sm hover:bg-[#5B2FE0] transition-colors active:scale-[0.98]"
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            <span>Create Workspace</span>
-          </Link>
+          {canUseTeamWorkspace ? (
+            <Link
+              href={"/dashboard/workspace" as Route}
+              className="w-full flex items-center justify-center gap-2 bg-[#6C3FF5] text-white py-2 rounded-lg text-sm font-semibold shadow-sm hover:bg-[#5B2FE0] transition-colors active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              <span>Create Workspace</span>
+            </Link>
+          ) : (
+            <Link
+              href={"/dashboard/billing" as Route}
+              className="w-full flex items-center justify-center gap-2 border border-[#DADCE0] bg-white text-[#5F6368] py-2 rounded-lg text-sm font-semibold hover:bg-[#F8F9FA] transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px] text-[#7C3AED]">workspace_premium</span>
+              <span>Elite: Team workspace</span>
+            </Link>
+          )}
         </div>
 
         {/* User info */}
@@ -175,9 +185,10 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
             "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
             plan === "pro" ? "bg-[#EDE9FE] text-[#6C3FF5]" :
             plan === "elite" ? "bg-[#F3E8FF] text-[#7C3AED]" :
+            plan === "trial" ? "bg-[#E8F0FE] text-[#1967D2]" :
             "bg-[#F1F3F4] text-[#5F6368]"
           )}>
-            {plan === "pro" ? "Pro" : plan === "elite" ? "Elite" : "Free"}
+            {plan === "pro" ? "Pro" : plan === "elite" ? "Elite" : plan === "trial" ? "Trial" : "Free"}
           </span>
         </div>
 

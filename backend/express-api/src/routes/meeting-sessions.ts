@@ -2,6 +2,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { pool } from "../db/client";
 import { NotFoundError, ForbiddenError, BadRequestError } from "../lib/errors";
+import { enforceMeetingQuotaBeforeCreate } from "../lib/meeting-quota";
+import { canUseTeamWorkspace } from "../lib/subscription";
+import { buildMeetingSummaryEmailHtml } from "../lib/meeting-summary-email-html";
+import { sendHtmlViaGmailIntegration } from "../lib/gmail-integration-outbound";
+import { slackHeaderPlainText, slackMrkdwnText } from "../lib/slack-block-limits";
 
 export const meetingSessionsRouter = Router();
 
@@ -10,15 +15,34 @@ export const meetingSessionsRouter = Router();
 export async function triggerAutoShare(userId: string, meetingId: string, row: Record<string, unknown>) {
   // 1. Fetch user's auto-share preferences
   const prefResult = await pool.query(
-    `SELECT auto_share_targets FROM user_preferences WHERE user_id = $1 LIMIT 1`,
+    `SELECT key, value FROM user_settings WHERE user_id = $1 AND key LIKE 'autoShareTargets.%'`,
     [userId]
   );
-  const autoShareTargets = (prefResult.rows[0]?.auto_share_targets ?? {}) as Record<string, boolean>;
-  const enabledTargets = Object.entries(autoShareTargets)
-    .filter(([, enabled]) => enabled)
-    .map(([key]) => key);
+  const enabledTargets = prefResult.rows
+    .filter((r) => Boolean(r.value))
+    .map((r) => String(r.key).split(".")[1] ?? "")
+    .filter(Boolean);
 
   if (enabledTargets.length === 0) return;
+
+  // 1b. Filter out integrations disabled by catalog (if present)
+  try {
+    const { rows: allowed } = await pool.query<{ integration_type: string }>(
+      `SELECT integration_type FROM integration_catalog
+       WHERE category = 'productivity'
+         AND integration_type = ANY($1)
+         AND is_active = true`,
+      [enabledTargets]
+    );
+    const allowedSet = new Set(allowed.map((r) => r.integration_type));
+    const filtered = enabledTargets.filter((t) => allowedSet.has(t));
+    enabledTargets.length = 0;
+    enabledTargets.push(...filtered);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    // If catalog doesn't exist, ignore and continue
+    if (code !== "42P01") throw e;
+  }
 
   // 2. Fetch enabled integrations with their configs
   const intResult = await pool.query(
@@ -78,12 +102,12 @@ export async function triggerAutoShare(userId: string, meetingId: string, row: R
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               blocks: [
-                { type: "header", text: { type: "plain_text", text: `📋 Meeting Summary: ${title}`, emoji: true } },
-                { type: "section", text: { type: "mrkdwn", text: summaryText || "No summary available" } },
+                { type: "header", text: { type: "plain_text", text: slackHeaderPlainText(`📋 Meeting Summary: ${title}`), emoji: true } },
+                { type: "section", text: { type: "mrkdwn", text: slackMrkdwnText(summaryText || "No summary available") } },
                 { type: "divider" },
-                { type: "section", text: { type: "mrkdwn", text: `*💡 Key Points*\n${keyPointsText}` } },
+                { type: "section", text: { type: "mrkdwn", text: slackMrkdwnText(`*💡 Key Points*\n${keyPointsText}`) } },
                 { type: "divider" },
-                { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItemsText}` } },
+                { type: "section", text: { type: "mrkdwn", text: slackMrkdwnText(`*✅ Action Items*\n${actionItemsText}`) } },
                 { type: "context", elements: [{ type: "mrkdwn", text: `_Auto-shared by Artivaa — <${FRONTEND_URL}/dashboard/meetings/${meetingId}|View Meeting>_` }] },
               ],
             }),
@@ -134,30 +158,33 @@ export async function triggerAutoShare(userId: string, meetingId: string, row: R
         }
 
         case "gmail": {
-          // Gmail requires a Google OAuth access token — fetch from user_integrations
-          const tokenResult = await pool.query(
-            `SELECT access_token FROM user_integrations WHERE user_id = $1 AND provider = 'google' LIMIT 1`,
-            [userId]
-          );
-          const accessToken = tokenResult.rows[0]?.access_token;
-          if (!accessToken || !config.recipients) break;
-
-          const recipients = String(config.recipients).split(",").map((r: string) => r.trim()).filter(Boolean);
+          const recipients = String(config.recipients ?? "")
+            .split(",")
+            .map((r: string) => r.trim())
+            .filter(Boolean);
           if (recipients.length === 0) break;
 
-          const actionItemsHtml = actionItems.length > 0
-            ? actionItems.map((i) => `<li><b>${i.task}</b> — ${i.owner} (Due: ${i.due_date})</li>`).join("")
-            : "<li>No action items</li>";
-          const htmlBody = `<div style="font-family:Arial,sans-serif;max-width:600px"><h2>📋 ${title}</h2><p>${summaryText}</p><h3>✅ Action Items</h3><ul>${actionItemsHtml}</ul><p style="color:#9ca3af;font-size:12px">Auto-shared by Artivaa</p></div>`;
-          const emailContent = [`To: ${recipients.join(", ")}`, "Content-Type: text/html; charset=utf-8", "MIME-Version: 1.0", `Subject: Meeting Summary: ${title}`, "", htmlBody].join("\n");
-          const encoded = Buffer.from(emailContent).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-
-          await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ raw: encoded }),
+          const footerLine = `Auto-shared by Artivaa — ${FRONTEND_URL}/dashboard/meetings/${meetingId}`;
+          const htmlBody = buildMeetingSummaryEmailHtml({
+            title,
+            summaryText,
+            keyPoints,
+            actionItems: actionItems.map((i) => ({
+              task: i.task,
+              owner: i.owner,
+              due_date: i.due_date,
+            })),
+            footerLine,
           });
-          console.log(`[AutoShare] Gmail ✓ for meeting ${meetingId}`);
+          const subject = `Meeting Summary: ${title}`;
+          const sent = await sendHtmlViaGmailIntegration({
+            userId,
+            config,
+            subject,
+            html: htmlBody,
+          });
+          if (!sent.ok) throw new Error(sent.message);
+          console.log(`[AutoShare] Email (${sent.via}) ✓ for meeting ${meetingId}`);
           break;
         }
       }
@@ -295,26 +322,52 @@ meetingSessionsRouter.post("/", async (req: Request, res: Response, next: NextFu
     const workspaceId = (req.query.workspaceId as string) ?? null;
     const d = parsed.data;
 
-    const { rows } = await pool.query(
-      `INSERT INTO meeting_sessions
-         (user_id, workspace_id, provider, title, meeting_link, notes,
-          scheduled_start_time, scheduled_end_time, external_calendar_event_id, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
-       RETURNING *`,
-      [
-        userId,
-        workspaceId,
-        d.provider,
-        d.title,
-        d.meetingLink,
-        d.notes || null,
-        d.scheduledStartTime ? new Date(d.scheduledStartTime) : null,
-        d.scheduledEndTime ? new Date(d.scheduledEndTime) : null,
-        d.externalCalendarEventId ?? null,
-      ]
-    );
+    if (workspaceId && !canUseTeamWorkspace(req.appUser.plan ?? "free")) {
+      throw new ForbiddenError("Team workspaces require an Elite plan.");
+    }
 
-    return res.status(201).json({ success: true, session: toRecord(rows[0]) });
+    await enforceMeetingQuotaBeforeCreate(req.clerkUserId);
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows } = await client.query(
+        `INSERT INTO meeting_sessions
+           (user_id, workspace_id, provider, title, meeting_link, notes,
+            scheduled_start_time, scheduled_end_time, external_calendar_event_id, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft')
+         RETURNING *`,
+        [
+          userId,
+          workspaceId,
+          d.provider,
+          d.title,
+          d.meetingLink,
+          d.notes || null,
+          d.scheduledStartTime ? new Date(d.scheduledStartTime) : null,
+          d.scheduledEndTime ? new Date(d.scheduledEndTime) : null,
+          d.externalCalendarEventId ?? null,
+        ]
+      );
+
+      // Increment monthly meeting usage counter (subscriptions keyed by Clerk user id).
+      await client.query(
+        `UPDATE subscriptions
+         SET meetings_used_this_month = meetings_used_this_month + 1,
+             updated_at = NOW()
+         WHERE user_id = $1`,
+        [req.clerkUserId]
+      );
+
+      await client.query("COMMIT");
+      return res.status(201).json({ success: true, session: toRecord(rows[0]) });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+
   } catch (err) {
     next(err);
   }

@@ -1,18 +1,94 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { pool } from "../db/client";
-import { BadRequestError } from "../lib/errors";
+import { BadRequestError, ForbiddenError } from "../lib/errors";
 
 export const integrationsRouter = Router();
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+const PLAN_IDS = ["free", "pro", "elite", "trial"] as const;
+type PlanId = (typeof PLAN_IDS)[number];
 
-const VALID_INTEGRATION_TYPES = ["slack", "gmail", "notion", "jira"] as const;
-type IntegrationType = (typeof VALID_INTEGRATION_TYPES)[number];
-
-function isValidType(type: string): type is IntegrationType {
-  return (VALID_INTEGRATION_TYPES as readonly string[]).includes(type);
+function normalizePlan(plan: string | undefined | null): PlanId {
+  const p = String(plan ?? "free").toLowerCase();
+  return (PLAN_IDS as readonly string[]).includes(p) ? (p as PlanId) : "free";
 }
+
+/** Productivity types we persist in `integrations` (user rows). */
+const DEFAULT_PRODUCTIVITY_TYPES = ["slack", "gmail", "notion", "jira"] as const;
+
+async function getVisibleProductivityTypes(plan: PlanId): Promise<string[]> {
+  try {
+    const { rows } = await pool.query<{ integration_type: string }>(
+      `SELECT integration_type FROM integration_catalog
+       WHERE category = 'productivity'
+         AND integration_type IS NOT NULL
+         AND is_active = true
+         AND $1 = ANY(allowed_plans)
+       ORDER BY sort_order ASC`,
+      [plan]
+    );
+    return rows.map((r) => r.integration_type).filter(Boolean);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") return [...DEFAULT_PRODUCTIVITY_TYPES];
+    throw e;
+  }
+}
+
+async function assertProductivityAllowed(plan: PlanId, type: string): Promise<void> {
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM integration_catalog
+       WHERE category = 'productivity'
+         AND integration_type = $1
+         AND is_active = true
+         AND $2 = ANY(allowed_plans)
+       LIMIT 1`,
+      [type, plan]
+    );
+    if (rows.length === 0) {
+      throw new ForbiddenError("This integration is not available for your plan or has been disabled.");
+    }
+  } catch (e) {
+    if (e instanceof ForbiddenError) throw e;
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") {
+      if (!(DEFAULT_PRODUCTIVITY_TYPES as readonly string[]).includes(type)) {
+        throw new BadRequestError("Invalid integration type");
+      }
+      return;
+    }
+    throw e;
+  }
+}
+
+// ─── GET /catalog — UI catalog filtered by user plan + active flag ──────────
+
+integrationsRouter.get("/catalog", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const plan = normalizePlan(req.appUser.plan);
+    const { rows } = await pool.query(
+      `SELECT slug, category, integration_type AS "integrationType", display_name AS "displayName",
+              description, icon, color_hex AS "colorHex", bg_hex AS "bgHex", sort_order AS "sortOrder", ui_config AS "uiConfig"
+       FROM integration_catalog
+       WHERE is_active = true AND $1 = ANY(allowed_plans)
+       ORDER BY category, sort_order ASC`,
+      [plan]
+    );
+    res.json({ success: true, plan, items: rows });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "42P01") {
+      return res.status(503).json({
+        success: false,
+        error: "integration_catalog table missing — run migration 004_integration_catalog.sql",
+        plan: normalizePlan(req.appUser.plan),
+        items: [],
+      });
+    }
+    next(err);
+  }
+});
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -26,11 +102,12 @@ const testIntegrationSchema = z.object({
   type: z.string(),
 });
 
-// ─── GET / — return integration status for all supported types ────────────────
+// ─── GET / — return integration status for catalog productivity types only ───
 
 integrationsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.appUser.id;
+    const plan = normalizePlan(req.appUser.plan);
 
     const result = await pool.query(
       `SELECT type, enabled, config, created_at, updated_at
@@ -39,14 +116,13 @@ integrationsRouter.get("/", async (req: Request, res: Response, next: NextFuncti
       [userId]
     );
 
-    // Build a map of existing integrations
     const existing = new Map<string, { enabled: boolean; config: unknown }>();
     for (const row of result.rows) {
       existing.set(row.type, { enabled: row.enabled, config: row.config });
     }
 
-    // Return status for all supported types (default to disabled if not in DB)
-    const integrationStatuses = VALID_INTEGRATION_TYPES.map((type) => {
+    const visibleTypes = await getVisibleProductivityTypes(plan);
+    const integrationStatuses = visibleTypes.map((type) => {
       const found = existing.get(type);
       return {
         type,
@@ -62,7 +138,7 @@ integrationsRouter.get("/", async (req: Request, res: Response, next: NextFuncti
   }
 });
 
-// ─── POST / — upsert integration record ──────────────────────────────────────
+// ─── POST / — upsert integration record ────────────────────────────────────────
 
 integrationsRouter.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -72,10 +148,8 @@ integrationsRouter.post("/", async (req: Request, res: Response, next: NextFunct
     }
 
     const { type, enabled, config } = parsed.data;
-
-    if (!isValidType(type)) {
-      return res.status(400).json({ error: "Invalid integration type" });
-    }
+    const plan = normalizePlan(req.appUser.plan);
+    await assertProductivityAllowed(plan, type);
 
     const userId = req.appUser.id;
 
@@ -96,8 +170,7 @@ integrationsRouter.post("/", async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// ─── POST /test — connectivity test for specified integration type ─────────────
-// Must be registered BEFORE /:id style routes
+// ─── POST /test — connectivity test ───────────────────────────────────────────
 
 integrationsRouter.post("/test", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -107,12 +180,9 @@ integrationsRouter.post("/test", async (req: Request, res: Response, next: NextF
     }
 
     const { type } = parsed.data;
+    const plan = normalizePlan(req.appUser.plan);
+    await assertProductivityAllowed(plan, type);
 
-    if (!isValidType(type)) {
-      return res.status(400).json({ error: "Invalid integration type" });
-    }
-
-    // Placeholder connectivity test — real implementation would call the integration's API
     res.json({
       type,
       success: true,

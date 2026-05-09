@@ -28,6 +28,7 @@ import { googleRouter } from "./routes/google";
 import { meetingExtrasRouter } from "./routes/meeting-extras";
 import { paymentRouter } from "./routes/payment";
 import { toolsRouter } from "./routes/tools";
+import { razorpayWebhooksRouter } from "./routes/razorpay-webhooks";
 
 export function createApp() {
   const app = express();
@@ -37,6 +38,13 @@ export function createApp() {
 
   // CORS — allow only origins in config
   app.use(cors({ origin: config.allowedOrigins }));
+
+  // Razorpay webhooks — raw body required for HMAC (must be before express.json)
+  app.use(
+    "/api/webhooks/razorpay",
+    express.raw({ type: "application/json", limit: "1mb" }),
+    razorpayWebhooksRouter
+  );
 
   // JSON body parsing with 1MB limit
   app.use(express.json({ limit: "1mb" }));

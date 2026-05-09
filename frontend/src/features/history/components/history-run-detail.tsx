@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle, ArrowLeft, ArrowRight, CalendarDays,
-  CheckCircle2, CheckSquare, ExternalLink, FileText,
+  CheckCircle2, CheckSquare, Download, ExternalLink, FileText,
   Lightbulb, ListTodo, Loader2, Mail, Send, ShieldAlert,
   TrendingUp, X, XCircle,
 } from "lucide-react";
@@ -12,6 +12,7 @@ import { ResultState } from "@/components/tools/result-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatHistoryDateTime } from "@/features/history/helpers";
+import { generateHistoryRunPdf } from "@/features/history/utils/generate-history-run-pdf";
 import { cn } from "@/lib/utils";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 import type { AiRunDetailResponse, AiRunErrorResponse } from "@/features/history/types";
@@ -22,8 +23,8 @@ type Integration = { type: IntegrationType; enabled: boolean; config: Record<str
 type ShareResult = { success: boolean; message: string };
 
 const INTEGRATION_META: Record<IntegrationType, { label: string; icon: string; what: string }> = {
-  slack:  { label: "Slack",  icon: "💬", what: "Full summary + action items" },
-  gmail:  { label: "Gmail",  icon: "📧", what: "Summary email to recipients" },
+  slack:  { label: "Slack",  icon: "💬", what: "Summary + key points + action items" },
+  gmail:  { label: "Gmail",  icon: "📧", what: "Email via Resend (if configured) or your Gmail" },
   notion: { label: "Notion", icon: "📝", what: "Summary + action items + transcript" },
   jira:   { label: "Jira",   icon: "🎯", what: "One ticket per action item" },
 };
@@ -528,21 +529,33 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
             )}
             {!isCompleted && !isFailed && <Badge variant="pending">{run.status}</Badge>}
 
-            {/* Tokens */}
-            {run.tokensUsed != null && (
-              <span className="ml-auto text-xs text-slate-400">{run.tokensUsed.toLocaleString()} tokens used</span>
-            )}
-
-            {/* Share button — only for completed runs */}
-            {isCompleted && run.outputJson && (
-              <button
-                type="button"
-                onClick={() => setShareOpen(true)}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
-              >
-                <Send className="h-3.5 w-3.5" /> Share
-              </button>
-            )}
+            <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+              {isCompleted && run.outputJson && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      generateHistoryRunPdf({
+                        title: run.title,
+                        createdAt: run.createdAt,
+                        tool: run.tool,
+                        outputJson: run.outputJson,
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShareOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
+                  >
+                    <Send className="h-3.5 w-3.5" /> Share
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

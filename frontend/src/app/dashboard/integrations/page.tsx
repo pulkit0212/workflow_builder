@@ -4,43 +4,117 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ArrowRight, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
+import {
+  buildDefaultProductivityConfig,
+  CALENDAR_PROVIDERS_FALLBACK,
+  INTEGRATIONS_UI_FALLBACK,
+  PROMO_FALLBACK,
+  type IntegrationField,
+  type PromoButton,
+} from "@/features/integrations/catalog-fallback";
 
-const INTEGRATIONS_CONFIG = [
-  {
-    type: "slack", name: "Slack",
-    description: "Push meeting summaries and action items to channels.",
-    icon: "chat", color: "#E01E5A", bg: "#FFF0F3",
-    fields: [{ key: "webhookUrl", label: "Webhook URL", placeholder: "https://hooks.slack.com/services/...", type: "text", required: true, help: "Create at api.slack.com/apps → Incoming Webhooks" }],
-    setupSteps: ["Go to api.slack.com/apps", "Create a new app → From scratch", "Add feature: Incoming Webhooks", "Add new webhook to workspace", "Select your channel", "Copy webhook URL and paste above"]
-  },
-  {
-    type: "gmail", name: "Gmail",
-    description: "Automated follow-up emails for all participants.",
-    icon: "mail", color: "#EA4335", bg: "#FEF2F2",
-    fields: [{ key: "recipients", label: "Recipients", placeholder: "john@company.com, sarah@company.com", type: "text", required: true, help: "Comma-separated email addresses" }],
-    setupSteps: ["Enter recipient email addresses above", "Uses your connected Google account", "Emails are sent automatically after each meeting"]
-  },
-  {
-    type: "notion", name: "Notion",
-    description: "Export meeting transcripts to shared team wikis.",
-    icon: "article", color: "#000000", bg: "#F8F8F8",
-    fields: [{ key: "webhookUrl", label: "Webhook URL", placeholder: "https://hook.eu1.make.com/...", type: "text", required: true, help: "Create a webhook in Make.com or Zapier that creates a Notion page" }],
-    setupSteps: ["Go to make.com and create a free account", "Create a new Scenario", "Add trigger: Webhooks → Custom webhook → Copy the URL", "Add action: Notion → Create a Database Item", "Paste the webhook URL above and save"]
-  },
-  {
-    type: "jira", name: "Jira",
-    description: "Convert meeting decisions directly into Jira issues.",
-    icon: "bug_report", color: "#0052CC", bg: "#EFF6FF",
-    fields: [{ key: "webhookUrl", label: "Webhook URL", placeholder: "https://hook.eu1.make.com/...", type: "text", required: true, help: "Create a webhook in Make.com or Zapier that creates Jira issues" }],
-    setupSteps: ["Go to make.com and create a free account", "Create a new Scenario", "Add trigger: Webhooks → Custom webhook → Copy the URL", "Add action: Jira → Create an Issue", "Paste the webhook URL above and save"]
-  }
-] as const;
+type ProductivityIntegrationRow = {
+  type: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  bg: string;
+  fields: IntegrationField[];
+  setupSteps: string[];
+};
 
-const CALENDAR_PROVIDERS = [
-  { provider: "google" as const, name: "Google Calendar", description: "Sync all your scheduled meetings and events automatically.", icon: "calendar_month", color: "#4285F4", bg: "#E8F0FE" },
-  { provider: "microsoft_teams" as const, name: "Microsoft Teams", description: "Connect your enterprise calendar and video conferencing.", icon: "groups", color: "#6264A7", bg: "#EDE9FE" },
-  { provider: "microsoft_outlook" as const, name: "Outlook", description: "Manage professional schedules via Exchange servers.", icon: "inbox", color: "#0078D4", bg: "#E3F2FD" },
-] as const;
+type CalendarProviderRow = {
+  provider: "google" | "microsoft_teams" | "microsoft_outlook";
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  bg: string;
+};
+
+type PromoRow = {
+  slug: string;
+  title: string;
+  description: string;
+  icon: string;
+  color: string;
+  bg: string;
+  bannerStyle: "purple" | "white";
+  buttons: PromoButton[];
+};
+
+type CatalogApiItem = {
+  slug: string;
+  category: string;
+  integrationType: string | null;
+  displayName: string;
+  description: string;
+  icon: string;
+  colorHex: string;
+  bgHex: string;
+  sortOrder: number;
+  uiConfig: unknown;
+};
+
+function parseProductivityFromCatalog(items: CatalogApiItem[]): ProductivityIntegrationRow[] {
+  return items
+    .filter((i) => i.category === "productivity" && i.integrationType)
+    .map((i) => {
+      const t = i.integrationType as string;
+      const fb = INTEGRATIONS_UI_FALLBACK[t] ?? { fields: [] as IntegrationField[], setupSteps: [] as string[] };
+      const ui = (i.uiConfig && typeof i.uiConfig === "object" ? i.uiConfig : {}) as {
+        fields?: IntegrationField[];
+        setupSteps?: string[];
+      };
+      return {
+        type: t,
+        name: i.displayName,
+        description: i.description,
+        icon: i.icon,
+        color: i.colorHex,
+        bg: i.bgHex,
+        fields: Array.isArray(ui.fields) && ui.fields.length > 0 ? ui.fields : fb.fields,
+        setupSteps: Array.isArray(ui.setupSteps) && ui.setupSteps.length > 0 ? ui.setupSteps : fb.setupSteps,
+      };
+    });
+}
+
+function parseCalendarFromCatalog(items: CatalogApiItem[]): CalendarProviderRow[] {
+  return items
+    .filter((i) => i.category === "calendar" && i.integrationType)
+    .map((i) => ({
+      provider: i.integrationType as CalendarProviderRow["provider"],
+      name: i.displayName,
+      description: i.description,
+      icon: i.icon,
+      color: i.colorHex,
+      bg: i.bgHex,
+    }));
+}
+
+function parsePromoFromCatalog(items: CatalogApiItem[]): PromoRow[] {
+  return items
+    .filter((i) => i.category === "promo")
+    .map((i) => {
+      const ui = (i.uiConfig && typeof i.uiConfig === "object" ? i.uiConfig : {}) as {
+        bannerStyle?: string;
+        buttons?: PromoButton[];
+      };
+      const bannerStyle = ui.bannerStyle === "white" ? "white" : "purple";
+      const buttons = Array.isArray(ui.buttons) && ui.buttons.length > 0 ? ui.buttons : [];
+      return {
+        slug: i.slug,
+        title: i.displayName,
+        description: i.description,
+        icon: i.icon,
+        color: i.colorHex,
+        bg: i.bgHex,
+        bannerStyle,
+        buttons,
+      };
+    });
+}
 
 type CalendarStatus = { google: boolean; microsoft_teams: boolean; microsoft_outlook: boolean };
 type ToastState = { msg: string; type: "success" | "error" };
@@ -49,6 +123,26 @@ export default function IntegrationsPage() {
   const searchParams = useSearchParams();
   const apiFetch = useApiFetch();
   const isAuthReady = useIsAuthReady();
+
+  const [calendarProviders, setCalendarProviders] = useState<CalendarProviderRow[]>(
+    () => [...CALENDAR_PROVIDERS_FALLBACK]
+  );
+  const [productivityConfig, setProductivityConfig] = useState<ProductivityIntegrationRow[]>(() =>
+    buildDefaultProductivityConfig()
+  );
+  const [promoRows, setPromoRows] = useState<PromoRow[]>(() =>
+    PROMO_FALLBACK.map((p) => ({
+      slug: p.slug,
+      title: p.title,
+      description: p.description,
+      icon: p.icon,
+      color: p.color,
+      bg: p.bg,
+      bannerStyle: p.bannerStyle,
+      buttons: [...p.buttons],
+    }))
+  );
+  const [catalogPlan, setCatalogPlan] = useState<string | null>(null);
 
   const [integrations, setIntegrations] = useState<Record<string, { type: string; enabled: boolean; config?: Record<string, string> }>>({});
   const [configs, setConfigs] = useState<Record<string, Record<string, string>>>({});
@@ -94,6 +188,60 @@ export default function IntegrationsPage() {
 
   useEffect(() => { if (isAuthReady) void fetchIntegrations(); }, [isAuthReady]);
   useEffect(() => { if (isAuthReady) void fetchCalendarStatus(); }, [isAuthReady]);
+  useEffect(() => {
+    if (!isAuthReady) return;
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/integrations/catalog", { cache: "no-store" });
+        const data = (await res.json()) as {
+          success?: boolean;
+          plan?: string;
+          items?: CatalogApiItem[];
+        };
+        if (!res.ok || !data.success || !Array.isArray(data.items)) {
+          setCalendarProviders([...CALENDAR_PROVIDERS_FALLBACK]);
+          setProductivityConfig(buildDefaultProductivityConfig());
+          setPromoRows(
+            PROMO_FALLBACK.map((p) => ({
+              slug: p.slug,
+              title: p.title,
+              description: p.description,
+              icon: p.icon,
+              color: p.color,
+              bg: p.bg,
+              bannerStyle: p.bannerStyle,
+              buttons: [...p.buttons],
+            }))
+          );
+          setCatalogPlan(null);
+          return;
+        }
+        setCatalogPlan(data.plan ?? null);
+        const items = data.items;
+        const cal = parseCalendarFromCatalog(items);
+        const prod = parseProductivityFromCatalog(items);
+        const promo = parsePromoFromCatalog(items);
+        setCalendarProviders(cal);
+        setProductivityConfig(prod);
+        setPromoRows(promo);
+      } catch {
+        setCalendarProviders([...CALENDAR_PROVIDERS_FALLBACK]);
+        setProductivityConfig(buildDefaultProductivityConfig());
+        setPromoRows(
+          PROMO_FALLBACK.map((p) => ({
+            slug: p.slug,
+            title: p.title,
+            description: p.description,
+            icon: p.icon,
+            color: p.color,
+            bg: p.bg,
+            bannerStyle: p.bannerStyle,
+            buttons: [...p.buttons],
+          }))
+        );
+      }
+    })();
+  }, [isAuthReady, apiFetch]);
 
   async function fetchCalendarStatus() {
     setCalendarStatusLoading(true);
@@ -160,7 +308,7 @@ export default function IntegrationsPage() {
   }
 
   function isConfigured(type: string) {
-    const integration = INTEGRATIONS_CONFIG.find((i) => i.type === type);
+    const integration = productivityConfig.find((i) => i.type === type);
     if (!integration) return true;
     const config = configs[type] || {};
     return integration.fields.filter((f) => f.required).every((f) => Boolean((config[f.key] as string | undefined)?.trim?.() ?? config[f.key]));
@@ -195,9 +343,13 @@ export default function IntegrationsPage() {
       <div>
         <h1 className="text-[22px] font-semibold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>Integrations</h1>
         <p className="text-sm text-[#5F6368] mt-0.5">Connect your tools to automate meeting workflows</p>
+        {catalogPlan && (
+          <p className="text-xs text-[#9AA0A6] mt-1">Showing integrations included in your <span className="font-semibold text-[#5F6368]">{catalogPlan}</span> plan.</p>
+        )}
       </div>
 
       {/* ── Calendar Connections ── */}
+      {calendarProviders.length > 0 && (
       <section>
         <div className="flex items-center gap-2 mb-4">
           <span className="material-symbols-outlined text-[#6C3FF5] text-[20px]">calendar_month</span>
@@ -210,7 +362,7 @@ export default function IntegrationsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            {CALENDAR_PROVIDERS.map(({ provider, name, description, icon, color, bg }) => {
+            {calendarProviders.map(({ provider, name, description, icon, color, bg }) => {
               const isConnected = calendarStatus[provider];
               const isDisc = disconnecting === provider;
               return (
@@ -243,8 +395,10 @@ export default function IntegrationsPage() {
           </div>
         )}
       </section>
+      )}
 
       {/* ── Productivity Tools ── */}
+      {productivityConfig.length > 0 && (
       <section>
         <div className="flex items-center gap-2 mb-4">
           <span className="material-symbols-outlined text-[#6C3FF5] text-[20px]">bolt</span>
@@ -260,7 +414,7 @@ export default function IntegrationsPage() {
           </div>
 
           {/* Rows */}
-          {INTEGRATIONS_CONFIG.map((intg) => {
+          {productivityConfig.map((intg) => {
             const saved = integrations[intg.type];
             const isEnabled = saved?.enabled || false;
             const isExpanded = expanded === intg.type;
@@ -372,36 +526,67 @@ export default function IntegrationsPage() {
           })}
         </div>
       </section>
+      )}
 
-      {/* ── Bottom banners ── */}
+      {/* ── Bottom banners (promo) ── */}
+      {promoRows.length > 0 && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Custom Webhooks */}
-        <div className="rounded-xl p-6 flex flex-col justify-between" style={{ background: "#6C3FF5" }}>
-          <div>
-            <h4 className="text-base font-semibold text-white mb-2" style={{ fontFamily: "'Work Sans', sans-serif" }}>Custom Webhooks</h4>
-            <p className="text-sm text-white/80 mb-4 leading-relaxed">Build your own integrations by connecting Artivaa AI to your internal server endpoints.</p>
-          </div>
-          <div className="flex gap-3">
-            <button type="button" className="px-4 py-2 bg-white text-[#6C3FF5] text-sm font-semibold rounded-lg hover:bg-white/90 transition-colors">
-              Create Webhook
-            </button>
-            <button type="button" className="px-4 py-2 border border-white/20 text-white text-sm font-semibold rounded-lg hover:bg-white/10 transition-colors">
-              Developer Docs
-            </button>
-          </div>
-        </div>
-
-        {/* Zapier */}
-        <div className="rounded-xl p-6 flex flex-col justify-between border border-[#DADCE0] bg-white">
-          <div>
-            <h4 className="text-base font-semibold text-[#202124] mb-2" style={{ fontFamily: "'Work Sans', sans-serif" }}>Zapier Automations</h4>
-            <p className="text-sm text-[#5F6368] mb-4 leading-relaxed">Connect to over 5,000+ apps without writing a single line of code.</p>
-          </div>
-          <button type="button" className="w-fit px-4 py-2 bg-[#E6F4EA] text-[#137333] text-sm font-semibold rounded-lg hover:bg-[#D4EDDA] transition-colors">
-            Open Zapier Store
-          </button>
-        </div>
+        {promoRows.map((promo) =>
+          promo.bannerStyle === "purple" ? (
+            <div key={promo.slug} className="rounded-xl p-6 flex flex-col justify-between" style={{ background: "#6C3FF5" }}>
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-white text-[28px] shrink-0">{promo.icon}</span>
+                <div>
+                  <h4 className="text-base font-semibold text-white mb-2" style={{ fontFamily: "'Work Sans', sans-serif" }}>{promo.title}</h4>
+                  <p className="text-sm text-white/80 mb-4 leading-relaxed">{promo.description}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {promo.buttons.map((b, idx) =>
+                  b.variant === "outline" ? (
+                    <button key={idx} type="button" {...(b.href ? { onClick: () => window.open(b.href!, "_blank", "noopener,noreferrer") } : {})}
+                      className="px-4 py-2 border border-white/20 text-white text-sm font-semibold rounded-lg hover:bg-white/10 transition-colors">
+                      {b.label}
+                    </button>
+                  ) : (
+                    <button key={idx} type="button" {...(b.href ? { onClick: () => window.open(b.href!, "_blank", "noopener,noreferrer") } : {})}
+                      className="px-4 py-2 bg-white text-[#6C3FF5] text-sm font-semibold rounded-lg hover:bg-white/90 transition-colors">
+                      {b.label}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          ) : (
+            <div key={promo.slug} className="rounded-xl p-6 flex flex-col justify-between border border-[#DADCE0] bg-white">
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-[#137333] text-[28px] shrink-0">{promo.icon}</span>
+                <div>
+                  <h4 className="text-base font-semibold text-[#202124] mb-2" style={{ fontFamily: "'Work Sans', sans-serif" }}>{promo.title}</h4>
+                  <p className="text-sm text-[#5F6368] mb-4 leading-relaxed">{promo.description}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {promo.buttons.map((b, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    {...(b.href ? { onClick: () => window.open(b.href!, "_blank", "noopener,noreferrer") } : {})}
+                    className={`w-fit px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                      b.variant === "green"
+                        ? "bg-[#E6F4EA] text-[#137333] hover:bg-[#D4EDDA]"
+                        : "border border-[#DADCE0] text-[#5F6368] hover:bg-[#F8F9FA]"
+                    }`}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        )}
       </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { pool } from "../db/client";
-import { BadRequestError, NotFoundError } from "../lib/errors";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../lib/errors";
 import * as botClient from "../lib/bot-client";
+import { enforceMeetingQuotaBeforeCreate } from "../lib/meeting-quota";
+import { canUseTeamWorkspace } from "../lib/subscription";
 import { triggerAutoShare } from "./meeting-sessions";
 
 export const meetingsRouter = Router();
@@ -53,6 +55,13 @@ async function isActiveWorkspaceMember(workspaceId: string, userId: string): Pro
     [workspaceId, userId]
   );
   return result.rows.length > 0;
+}
+
+function requireTeamWorkspaceForMeetings(req: Request) {
+  const plan = req.appUser.plan ?? "free";
+  if (!canUseTeamWorkspace(plan)) {
+    throw new ForbiddenError("Linking meetings to a team workspace requires an Elite plan.");
+  }
 }
 
 // ─── GET / ────────────────────────────────────────────────────────────────────
@@ -109,9 +118,21 @@ meetingsRouter.post("/", async (req: Request, res: Response, next: NextFunction)
       return res.status(200).json(toCamel(updated.rows[0]));
     }
 
+    await enforceMeetingQuotaBeforeCreate(req.clerkUserId);
+
+    if (workspaceId) requireTeamWorkspaceForMeetings(req);
+
     const result = await pool.query(
       `INSERT INTO meeting_sessions (user_id, workspace_id, title, meeting_link, provider, scheduled_start_time, scheduled_end_time, external_calendar_event_id, notes, status, visibility) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
       [userId, workspaceId, title, meetingLink, provider, scheduledStartTime, scheduledEndTime, externalId ?? null, notes, status, visibility]
+    );
+    // Increment monthly meeting usage counter (subscriptions keyed by Clerk user id).
+    await pool.query(
+      `UPDATE subscriptions
+       SET meetings_used_this_month = meetings_used_this_month + 1,
+           updated_at = NOW()
+       WHERE user_id = $1`,
+      [req.clerkUserId]
     );
     res.status(201).json(toCamel(result.rows[0]));
   } catch (err) { next(err); }
@@ -475,6 +496,13 @@ meetingsRouter.patch("/:id", async (req: Request, res: Response, next: NextFunct
       const current = await pool.query(`SELECT * FROM meeting_sessions WHERE id = $1 LIMIT 1`, [id]);
       return res.json(toCamel(current.rows[0]));
     }
+    if (
+      "workspaceId" in updates &&
+      updates.workspaceId != null &&
+      String(updates.workspaceId).trim() !== ""
+    ) {
+      requireTeamWorkspaceForMeetings(req);
+    }
     const fieldMap: Record<string, string> = { title: "title", meetingLink: "meeting_link", workspaceId: "workspace_id", provider: "provider", scheduledStartTime: "scheduled_start_time", scheduledEndTime: "scheduled_end_time", notes: "notes", status: "status", visibility: "visibility" };
     const setClauses: string[] = ["updated_at = NOW()"];
     const values: unknown[] = [];
@@ -608,7 +636,11 @@ meetingsRouter.get("/:id/status", async (req: Request, res: Response, next: Next
             });
           }
         }
-      }).catch(() => { /* non-fatal — auto_share_done column may not exist yet */ });
+      }).catch((e: unknown) => {
+        const code = (e as { code?: string }).code;
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn("[AutoShare] Could not run status-poll gate:", msg, code ?? "");
+      });
     }
   } catch (err) { next(err); }
 });
@@ -622,6 +654,8 @@ meetingsRouter.post("/:id/request-move", async (req: Request, res: Response, nex
     const { workspaceId } = req.body as { workspaceId?: string };
 
     if (!workspaceId) return next(new BadRequestError("workspaceId is required."));
+
+    requireTeamWorkspaceForMeetings(req);
 
     // Verify meeting ownership
     const meetingResult = await pool.query(
@@ -671,6 +705,8 @@ meetingsRouter.post("/:id/move-to-workspace", async (req: Request, res: Response
     const { workspaceId } = req.body as { workspaceId?: string };
 
     if (!workspaceId) return next(new BadRequestError("workspaceId is required."));
+
+    requireTeamWorkspaceForMeetings(req);
 
     // Verify meeting ownership
     const meetingResult = await pool.query(
@@ -768,6 +804,8 @@ meetingsRouter.post("/share-calendar", async (req: Request, res: Response, next:
       return next(new BadRequestError("workspaceId, title, and meetingLink are required."));
     }
 
+    requireTeamWorkspaceForMeetings(req);
+
     // Check user's role in workspace
     const memberResult = await pool.query(
       `SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1`,
@@ -815,6 +853,8 @@ meetingsRouter.post("/share-calendar", async (req: Request, res: Response, next:
       return res.json({ success: true, meetingId: existingId, status: moveStatus });
     }
 
+    await enforceMeetingQuotaBeforeCreate(req.clerkUserId);
+
     // Create new DB record
     const insertResult = await pool.query(
       `INSERT INTO meeting_sessions (user_id, workspace_id, title, meeting_link, provider, scheduled_start_time, scheduled_end_time, external_calendar_event_id, status, workspace_move_status, visibility)
@@ -832,6 +872,14 @@ meetingsRouter.post("/share-calendar", async (req: Request, res: Response, next:
       ]
     );
     const newId: string = insertResult.rows[0].id;
+
+    await pool.query(
+      `UPDATE subscriptions
+       SET meetings_used_this_month = meetings_used_this_month + 1,
+           updated_at = NOW()
+       WHERE user_id = $1`,
+      [req.clerkUserId]
+    );
 
     if (!isAdmin) {
       await pool.query(

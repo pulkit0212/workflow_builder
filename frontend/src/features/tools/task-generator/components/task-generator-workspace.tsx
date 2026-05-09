@@ -217,21 +217,7 @@ export function TaskGeneratorWorkspace() {
         completed: false,
       }));
       setTasks(generated);
-      // Auto-select tasks assigned to the current user
-      if (currentUserName) {
-        const me = currentUserName.toLowerCase().trim();
-        const myIds = new Set(
-          generated
-            .filter((t) => {
-              const owner = t.owner.toLowerCase().trim();
-              return owner !== "unassigned" && (owner.includes(me) || me.includes(owner));
-            })
-            .map((t) => t.id)
-        );
-        setSelectedTaskIds(myIds);
-      } else {
-        setSelectedTaskIds(new Set());
-      }
+      setSelectedTaskIds(new Set(generated.map((t) => t.id)));
       setSummary(payload.summary);
       setUnextractable(payload.unextractable || "");
       setEditingId(null);
@@ -657,28 +643,23 @@ export function TaskGeneratorWorkspace() {
                           const isMyTask = Boolean(me && owner && owner !== "unassigned" && (owner.includes(me) || me.includes(owner)));
                           const isSelected = selectedTaskIds.has(task.id);
                           return (
-                            <div className={cn("flex items-start gap-3 px-4 py-3.5", !isMyTask && "opacity-55")}>
-                              {/* Checkbox — only selectable for user's own tasks */}
+                            <div className="flex items-start gap-3 px-4 py-3.5">
                               <button
                                 type="button"
-                                disabled={!isMyTask}
                                 onClick={() => {
-                                  if (!isMyTask) return;
                                   setSelectedTaskIds((prev) => {
                                     const next = new Set(prev);
                                     if (next.has(task.id)) next.delete(task.id); else next.add(task.id);
                                     return next;
                                   });
                                 }}
-                                className={cn("mt-0.5 shrink-0", isMyTask ? "cursor-pointer" : "cursor-not-allowed")}
+                                className="mt-0.5 shrink-0 cursor-pointer"
                               >
                                 <div className={cn(
                                   "flex h-4 w-4 items-center justify-center rounded border transition",
-                                  !isMyTask ? "border-slate-200 bg-slate-100"
-                                    : isSelected ? "border-[#6C3FF5] bg-[#6C3FF5]"
-                                    : "border-slate-300 bg-white hover:border-[#6C3FF5]"
+                                  isSelected ? "border-[#6C3FF5] bg-[#6C3FF5]" : "border-slate-300 bg-white hover:border-[#6C3FF5]"
                                 )}>
-                                  {isSelected && isMyTask && (
+                                  {isSelected && (
                                     <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
                                       <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                                     </svg>

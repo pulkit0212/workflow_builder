@@ -3,6 +3,7 @@
 import { InviteMembersCard } from "@/components/workspace/InviteMembersCard";
 import { PendingMoveRequests } from "@/features/workspaces/components/pending-move-requests";
 import { useEffect, useState, useCallback } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { Loader2, LogOut } from "lucide-react";
@@ -79,7 +80,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg"
 
 function WorkspaceListView() {
   const router = useRouter();
-  const { switchToWorkspace, refreshWorkspaces } = useWorkspaceContext();
+  const { switchToWorkspace, refreshWorkspaces, canUseTeamWorkspace } = useWorkspaceContext();
   const apiFetch = useApiFetch();
   const isAuthReady = useIsAuthReady();
   const [workspaces, setWorkspaces] = useState<WorkspaceListItem[]>([]);
@@ -104,7 +105,11 @@ function WorkspaceListView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [apiFetch]);
+
+  useEffect(() => {
+    if (!canUseTeamWorkspace) setShowCreate(false);
+  }, [canUseTeamWorkspace]);
 
   useEffect(() => { if (isAuthReady) fetchWorkspaces(); }, [fetchWorkspaces, isAuthReady]);
 
@@ -147,7 +152,7 @@ function WorkspaceListView() {
           <h1 className="mt-1 font-[Work_Sans] text-[22px] font-bold text-[#202124]">Your Workspaces</h1>
           <p className="mt-1 text-[14px] text-[#5F6368]">Collaborate with your team across shared meetings and notes.</p>
         </div>
-        {!showCreate && (
+        {!showCreate && canUseTeamWorkspace && (
           <button
             onClick={() => setShowCreate(true)}
             className="inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-[#5B2FE0] focus:outline-none focus:ring-2 focus:ring-[#6C3FF5]/40"
@@ -156,10 +161,19 @@ function WorkspaceListView() {
             New Workspace
           </button>
         )}
+        {!showCreate && !canUseTeamWorkspace && (
+          <Link
+            href="/dashboard/billing"
+            className="inline-flex items-center gap-2 rounded-xl border border-[#DADCE0] bg-white px-4 py-2.5 text-sm font-semibold text-[#5F6368] transition-all hover:bg-[#F8F9FA]"
+          >
+            <span className="material-symbols-outlined text-[#7C3AED]" style={{ fontSize: "16px" }}>workspace_premium</span>
+            Elite: team workspaces
+          </Link>
+        )}
       </div>
 
       {/* Create form */}
-      {showCreate && (
+      {showCreate && canUseTeamWorkspace && (
         <div className="rounded-xl border border-[#EDE9FE] bg-gradient-to-br from-[#faf9ff] to-white p-5">
           <div className="mb-4 flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#EDE9FE]">
@@ -211,12 +225,25 @@ function WorkspaceListView() {
             <span className="material-symbols-outlined text-[#9AA0A6]" style={{ fontSize: "32px" }}>group</span>
           </div>
           <p className="text-base font-semibold text-[#202124]">No workspaces yet</p>
-          <p className="mt-1 text-sm text-[#5F6368]">Create your first workspace to start collaborating.</p>
-          <button onClick={() => setShowCreate(true)}
-            className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition-colors">
-            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
-            Create Workspace
-          </button>
+          <p className="mt-1 text-sm text-[#5F6368]">
+            {canUseTeamWorkspace
+              ? "Create your first workspace to start collaborating."
+              : "Team workspaces are included with the Elite plan."}
+          </p>
+          {canUseTeamWorkspace ? (
+            <button onClick={() => setShowCreate(true)}
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition-colors">
+              <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>add</span>
+              Create Workspace
+            </button>
+          ) : (
+            <Link
+              href="/dashboard/billing"
+              className="mt-5 inline-flex items-center gap-2 rounded-xl bg-[#7C3AED] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#6d28d9] transition-colors"
+            >
+              View Elite plan
+            </Link>
+          )}
         </div>
       )}
 
@@ -262,7 +289,7 @@ function WorkspaceListView() {
           ))}
 
           {/* Add new card */}
-          {!showCreate && (
+          {!showCreate && canUseTeamWorkspace && (
             <button onClick={() => setShowCreate(true)}
               className="flex min-h-[160px] flex-col items-center justify-center rounded-xl border border-dashed border-[#DADCE0] bg-[#F8F9FA] p-5 text-center transition-all hover:border-[#6C3FF5]/40 focus:outline-none focus:ring-2 focus:ring-[#6C3FF5]/40">
               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#F1F3F4]">
@@ -284,7 +311,7 @@ function WorkspaceListView() {
 
 function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
-  const { switchToPersonal, refreshWorkspaces } = useWorkspaceContext();
+  const { switchToPersonal, refreshWorkspaces, canUseTeamWorkspace } = useWorkspaceContext();
   const apiFetch = useApiFetch();
   const isAuthReady = useIsAuthReady();
 
@@ -689,8 +716,8 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
         {/* RIGHT COLUMN (sidebar) */}
         <div className="space-y-6">
 
-          {/* Invite Members card */}
-          {canManage && (
+          {/* Invite Members card — Elite only (server-enforced) */}
+          {canManage && canUseTeamWorkspace && (
             <div className="rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
               <div className="bg-gradient-to-br from-[#6C3FF5] to-[#5B2FE0] px-5 py-4">
                 <p className="font-bold text-white">Invite Members</p>
@@ -699,6 +726,18 @@ function WorkspaceManagementView({ workspaceId }: { workspaceId: string }) {
               <div className="px-5 py-4">
                 <InviteMembersCard workspaceId={workspaceId} />
               </div>
+            </div>
+          )}
+          {canManage && !canUseTeamWorkspace && (
+            <div className="rounded-xl border border-[#DADCE0] bg-[#F8F9FA] p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+              <p className="text-sm font-semibold text-[#202124]">Invite members</p>
+              <p className="mt-1 text-xs text-[#5F6368]">Sending invites requires an Elite plan so everyone on the team can use shared workspaces.</p>
+              <Link
+                href="/dashboard/billing"
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-[#7C3AED] px-4 py-2 text-xs font-semibold text-white hover:bg-[#6d28d9]"
+              >
+                Upgrade to Elite
+              </Link>
             </div>
           )}
 

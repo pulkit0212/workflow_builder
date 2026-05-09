@@ -26,6 +26,7 @@ import { SummaryCard } from "@/components/tools/summary-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { getUserMediaAudioStream } from "@/lib/media/get-user-media-audio";
 import {
   createMeetingSessionRecord,
@@ -163,6 +164,7 @@ export function MeetingAssistantWorkspace({
   defaultTranscriptionProvider,
   initialContext
 }: MeetingAssistantWorkspaceProps) {
+  const { activeWorkspaceId } = useWorkspaceContext();
   const [setup, setSetup] = useState<SetupFormState>(() => createSetupState(initialContext));
   const [meetingSession, setMeetingSession] = useState<MeetingSessionRecord | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -352,7 +354,8 @@ export function MeetingAssistantWorkspace({
       notes: setup.notes,
       transcript: transcriptText,
       provider: summarizerProvider,
-      transcriptionProvider
+      transcriptionProvider,
+      workspaceId: activeWorkspaceId,
     });
 
     setLatestRun(result.run);
@@ -526,7 +529,8 @@ export function MeetingAssistantWorkspace({
           notes: setup.notes,
           transcript: transcript.trim(),
           provider: summarizerProvider,
-          transcriptionProvider
+          transcriptionProvider,
+          workspaceId: activeWorkspaceId,
         });
 
         setLatestRun(result.run);

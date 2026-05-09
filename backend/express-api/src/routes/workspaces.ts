@@ -2,8 +2,17 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { pool } from "../db/client";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../lib/errors";
+import { canUseTeamWorkspace } from "../lib/subscription";
+import { sendWorkspaceInviteEmail } from "../lib/workspace-invite-email";
 
 export const workspacesRouter = Router();
+
+function requireTeamWorkspacePlan(req: Request) {
+  const plan = req.appUser.plan ?? "free";
+  if (!canUseTeamWorkspace(plan)) {
+    throw new ForbiddenError("Team workspaces are available on the Elite plan.");
+  }
+}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +87,8 @@ workspacesRouter.post("/", async (req: Request, res: Response, next: NextFunctio
       return next(new BadRequestError(parsed.error.message));
     }
 
+    requireTeamWorkspacePlan(req);
+
     const { name, members } = parsed.data;
     const userId = req.appUser.id;
 
@@ -149,6 +160,14 @@ workspacesRouter.post("/join", async (req: Request, res: Response, next: NextFun
       return next(new NotFoundError("Invalid or expired invite token"));
     }
 
+    const userEmail = (req.appUser.email ?? "").trim().toLowerCase();
+    const invitedEmail = String(invite.invited_email).trim().toLowerCase();
+    if (!userEmail || userEmail !== invitedEmail) {
+      return next(
+        new ForbiddenError(`Sign in with ${invite.invited_email} (the invited email) to accept this invite.`)
+      );
+    }
+
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -208,6 +227,14 @@ workspacesRouter.get("/join", async (req: Request, res: Response, next: NextFunc
 
     if (!invite) {
       return next(new NotFoundError("Invalid or expired invite token"));
+    }
+
+    const userEmail = (req.appUser.email ?? "").trim().toLowerCase();
+    const invitedEmail = String(invite.invited_email).trim().toLowerCase();
+    if (!userEmail || userEmail !== invitedEmail) {
+      return next(
+        new ForbiddenError(`Sign in with ${invite.invited_email} (the invited email) to accept this invite.`)
+      );
     }
 
     const client = await pool.connect();
@@ -394,9 +421,16 @@ workspacesRouter.get("/:workspaceId/action-items", async (req: Request, res: Res
 
     const member = await requireWorkspaceMember(workspaceId, userId);
 
-    // Owners and admins see all workspace action items; members/viewers see only their own
+    // Viewers: only items they report or are assigned to; others: full workspace list
     let result;
-    if (member.role === "owner" || member.role === "admin") {
+    if (member.role === "viewer") {
+      result = await pool.query(
+        `SELECT * FROM action_items
+         WHERE workspace_id = $1 AND (reporter_id = $2 OR assignee_id = $2)
+         ORDER BY created_at DESC`,
+        [workspaceId, userId]
+      );
+    } else if (member.role === "owner" || member.role === "admin") {
       result = await pool.query(
         `SELECT * FROM action_items
          WHERE workspace_id = $1
@@ -406,9 +440,9 @@ workspacesRouter.get("/:workspaceId/action-items", async (req: Request, res: Res
     } else {
       result = await pool.query(
         `SELECT * FROM action_items
-         WHERE workspace_id = $1 AND user_id = $2
+         WHERE workspace_id = $1
          ORDER BY created_at DESC`,
-        [workspaceId, userId]
+        [workspaceId]
       );
     }
 
@@ -672,6 +706,8 @@ workspacesRouter.post("/:workspaceId/move-requests/:requestId/approve", async (r
     const { workspaceId, requestId } = req.params;
     const userId = req.appUser.id;
 
+    requireTeamWorkspacePlan(req);
+
     const member = await requireWorkspaceMember(workspaceId, userId);
     if (member.role !== "admin" && member.role !== "owner") {
       return next(new ForbiddenError("Only admins can approve move requests"));
@@ -691,10 +727,16 @@ workspacesRouter.post("/:workspaceId/move-requests/:requestId/approve", async (r
         return next(new NotFoundError("Move request not found or already handled"));
       }
 
-      // Move the meeting to this workspace
+      // Move the meeting to this workspace and align row with instant-admin share path
       await client.query(
-        `UPDATE meeting_sessions SET workspace_id = $1 WHERE id = $2`,
-        [workspaceId, moveReq.meeting_id]
+        `UPDATE meeting_sessions
+         SET workspace_id = $1,
+             workspace_move_status = 'approved',
+             workspace_moved_by = $2,
+             workspace_moved_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $3`,
+        [workspaceId, userId, moveReq.meeting_id]
       );
 
       // Mark request as approved
@@ -723,20 +765,31 @@ workspacesRouter.post("/:workspaceId/move-requests/:requestId/reject", async (re
     const { workspaceId, requestId } = req.params;
     const userId = req.appUser.id;
 
+    requireTeamWorkspacePlan(req);
+
     const member = await requireWorkspaceMember(workspaceId, userId);
     if (member.role !== "admin" && member.role !== "owner") {
       return next(new ForbiddenError("Only admins can reject move requests"));
     }
 
-    const result = await pool.query(
+    const result = await pool.query<{ meeting_id: string }>(
       `UPDATE workspace_move_requests SET status = 'rejected', reviewed_at = NOW(), reviewed_by = $1
        WHERE id = $2 AND workspace_id = $3 AND status = 'pending'
-       RETURNING id`,
+       RETURNING meeting_id`,
       [userId, requestId, workspaceId]
     );
 
     if (result.rowCount === 0) {
       return next(new NotFoundError("Move request not found or already handled"));
+    }
+
+    const meetingIdRejected = result.rows[0]?.meeting_id;
+    if (meetingIdRejected) {
+      await pool.query(
+        `UPDATE meeting_sessions SET workspace_move_status = NULL, updated_at = NOW()
+         WHERE id = $1 AND workspace_move_status = 'pending'`,
+        [meetingIdRejected]
+      );
     }
 
     res.json({ success: true });
@@ -785,6 +838,8 @@ workspacesRouter.post("/:workspaceId/invite", async (req: Request, res: Response
     const { workspaceId } = req.params;
     const userId = req.appUser.id;
 
+    requireTeamWorkspacePlan(req);
+
     const member = await requireWorkspaceMember(workspaceId, userId);
     if (member.role !== "admin" && member.role !== "owner") {
       return next(new ForbiddenError("Only admins can invite members"));
@@ -831,10 +886,42 @@ workspacesRouter.post("/:workspaceId/invite", async (req: Request, res: Response
       [workspaceId, normalizedEmail, userId, token, expiresAt]
     );
 
-    // TODO: Send invite email with token
-    // For now, just return success — the invite link would be /invite?token=<token>
+    const frontendBase = (process.env.FRONTEND_URL ?? "http://localhost:3000").replace(/\/$/, "");
+    const inviteLink = `${frontendBase}/invite?token=${encodeURIComponent(token)}`;
 
-    res.status(201).json({ success: true, token });
+    const [wsNameRes, inviterRes] = await Promise.all([
+      pool.query<{ name: string }>(`SELECT name FROM workspaces WHERE id = $1 LIMIT 1`, [workspaceId]),
+      pool.query<{ full_name: string | null; email: string | null }>(
+        `SELECT full_name, email FROM users WHERE id = $1 LIMIT 1`,
+        [userId]
+      ),
+    ]);
+    const workspaceName = wsNameRes.rows[0]?.name ?? "Workspace";
+    const inviterRow = inviterRes.rows[0];
+    const inviterDisplayName =
+      (inviterRow?.full_name && inviterRow.full_name.trim()) || inviterRow?.email || "A teammate";
+
+    const emailResult = await sendWorkspaceInviteEmail({
+      to: normalizedEmail,
+      inviteLink,
+      workspaceName,
+      inviterDisplayName,
+    });
+
+    res.status(201).json({
+      success: true,
+      inviteLink,
+      invitedEmail: normalizedEmail,
+      emailSent: emailResult.ok,
+      ...(emailResult.ok
+        ? {}
+        : {
+            emailSkippedReason: emailResult.reason,
+            ...(emailResult.reason === "send_failed" && emailResult.detail
+              ? { emailError: emailResult.detail }
+              : {}),
+          }),
+    });
   } catch (err) {
     next(err);
   }

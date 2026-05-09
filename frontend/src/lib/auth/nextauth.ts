@@ -21,7 +21,14 @@ export const { handlers } = NextAuth(() => {
         clientSecret: googleAuthEnv.googleClientSecret ?? "",
         authorization: {
           params: {
-            scope: "openid email profile https://www.googleapis.com/auth/calendar.readonly",
+            scope: [
+              "openid",
+              "email",
+              "profile",
+              "https://www.googleapis.com/auth/calendar.readonly",
+              // Needed for Gmail auto-share + follow-up email sending
+              "https://www.googleapis.com/auth/gmail.send",
+            ].join(" "),
             access_type: "offline",
             prompt: "consent"
           }

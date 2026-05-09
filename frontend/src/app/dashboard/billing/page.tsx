@@ -3,7 +3,7 @@
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { ArrowRight, Check, Download, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, CheckCircle2, Download, Sparkles, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { planDefinitions } from "@/lib/subscription";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
@@ -26,6 +26,7 @@ type SubscriptionResponse = {
     history: boolean;
     meetingsPerMonth: number;
     unlimited: boolean;
+    teamWorkspace?: boolean;
   };
   payments: Array<{
     id: string;
@@ -47,10 +48,22 @@ const featureRows = [
   { feature: "Auto Summary",     free: false, pro: true,  elite: true  },
   { feature: "Action Items",     free: false, pro: true,  elite: true  },
   { feature: "Meeting History",  free: false, pro: true,  elite: true  },
-  { feature: "Meetings/month",   free: "3",   pro: "10",  elite: "∞"   },
+  { feature: "Meetings/month",   free: "7",   pro: "20",  elite: "∞"   },
   { feature: "Priority Support", free: false, pro: false, elite: true  },
-  { feature: "Team Workspace",   free: false, pro: false, elite: "Soon"},
+  { feature: "Team Workspace",   free: false, pro: false, elite: true  },
 ] as const;
+
+type PlanCard = {
+  id: "trial" | "free" | "pro" | "elite";
+  name: string;
+  price: number;
+  badge?: string | null;
+  badgeTone?: "neutral" | "accent" | "pending" | "dark";
+  description: string;
+  features: string[];
+  limits: SubscriptionResponse["limits"];
+  sortOrder?: number;
+};
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(value);
@@ -61,6 +74,76 @@ function formatDate(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
+}
+
+type BillingFeedbackModal =
+  | null
+  | { variant: "success"; planLabel: string }
+  | { variant: "error"; title: string; message: string };
+
+function BillingFeedbackModalView({
+  state,
+  onDismiss,
+}: {
+  state: BillingFeedbackModal;
+  onDismiss: () => void;
+}) {
+  if (!state) return null;
+  const isSuccess = state.variant === "success";
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="billing-feedback-title"
+    >
+      <div className="w-full max-w-md rounded-xl border border-[#DADCE0] bg-white p-6 shadow-xl">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full",
+                isSuccess ? "bg-[#E6F4EA] text-[#137333]" : "bg-[#FCE8E6] text-[#C5221F]"
+              )}
+            >
+              {isSuccess ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+            </div>
+            <div>
+              <h2 id="billing-feedback-title" className="text-base font-semibold text-[#202124]">
+                {isSuccess ? "Payment successful" : state.title}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-[#5F6368]">
+                {isSuccess
+                  ? `You're now on the ${state.planLabel} plan. Your subscription is active.`
+                  : state.message}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onDismiss}
+            className="shrink-0 text-[#9AA0A6] transition hover:text-[#5F6368]"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={onDismiss}
+            className={cn(
+              "rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition",
+              isSuccess ? "bg-[#6C3FF5] hover:bg-[#5B2FE0]" : "border border-[#DADCE0] bg-white text-[#202124] hover:bg-[#F8F9FA]"
+            )}
+          >
+            {isSuccess ? "Continue" : "Close"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function FeatureValue({ value, highlight }: { value: boolean | string; highlight?: boolean }) {
@@ -81,6 +164,14 @@ export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activePlan, setActivePlan] = useState<"pro" | "elite" | null>(null);
+  const [plans, setPlans] = useState<PlanCard[] | null>(null);
+  const [billingFeedback, setBillingFeedback] = useState<BillingFeedbackModal>(null);
+
+  function dismissBillingFeedback() {
+    const wasSuccess = billingFeedback?.variant === "success";
+    setBillingFeedback(null);
+    if (wasSuccess) window.location.reload();
+  }
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -88,13 +179,24 @@ export default function BillingPage() {
     async function load() {
       setIsLoading(true); setError(null);
       try {
-        const res = await apiFetch("/api/subscription", { cache: "no-store" });
+        const [res, plansRes] = await Promise.all([
+          apiFetch("/api/subscription", { cache: "no-store" }),
+          apiFetch("/api/subscription/plans", { cache: "no-store" }),
+        ]);
         const payload = await res.json() as SubscriptionResponse | { success?: false; message?: string };
         if (!isMounted) return;
         if (!res.ok || !("success" in payload) || !payload.success) {
           throw new Error("message" in payload ? payload.message || "Failed to load." : "Failed to load.");
         }
         setSubscription(payload);
+
+        if (plansRes.ok) {
+          const p = await plansRes.json() as { success?: boolean; plans?: PlanCard[] };
+          if (p.success && Array.isArray(p.plans)) {
+            const sorted = [...p.plans].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+            setPlans(sorted);
+          }
+        }
       } catch (e) {
         if (isMounted) setError(e instanceof Error ? e.message : "Failed to load billing data.");
       } finally {
@@ -107,6 +209,17 @@ export default function BillingPage() {
 
   const currentPlan = subscription?.plan ?? "free";
   const currentPlanDef = planDefinitions[currentPlan];
+  const planCards = plans ?? (["free", "pro", "elite"] as const).map((id) => ({
+    id,
+    name: planDefinitions[id].name,
+    price: planDefinitions[id].price,
+    badge: planDefinitions[id].badge,
+    badgeTone: planDefinitions[id].badgeTone,
+    description: planDefinitions[id].description,
+    features: planDefinitions[id].features,
+    limits: subscription?.limits ?? planDefinitions[id].limits,
+    sortOrder: 0,
+  }));
 
   const trialProgress = useMemo(() => {
     if (!subscription || subscription.plan !== "trial") return 0;
@@ -125,8 +238,13 @@ export default function BillingPage() {
       });
       const data = await res.json() as { success: true; orderId: string; amount: number; currency: string; keyId: string } | { success?: false; message?: string };
       if (!("success" in data) || !data.success) {
-        alert("Payment error: " + ("message" in data ? data.message : "Failed to create order"));
-        setActivePlan(null); return;
+        setBillingFeedback({
+          variant: "error",
+          title: "Couldn't start checkout",
+          message: "message" in data && data.message ? data.message : "Failed to create order.",
+        });
+        setActivePlan(null);
+        return;
       }
       if (!(window as unknown as Record<string, unknown>).Razorpay) {
         await new Promise<void>((resolve) => {
@@ -146,24 +264,45 @@ export default function BillingPage() {
             body: JSON.stringify({ ...response, plan }),
           });
           const vd = await v.json() as { success?: boolean; message?: string };
-          if (vd.success) { alert(`🎉 You are now on ${plan} plan.`); window.location.reload(); }
-          else alert("Verification failed: " + vd.message);
+          setActivePlan(null);
+          if (vd.success) {
+            const planLabel = plan === "elite" ? "Elite" : "Pro";
+            setBillingFeedback({ variant: "success", planLabel });
+          } else {
+            setBillingFeedback({
+              variant: "error",
+              title: "Verification failed",
+              message: vd.message ?? "We couldn't confirm your payment. If you were charged, contact support.",
+            });
+          }
         },
         prefill: { name: user?.fullName || "", email: user?.primaryEmailAddress?.emailAddress || "" },
         theme: { color: "#6C3FF5" },
         modal: { ondismiss: () => setActivePlan(null) },
       });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rzp.on("payment.failed", (r: any) => { alert("Payment failed: " + r.error.description); setActivePlan(null); });
+      rzp.on("payment.failed", (r: any) => {
+        setActivePlan(null);
+        setBillingFeedback({
+          variant: "error",
+          title: "Payment failed",
+          message: r?.error?.description ?? "Your payment did not go through. You can try again.",
+        });
+      });
       rzp.open();
     } catch (e) {
-      alert("Error: " + (e instanceof Error ? e.message : "Unknown error"));
+      setBillingFeedback({
+        variant: "error",
+        title: "Something went wrong",
+        message: e instanceof Error ? e.message : "Unknown error.",
+      });
       setActivePlan(null);
     }
   }
 
   return (
     <div className="space-y-6">
+      <BillingFeedbackModalView state={billingFeedback} onDismiss={dismissBillingFeedback} />
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
 
       {/* Page header */}
@@ -241,14 +380,13 @@ export default function BillingPage() {
 
           {/* Plan cards */}
           <div className="grid gap-4 xl:grid-cols-3">
-            {(["free", "pro", "elite"] as const).map((planId) => {
-              const plan = planDefinitions[planId];
-              const isCurrent = currentPlan === planId;
-              const isPopular = planId === "pro";
+            {planCards.filter((p) => p.id !== "trial").map((plan) => {
+              const isCurrent = currentPlan === plan.id;
+              const isPopular = plan.id === "pro";
 
               return (
                 <div
-                  key={planId}
+                  key={plan.id}
                   className={cn(
                     "group relative flex flex-col rounded-xl border bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-all",
                     isCurrent
@@ -299,7 +437,7 @@ export default function BillingPage() {
                       <div className="flex h-10 items-center justify-center rounded-xl border border-[#6C3FF5] text-sm font-semibold text-[#6C3FF5]">
                         Current Plan
                       </div>
-                    ) : planId === "free" ? (
+                    ) : plan.id === "free" ? (
                       <button
                         disabled
                         className="flex h-10 w-full items-center justify-center rounded-xl border border-[#DADCE0] text-sm font-semibold text-[#9AA0A6]"
@@ -308,12 +446,12 @@ export default function BillingPage() {
                       </button>
                     ) : (
                       <button
-                        onClick={() => void handleUpgrade(planId)}
-                        disabled={activePlan === planId}
+                        onClick={() => void handleUpgrade(plan.id as "pro" | "elite")}
+                        disabled={activePlan === (plan.id as "pro" | "elite")}
                         className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#6C3FF5] text-sm font-semibold text-white transition hover:bg-[#5B2FE0] disabled:opacity-60"
                       >
-                        {activePlan === planId ? "Opening checkout…" : `Upgrade to ${plan.name}`}
-                        {activePlan !== planId && <ArrowRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />}
+                        {activePlan === (plan.id as "pro" | "elite") ? "Opening checkout…" : `Upgrade to ${plan.name}`}
+                        {activePlan !== (plan.id as "pro" | "elite") && <ArrowRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />}
                       </button>
                     )}
                   </div>

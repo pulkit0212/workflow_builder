@@ -1,4 +1,8 @@
-import "dotenv/config";
+import path from "path";
+import dotenv from "dotenv";
+
+// Load .env from this package root (works with ts-node src/ and node dist/)
+dotenv.config({ path: path.join(__dirname, "..", ".env") });
 import { createApp } from "./app";
 import { config } from "./config";
 import { pool } from "./db/client";

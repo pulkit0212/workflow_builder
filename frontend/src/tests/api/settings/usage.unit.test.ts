@@ -187,7 +187,7 @@ describe("GET /api/settings/usage - Unit Tests", () => {
     expect(body.limits).toBeDefined();
     expect(body.limits.meetingBot).toBe(true);
     expect(body.limits.transcription).toBe(true);
-    expect(body.limits.meetingsPerMonth).toBe(10);
+    expect(body.limits.meetingsPerMonth).toBe(20);
     expect(body.limits.unlimited).toBe(false);
   });
 
@@ -210,7 +210,7 @@ describe("GET /api/settings/usage - Unit Tests", () => {
 
     expect(response.status).toBe(200);
     expect(body.limits.meetingBot).toBe(false);
-    expect(body.limits.meetingsPerMonth).toBe(3);
+    expect(body.limits.meetingsPerMonth).toBe(7);
     expect(body.limits.unlimited).toBe(false);
   });
 

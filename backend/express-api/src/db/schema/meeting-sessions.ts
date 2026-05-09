@@ -63,6 +63,8 @@ export const meetingSessions = pgTable("meeting_sessions", {
   workspaceMovedBy: varchar("workspace_moved_by", { length: 255 }),
   workspaceMovedAt: timestamp("workspace_moved_at", { withTimezone: true }),
   autoShareFailures: jsonb("auto_share_failures").$type<Array<{ integration: string; error: string }> | null>(),
+  /** Set true after triggerAutoShare ran once (polling path after bot completes). */
+  autoShareDone: boolean("auto_share_done").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });

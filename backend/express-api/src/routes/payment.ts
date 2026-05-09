@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { pool } from "../db/client";
 import { config } from "../config";
 import { BadRequestError } from "../lib/errors";
+import { syncUserPlanFromClerk } from "../lib/subscription-sync";
 
 export const paymentRouter = Router();
 
@@ -104,35 +105,48 @@ paymentRouter.post("/verify", async (req: Request, res: Response, next: NextFunc
       .update(body)
       .digest("hex");
 
-    if (expectedSignature !== razorpay_signature) {
+    const sigA = Buffer.from(expectedSignature, "utf8");
+    const sigB = Buffer.from(razorpay_signature, "utf8");
+    if (sigA.length !== sigB.length || !crypto.timingSafeEqual(sigA, sigB)) {
       return res.status(400).json({ success: false, message: "Invalid payment signature." });
     }
 
-    const userId = req.appUser.id;
+    const clerkUserId = req.clerkUserId;
     const amount = PLAN_PRICES[plan];
     const now = new Date();
     const planEndsAt = new Date(now);
     planEndsAt.setMonth(planEndsAt.getMonth() + 1);
 
-    // Upsert subscription
+    // Upsert subscription (subscriptions.user_id = Clerk id).
+    // trial_* are NOT NULL with no DB default — use SQL NOW() so values are never driver-null.
+    // On UPDATE: never use LEAST(..., EXCLUDED.trial_ends_at) when EXCLUDED could be null — PG LEAST returns NULL if any arg is NULL.
     await pool.query(
-      `INSERT INTO subscriptions (user_id, plan, status, plan_started_at, plan_ends_at, razorpay_order_id, razorpay_payment_id, updated_at)
-       VALUES ($1, $2, 'active', $3, $4, $5, $6, $3)
+      `INSERT INTO subscriptions (
+         user_id, plan, status,
+         trial_started_at, trial_ends_at,
+         plan_started_at, plan_ends_at,
+         razorpay_order_id, razorpay_payment_id,
+         last_reset_date, updated_at
+       )
+       VALUES ($1, $2, 'active', NOW(), NOW(), NOW(), $3, $4, $5, NOW(), NOW())
        ON CONFLICT (user_id) DO UPDATE SET
          plan = EXCLUDED.plan,
          status = 'active',
+         trial_started_at = COALESCE(subscriptions.trial_started_at, NOW()),
+         trial_ends_at = LEAST(COALESCE(subscriptions.trial_ends_at, NOW()), NOW()),
          plan_started_at = EXCLUDED.plan_started_at,
          plan_ends_at = EXCLUDED.plan_ends_at,
          razorpay_order_id = EXCLUDED.razorpay_order_id,
          razorpay_payment_id = EXCLUDED.razorpay_payment_id,
-         updated_at = EXCLUDED.updated_at`,
-      [userId, plan, now, planEndsAt, razorpay_order_id, razorpay_payment_id]
+         updated_at = NOW()`,
+      [clerkUserId, plan, planEndsAt, razorpay_order_id, razorpay_payment_id]
     );
+    await syncUserPlanFromClerk(clerkUserId, plan);
 
     // Upsert payment record
     const existingPayment = await pool.query(
       `SELECT id FROM subscription_payments WHERE user_id = $1 AND razorpay_order_id = $2 LIMIT 1`,
-      [userId, razorpay_order_id]
+      [clerkUserId, razorpay_order_id]
     );
 
     if (existingPayment.rows.length > 0) {
@@ -148,7 +162,7 @@ paymentRouter.post("/verify", async (req: Request, res: Response, next: NextFunc
         `INSERT INTO subscription_payments
            (user_id, plan, amount, currency, status, razorpay_order_id, razorpay_payment_id, razorpay_signature)
          VALUES ($1, $2, $3, 'INR', 'paid', $4, $5, $6)`,
-        [userId, plan, amount, razorpay_order_id, razorpay_payment_id, razorpay_signature]
+        [clerkUserId, plan, amount, razorpay_order_id, razorpay_payment_id, razorpay_signature]
       );
     }
 

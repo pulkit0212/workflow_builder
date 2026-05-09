@@ -1,6 +1,10 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ToolCard } from "@/components/tools/tool-card";
 import { allTools } from "@/lib/ai/tool-registry";
+import { clientApiFetch } from "@/lib/api-client";
 
 // Badge assignments for existing tools
 const TOOL_BADGES: Record<string, "POPULAR" | "NEW"> = {
@@ -9,6 +13,58 @@ const TOOL_BADGES: Record<string, "POPULAR" | "NEW"> = {
 };
 
 export default function ToolsPage() {
+  const [visibleSlugs, setVisibleSlugs] = useState<Set<string> | null>(null);
+  const [badgesBySlug, setBadgesBySlug] = useState<Record<string, "POPULAR" | "NEW">>(TOOL_BADGES);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadCatalog() {
+      try {
+        const res = await clientApiFetch("/api/tools/catalog", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          success?: boolean;
+          items?: Array<{ slug?: string; badge?: string | null }>;
+        };
+        if (!json?.success || !Array.isArray(json.items)) return;
+
+        const slugs = new Set(
+          json.items
+            .map((i) => String(i.slug ?? "").trim())
+            .filter(Boolean)
+        );
+
+        const badgeMap: Record<string, "POPULAR" | "NEW"> = { ...TOOL_BADGES };
+        for (const item of json.items) {
+          const slug = String(item.slug ?? "").trim();
+          const badge = String(item.badge ?? "").toUpperCase();
+          if (slug && (badge === "POPULAR" || badge === "NEW")) {
+            badgeMap[slug] = badge as "POPULAR" | "NEW";
+          }
+        }
+
+        if (!cancelled) {
+          setVisibleSlugs(slugs);
+          setBadgesBySlug(badgeMap);
+        }
+      } catch {
+        // Leave fallback UI (local registry) in place
+      }
+    }
+
+    void loadCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toolsToShow = useMemo(() => {
+    if (!visibleSlugs) return allTools;
+    const filtered = allTools.filter((t) => visibleSlugs.has(t.slug));
+    return filtered.length > 0 ? filtered : allTools;
+  }, [visibleSlugs]);
+
   return (
     <ErrorBoundary>
       <div className="space-y-8">
@@ -31,8 +87,8 @@ export default function ToolsPage() {
             </h2>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {allTools.map((tool) => (
-              <ToolCard key={tool.slug} tool={tool} badge={TOOL_BADGES[tool.slug]} />
+            {toolsToShow.map((tool) => (
+              <ToolCard key={tool.slug} tool={tool} badge={badgesBySlug[tool.slug]} />
             ))}
 
             {/* Request Module card */}

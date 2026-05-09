@@ -7,6 +7,4 @@ export * from "./meeting-sessions";
 export * from "./action-items";
 export * from "./user-integrations";
 export * from "./integrations";
-export * from "./uploaded-files";
-export * from "./usage-logs";
 export * from "./workspaces";

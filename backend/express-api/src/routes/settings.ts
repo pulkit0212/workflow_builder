@@ -6,6 +6,14 @@ import { getPlanLimits } from "../lib/subscription";
 
 export const settingsRouter = Router();
 
+const PLAN_IDS = ["free", "pro", "elite", "trial"] as const;
+type PlanId = (typeof PLAN_IDS)[number];
+
+function normalizePlan(plan: string | undefined | null): PlanId {
+  const p = String(plan ?? "free").toLowerCase();
+  return (PLAN_IDS as readonly string[]).includes(p) ? (p as PlanId) : "free";
+}
+
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
 const accountUpdateSchema = z.object({
@@ -35,6 +43,111 @@ const preferencesUpdateSchema = z.object({
     jira: z.boolean().optional(),
   }).optional(),
 });
+
+type PreferenceCatalogRow = {
+  key: string;
+  group_key: string;
+  label: string;
+  description: string;
+  field_type: "boolean" | "enum" | "string";
+  enum_options: unknown | null;
+  default_value: unknown;
+  sort_order: number;
+  ui_config: unknown | null;
+};
+
+async function fetchUserSettingsMap(userId: string, keys: string[]): Promise<Map<string, unknown>> {
+  if (keys.length === 0) return new Map();
+  try {
+    const { rows } = await pool.query<{ key: string; value: unknown }>(
+      `SELECT key, value FROM user_settings WHERE user_id = $1 AND key = ANY($2)`,
+      [userId, keys]
+    );
+    return new Map(rows.map((r) => [r.key, r.value]));
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") return new Map(); // user_settings table not migrated yet
+    throw e;
+  }
+}
+
+async function upsertUserSetting(userId: string, key: string, value: unknown): Promise<void> {
+  await pool.query(
+    `INSERT INTO user_settings (user_id, key, value)
+     VALUES ($1, $2, $3::jsonb)
+     ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [userId, key, JSON.stringify(value)]
+  );
+}
+
+async function getActiveProductivityTypesForPlan(plan: PlanId): Promise<Set<string>> {
+  try {
+    const { rows } = await pool.query<{ integration_type: string }>(
+      `SELECT integration_type FROM integration_catalog
+       WHERE category = 'productivity'
+         AND integration_type IS NOT NULL
+         AND is_active = true
+         AND $1 = ANY(allowed_plans)`,
+      [plan]
+    );
+    return new Set(rows.map((r) => r.integration_type).filter(Boolean));
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") {
+      // If integration_catalog is missing, don't hide anything.
+      return new Set(["slack", "gmail", "notion", "jira"]);
+    }
+    throw e;
+  }
+}
+
+async function fetchPreferencesCatalog(plan: PlanId): Promise<PreferenceCatalogRow[]> {
+  try {
+    const { rows } = await pool.query<PreferenceCatalogRow>(
+      `SELECT key, group_key, label, description, field_type, enum_options, default_value, sort_order, ui_config
+       FROM preferences_catalog
+       WHERE is_active = true AND $1 = ANY(allowed_plans)
+       ORDER BY group_key, sort_order ASC`,
+      [plan]
+    );
+    return rows;
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") return [];
+    throw e;
+  }
+}
+
+function getNested(obj: any, path: string): unknown {
+  const parts = path.split(".").filter(Boolean);
+  let cur = obj;
+  for (const p of parts) {
+    if (!cur || typeof cur !== "object") return undefined;
+    cur = cur[p];
+  }
+  return cur;
+}
+
+function setNested(obj: any, path: string, value: unknown): void {
+  const parts = path.split(".").filter(Boolean);
+  let cur = obj;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i]!;
+    if (i === parts.length - 1) {
+      cur[p] = value;
+      return;
+    }
+    if (!cur[p] || typeof cur[p] !== "object") cur[p] = {};
+    cur = cur[p];
+  }
+}
+
+function coerceDefault(fieldType: PreferenceCatalogRow["field_type"], v: unknown): unknown {
+  if (fieldType === "boolean") return typeof v === "boolean" ? v : Boolean(v);
+  if (fieldType === "string") return typeof v === "string" ? v : String(v ?? "");
+  // enum: keep string
+  return typeof v === "string" ? v : String(v ?? "");
+}
 
 // ─── GET /account ─────────────────────────────────────────────────────────────
 
@@ -105,20 +218,15 @@ settingsRouter.patch("/account", async (req: Request, res: Response, next: NextF
 
 settingsRouter.get("/bot", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await pool.query(
-      "SELECT bot_display_name, audio_source FROM user_preferences WHERE user_id = $1 LIMIT 1",
-      [req.appUser.id]
-    );
-    const prefs = result.rows[0] ?? null;
-
-    if (!prefs) {
-      // Return defaults if no preferences row exists yet
-      return res.json({ botDisplayName: "Artiva Notetaker", audioSource: "default" });
-    }
-
+    const plan = normalizePlan(req.appUser.plan);
+    const catalog = await fetchPreferencesCatalog(plan);
+    const keys = catalog.map((c) => c.key);
+    const map = await fetchUserSettingsMap(req.appUser.id, keys);
+    const displayName = map.get("botDisplayName");
+    const audioSource = map.get("audioSource");
     res.json({
-      botDisplayName: prefs.bot_display_name,
-      audioSource: prefs.audio_source,
+      botDisplayName: typeof displayName === "string" ? displayName : "Artiva Notetaker",
+      audioSource: typeof audioSource === "string" ? audioSource : "default",
     });
   } catch (err) {
     next(err);
@@ -136,23 +244,8 @@ settingsRouter.post("/bot", async (req: Request, res: Response, next: NextFuncti
 
     const { botDisplayName, audioSource } = parsed.data;
     const resolvedAudioSource = audioSource ?? "default";
-
-    await pool.query(
-      `INSERT INTO user_preferences (user_id, bot_display_name, audio_source,
-        email_notifications, default_email_tone, summary_length, language, auto_share_targets)
-      VALUES ($1, $2, $3, $4::jsonb, 'professional', 'standard', 'en', $5::jsonb)
-      ON CONFLICT (user_id) DO UPDATE SET
-        bot_display_name = EXCLUDED.bot_display_name,
-        audio_source = EXCLUDED.audio_source,
-        updated_at = NOW()`,
-      [
-        req.appUser.id,
-        botDisplayName,
-        resolvedAudioSource,
-        JSON.stringify({ meetingSummary: true, actionItems: false, weeklyDigest: false, productUpdates: true }),
-        JSON.stringify({ slack: false, gmail: false, notion: false, jira: false }),
-      ]
-    );
+    await upsertUserSetting(req.appUser.id, "botDisplayName", botDisplayName);
+    await upsertUserSetting(req.appUser.id, "audioSource", resolvedAudioSource);
 
     res.json({ success: true });
   } catch (err) {
@@ -164,39 +257,101 @@ settingsRouter.post("/bot", async (req: Request, res: Response, next: NextFuncti
 
 settingsRouter.get("/preferences", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await pool.query(
-      "SELECT * FROM user_preferences WHERE user_id = $1 LIMIT 1",
-      [req.appUser.id]
-    );
-    let prefs = result.rows[0] ?? null;
+    const plan = normalizePlan(req.appUser.plan);
+    const catalog = await fetchPreferencesCatalog(plan);
+    const keys = catalog.map((c) => c.key);
+    const map = await fetchUserSettingsMap(req.appUser.id, keys);
+    const activeProductivityTypes = await getActiveProductivityTypesForPlan(plan);
 
-    if (!prefs) {
-      // Create default preferences
-      const insertResult = await pool.query(
-        `INSERT INTO user_preferences (user_id, email_notifications, default_email_tone,
-          summary_length, language, bot_display_name, audio_source, auto_share_targets)
-        VALUES ($1, $2::jsonb, 'professional', 'standard', 'en', 'Artiva Notetaker', 'default', $3::jsonb)
-        RETURNING *`,
-        [
-          req.appUser.id,
-          JSON.stringify({ meetingSummary: true, actionItems: false, weeklyDigest: false, productUpdates: true }),
-          JSON.stringify({ slack: false, gmail: false, notion: false, jira: false }),
-        ]
-      );
-      prefs = insertResult.rows[0] ?? null;
+    const resolved: any = {
+      emailNotifications: {},
+      defaultEmailTone: null,
+      summaryLength: null,
+      language: null,
+      botDisplayName: null,
+      audioSource: null,
+      autoShareTargets: {},
+    };
+
+    for (const row of catalog) {
+      // Auto-share options should disappear if integration_catalog disables them.
+      if (row.key.startsWith("autoShareTargets.")) {
+        const type = row.key.split(".")[1] ?? "";
+        if (!activeProductivityTypes.has(type)) continue;
+      }
+      const userV = map.get(row.key);
+      const v = userV === undefined || userV === null ? row.default_value : userV;
+      setNested(resolved, row.key, coerceDefault(row.field_type, v));
     }
 
     res.json({
       success: true,
       preferences: {
-        emailNotifications: prefs.email_notifications,
-        defaultEmailTone: prefs.default_email_tone,
-        summaryLength: prefs.summary_length,
-        language: prefs.language,
-        botDisplayName: prefs.bot_display_name,
-        audioSource: prefs.audio_source,
-        autoShareTargets: prefs.auto_share_targets,
+        emailNotifications: resolved.emailNotifications ?? {},
+        defaultEmailTone: resolved.defaultEmailTone ?? "professional",
+        summaryLength: resolved.summaryLength ?? "standard",
+        language: resolved.language ?? "en",
+        botDisplayName: resolved.botDisplayName ?? "Artiva Notetaker",
+        audioSource: resolved.audioSource ?? "default",
+        autoShareTargets: resolved.autoShareTargets ?? {},
       },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /preferences/catalog — admin-managed metadata + resolved defaults ────
+
+settingsRouter.get("/preferences/catalog", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const plan = normalizePlan(req.appUser.plan);
+    const catalog = await fetchPreferencesCatalog(plan);
+    const activeProductivityTypes = await getActiveProductivityTypesForPlan(plan);
+    const keys = catalog.map((c) => c.key);
+    const map = await fetchUserSettingsMap(req.appUser.id, keys);
+
+    const resolved: any = {
+      emailNotifications: {},
+      defaultEmailTone: null,
+      summaryLength: null,
+      language: null,
+      botDisplayName: null,
+      audioSource: null,
+      autoShareTargets: {},
+    };
+
+    for (const row of catalog) {
+      if (row.key.startsWith("autoShareTargets.")) {
+        const type = row.key.split(".")[1] ?? "";
+        if (!activeProductivityTypes.has(type)) continue;
+      }
+      const userV = map.get(row.key);
+      const v = userV === undefined || userV === null ? row.default_value : userV;
+      setNested(resolved, row.key, coerceDefault(row.field_type, v));
+    }
+
+    res.json({
+      success: true,
+      plan,
+      catalog: catalog
+        .filter((r) => {
+          if (!r.key.startsWith("autoShareTargets.")) return true;
+          const type = r.key.split(".")[1] ?? "";
+          return activeProductivityTypes.has(type);
+        })
+        .map((r) => ({
+          key: r.key,
+          groupKey: r.group_key,
+          label: r.label,
+          description: r.description,
+          fieldType: r.field_type,
+          enumOptions: r.enum_options,
+          defaultValue: r.default_value,
+          sortOrder: r.sort_order,
+          uiConfig: r.ui_config,
+        })),
+      values: resolved,
     });
   } catch (err) {
     next(err);
@@ -213,73 +368,82 @@ settingsRouter.patch("/preferences", async (req: Request, res: Response, next: N
     }
 
     const updates = parsed.data;
+    const plan = normalizePlan(req.appUser.plan);
+    const catalog = await fetchPreferencesCatalog(plan);
+    const activeProductivityTypes = await getActiveProductivityTypesForPlan(plan);
 
-    // Fetch existing prefs (or create defaults)
-    const fetchResult = await pool.query(
-      "SELECT * FROM user_preferences WHERE user_id = $1 LIMIT 1",
-      [req.appUser.id]
-    );
-    let existing = fetchResult.rows[0] ?? null;
-
-    if (!existing) {
-      const insertResult = await pool.query(
-        `INSERT INTO user_preferences (user_id, email_notifications, default_email_tone,
-          summary_length, language, bot_display_name, audio_source, auto_share_targets)
-        VALUES ($1, $2::jsonb, 'professional', 'standard', 'en', 'Artiva Notetaker', 'default', $3::jsonb)
-        RETURNING *`,
-        [
-          req.appUser.id,
-          JSON.stringify({ meetingSummary: true, actionItems: false, weeklyDigest: false, productUpdates: true }),
-          JSON.stringify({ slack: false, gmail: false, notion: false, jira: false }),
-        ]
-      );
-      existing = insertResult.rows[0] ?? null;
-    }
-
-    const setClauses: string[] = ["updated_at = NOW()"];
-    const values: unknown[] = [];
-    let paramIdx = 1;
-
-    if (updates.emailNotifications) {
-      const merged = { ...existing.email_notifications, ...updates.emailNotifications };
-      setClauses.push(`email_notifications = $${paramIdx++}::jsonb`);
-      values.push(JSON.stringify(merged));
-    }
+    // Validate enums against catalog
     if (updates.defaultEmailTone !== undefined) {
-      setClauses.push(`default_email_tone = $${paramIdx++}`);
-      values.push(updates.defaultEmailTone);
+      const f = catalog.find((c) => c.key === "defaultEmailTone");
+      const allowed = Array.isArray(f?.enum_options) ? f?.enum_options : null;
+      if (allowed && !allowed.includes(updates.defaultEmailTone)) {
+        return next(new BadRequestError("Invalid defaultEmailTone option"));
+      }
+      await upsertUserSetting(req.appUser.id, "defaultEmailTone", updates.defaultEmailTone);
     }
     if (updates.summaryLength !== undefined) {
-      setClauses.push(`summary_length = $${paramIdx++}`);
-      values.push(updates.summaryLength);
+      const f = catalog.find((c) => c.key === "summaryLength");
+      const allowed = Array.isArray(f?.enum_options) ? f?.enum_options : null;
+      if (allowed && !allowed.includes(updates.summaryLength)) {
+        return next(new BadRequestError("Invalid summaryLength option"));
+      }
+      await upsertUserSetting(req.appUser.id, "summaryLength", updates.summaryLength);
     }
     if (updates.language !== undefined) {
-      setClauses.push(`language = $${paramIdx++}`);
-      values.push(updates.language);
+      const f = catalog.find((c) => c.key === "language");
+      const allowed = Array.isArray(f?.enum_options) ? f?.enum_options : null;
+      if (allowed && !allowed.includes(updates.language)) {
+        return next(new BadRequestError("Invalid language option"));
+      }
+      await upsertUserSetting(req.appUser.id, "language", updates.language);
+    }
+    if (updates.emailNotifications) {
+      for (const [k, v] of Object.entries(updates.emailNotifications)) {
+        if (typeof v === "boolean") {
+          await upsertUserSetting(req.appUser.id, `emailNotifications.${k}`, v);
+        }
+      }
     }
     if (updates.autoShareTargets) {
-      const merged = { ...existing.auto_share_targets, ...updates.autoShareTargets };
-      setClauses.push(`auto_share_targets = $${paramIdx++}::jsonb`);
-      values.push(JSON.stringify(merged));
+      for (const [k, v] of Object.entries(updates.autoShareTargets)) {
+        if (typeof v !== "boolean") continue;
+        if (!activeProductivityTypes.has(k)) continue; // don't allow toggling disabled integrations
+        await upsertUserSetting(req.appUser.id, `autoShareTargets.${k}`, v);
+      }
     }
 
-    values.push(req.appUser.id);
-    const updateResult = await pool.query(
-      `UPDATE user_preferences SET ${setClauses.join(", ")} WHERE user_id = $${paramIdx} RETURNING *`,
-      values
-    );
-    const updated = updateResult.rows[0] ?? null;
+    // Return resolved preferences (same shape)
+    const keys = catalog.map((c) => c.key);
+    const map = await fetchUserSettingsMap(req.appUser.id, keys);
+    const resolved: any = {
+      emailNotifications: {},
+      defaultEmailTone: null,
+      summaryLength: null,
+      language: null,
+      botDisplayName: null,
+      audioSource: null,
+      autoShareTargets: {},
+    };
+    for (const row of catalog) {
+      if (row.key.startsWith("autoShareTargets.")) {
+        const type = row.key.split(".")[1] ?? "";
+        if (!activeProductivityTypes.has(type)) continue;
+      }
+      const userV = map.get(row.key);
+      const v = userV === undefined || userV === null ? row.default_value : userV;
+      setNested(resolved, row.key, coerceDefault(row.field_type, v));
+    }
 
     res.json({
       success: true,
       preferences: {
-        emailNotifications: updated.email_notifications,
-        defaultEmailTone: updated.default_email_tone,
-        summaryLength: updated.summary_length,
-        language: updated.language,
-        botDisplayName: updated.bot_display_name,
-        audioSource: updated.audio_source,
-        autoShareTargets: updated.auto_share_targets,
+        emailNotifications: resolved.emailNotifications ?? {},
+        defaultEmailTone: resolved.defaultEmailTone ?? "professional",
+        summaryLength: resolved.summaryLength ?? "standard",
+        language: resolved.language ?? "en",
+        botDisplayName: resolved.botDisplayName ?? "Artiva Notetaker",
+        audioSource: resolved.audioSource ?? "default",
+        autoShareTargets: resolved.autoShareTargets ?? {},
       },
     });
   } catch (err) {
@@ -346,11 +510,14 @@ settingsRouter.get("/usage", async (req: Request, res: Response, next: NextFunct
         [user.id]
       ),
       pool.query(
-        "SELECT COUNT(*)::int AS value FROM action_items WHERE user_id = $1",
+        "SELECT COUNT(*)::int AS value FROM action_items WHERE reporter_id = $1",
         [user.id]
       ),
       pool.query(
-        "SELECT COUNT(DISTINCT meeting_id)::int AS value FROM action_items WHERE user_id = $1 AND source = 'document'",
+        `SELECT COUNT(*)::int AS value
+         FROM ai_runs ar
+         INNER JOIN tools t ON ar.tool_id = t.id
+         WHERE ar.user_id = $1 AND t.slug = 'document-analyzer' AND ar.status = 'completed'`,
         [user.id]
       ),
     ]);

@@ -1,13 +1,21 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 
 export function WorkspaceSwitcher(): React.ReactElement {
   const router = useRouter();
-  const { workspaces, activeWorkspace, activeWorkspaceId, switchToWorkspace, switchToPersonal } = useWorkspaceContext();
+  const {
+    workspaces,
+    activeWorkspace,
+    activeWorkspaceId,
+    switchToWorkspace,
+    switchToPersonal,
+    canUseTeamWorkspace,
+  } = useWorkspaceContext();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -105,15 +113,26 @@ export function WorkspaceSwitcher(): React.ReactElement {
 
           <div className="h-px bg-[#DADCE0]" />
 
-          {/* Create workspace */}
-          <button
-            type="button"
-            onClick={handleCreateNew}
-            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#6C3FF5] transition-colors hover:bg-[#EDE9FE]"
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            <span>Create workspace</span>
-          </button>
+          {/* Create workspace — Elite only */}
+          {canUseTeamWorkspace ? (
+            <button
+              type="button"
+              onClick={handleCreateNew}
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#6C3FF5] transition-colors hover:bg-[#EDE9FE]"
+            >
+              <span className="material-symbols-outlined text-[18px]">add</span>
+              <span>Create workspace</span>
+            </button>
+          ) : (
+            <Link
+              href="/dashboard/billing"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#5F6368] transition-colors hover:bg-[#F1F3F4]"
+              onClick={() => setOpen(false)}
+            >
+              <span className="material-symbols-outlined text-[18px]">workspace_premium</span>
+              <span className="leading-tight">Team workspaces on <span className="font-semibold text-[#7C3AED]">Elite</span></span>
+            </Link>
+          )}
         </div>
       )}
     </div>

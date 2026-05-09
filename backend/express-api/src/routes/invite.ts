@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { pool } from "../db/client";
 import { BadRequestError } from "../lib/errors";
+import { canUseTeamWorkspace } from "../lib/subscription";
 import { clerkAuth } from "../middleware/clerk-auth";
 
 export const inviteRouter = Router();
@@ -67,6 +68,15 @@ inviteRouter.post("/accept", clerkAuth, async (req: Request, res: Response, next
 
     const { token } = parsed.data;
     const user = req.appUser;
+
+    const plan = req.appUser.plan ?? "free";
+    if (!canUseTeamWorkspace(plan)) {
+      return res.status(403).json({
+        error: "Team workspaces require an Elite plan.",
+        code: "upgrade_required",
+        currentPlan: plan,
+      });
+    }
 
     const client = await pool.connect();
     try {

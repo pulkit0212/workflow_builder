@@ -49,6 +49,7 @@ interface SubscriptionResponse {
     history: boolean;
     meetingsPerMonth: number;
     unlimited: boolean;
+    teamWorkspace?: boolean;
   };
   payments: Array<{
     id: string;
@@ -257,8 +258,9 @@ describe("Usage Tab - deleteMeetingData successful deletion", () => {
       summary: false,
       actionItems: false,
       history: false,
-      meetingsPerMonth: 3,
+      meetingsPerMonth: 7,
       unlimited: false,
+      teamWorkspace: false,
     },
     payments: [],
   };

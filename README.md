@@ -98,6 +98,7 @@ cd backend/express-api
 cp .env.example .env
 npm install
 # Fill in .env with your keys (see backend/README.md)
+npm run migrate:sql   # catalog / SQL migrations (requires DATABASE_URL)
 npm run dev
 ```
 

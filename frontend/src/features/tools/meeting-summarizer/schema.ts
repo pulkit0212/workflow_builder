@@ -11,6 +11,9 @@ export const meetingSummarizerInputSchema = z.object({
   audioFileName: z.string().trim().optional(),
   audioMimeType: z.string().trim().optional(),
   originalTranscript: z.string().trim().optional(),
+  /** When summarizing from Meeting Assistant — links saved action items to the session. */
+  meetingId: z.string().uuid().optional(),
+  meetingTitle: z.string().trim().optional(),
   transcript: z
     .string()
     .trim()

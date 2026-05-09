@@ -3,10 +3,23 @@ import multer from "multer";
 import { pool } from "../db/client";
 import { config } from "../config";
 import { BadRequestError, NotFoundError } from "../lib/errors";
+import { canUseActionItems } from "../lib/subscription";
+import { buildMeetingSummaryEmailHtml } from "../lib/meeting-summary-email-html";
+import { sendHtmlViaGmailIntegration } from "../lib/gmail-integration-outbound";
+import { slackHeaderPlainText, slackMrkdwnText } from "../lib/slack-block-limits";
+import { extractTextFromUploadedFile } from "../lib/document-upload-text";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 export const toolsRouter = Router();
+
+const PLAN_IDS = ["free", "pro", "elite", "trial"] as const;
+type PlanId = (typeof PLAN_IDS)[number];
+
+function normalizePlan(plan: string | undefined | null): PlanId {
+  const p = String(plan ?? "free").toLowerCase();
+  return (PLAN_IDS as readonly string[]).includes(p) ? (p as PlanId) : "free";
+}
 
 // ─── Auto-share helper (mirrors meeting-sessions.ts triggerAutoShare) ─────────
 
@@ -18,12 +31,32 @@ async function triggerAutoShareForTool(userId: string, data: {
   key_points: string[];
 }) {
   const prefResult = await pool.query(
-    `SELECT auto_share_targets FROM user_preferences WHERE user_id = $1 LIMIT 1`,
+    `SELECT key, value FROM user_settings WHERE user_id = $1 AND key LIKE 'autoShareTargets.%'`,
     [userId]
   );
-  const autoShareTargets = (prefResult.rows[0]?.auto_share_targets ?? {}) as Record<string, boolean>;
-  const enabledTargets = Object.entries(autoShareTargets).filter(([, v]) => v).map(([k]) => k);
+  const enabledTargets = prefResult.rows
+    .filter((r) => Boolean(r.value))
+    .map((r) => String(r.key).split(".")[1] ?? "")
+    .filter(Boolean);
   if (enabledTargets.length === 0) return;
+
+  // Filter out integrations disabled by catalog (if present)
+  try {
+    const { rows: allowed } = await pool.query<{ integration_type: string }>(
+      `SELECT integration_type FROM integration_catalog
+       WHERE category = 'productivity'
+         AND integration_type = ANY($1)
+         AND is_active = true`,
+      [enabledTargets]
+    );
+    const allowedSet = new Set(allowed.map((r) => r.integration_type));
+    const filtered = enabledTargets.filter((t) => allowedSet.has(t));
+    enabledTargets.length = 0;
+    enabledTargets.push(...filtered);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code !== "42P01") throw e;
+  }
 
   const intResult = await pool.query(
     `SELECT type, config FROM integrations WHERE user_id = $1 AND enabled = true AND type = ANY($2)`,
@@ -49,17 +82,39 @@ async function triggerAutoShareForTool(userId: string, data: {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             blocks: [
-              { type: "header", text: { type: "plain_text", text: `📋 Meeting Summary: ${data.title}`, emoji: true } },
-              { type: "section", text: { type: "mrkdwn", text: data.summary || "No summary available" } },
+              { type: "header", text: { type: "plain_text", text: slackHeaderPlainText(`📋 Meeting Summary: ${data.title}`), emoji: true } },
+              { type: "section", text: { type: "mrkdwn", text: slackMrkdwnText(data.summary || "No summary available") } },
               { type: "divider" },
-              { type: "section", text: { type: "mrkdwn", text: `*💡 Key Points*\n${keyPointsText}` } },
+              { type: "section", text: { type: "mrkdwn", text: slackMrkdwnText(`*💡 Key Points*\n${keyPointsText}`) } },
               { type: "divider" },
-              { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items*\n${actionItemsText}` } },
+              { type: "section", text: { type: "mrkdwn", text: slackMrkdwnText(`*✅ Action Items*\n${actionItemsText}`) } },
               { type: "context", elements: [{ type: "mrkdwn", text: `_Auto-shared by Artivaa Meeting Summarizer — <${FRONTEND_URL}/dashboard/tools/meeting-summarizer|View Tool>_` }] },
             ],
           }),
         });
         if (!slackRes.ok) console.error(`[AutoShare] Slack failed: ${slackRes.status}`);
+      } else if (type === "gmail") {
+        const footerLine = `Auto-shared by Artivaa Meeting Summarizer — ${FRONTEND_URL}/dashboard/tools/meeting-summarizer`;
+        const htmlBody = buildMeetingSummaryEmailHtml({
+          title: data.title,
+          summaryText: data.summary || "No summary available",
+          keyPoints: data.key_points,
+          actionItems: data.action_items.map((i) => ({
+            task: String(i.task ?? ""),
+            owner: String(i.owner ?? "Unassigned"),
+            due_date: String(i.deadline ?? "No deadline"),
+          })),
+          footerLine,
+        });
+        const subject = `Meeting Summary: ${data.title}`;
+        const sent = await sendHtmlViaGmailIntegration({
+          userId,
+          config: cfg,
+          subject,
+          html: htmlBody,
+        });
+        if (!sent.ok) throw new Error(sent.message);
+        console.log(`[AutoShare] Email (${sent.via}) ✓ meeting summarizer`);
       } else if (type === "notion" && cfg.webhookUrl) {
         await fetch(String(cfg.webhookUrl), {
           method: "POST",
@@ -176,7 +231,248 @@ function cleanJson(text: string) {
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 }
 
+/** Persist a completed tool run for /dashboard/history (ai_runs + tools.slug). */
+async function insertCompletedAiRun(params: {
+  userId: string;
+  toolSlug: string;
+  title: string;
+  inputJson: Record<string, unknown>;
+  outputJson: Record<string, unknown>;
+  model?: string;
+}): Promise<{
+  id: string;
+  title: string;
+  status: string;
+  input_json: unknown;
+  output_json: unknown;
+  created_at: Date;
+} | null> {
+  const toolResult = await pool.query(`SELECT id FROM tools WHERE slug = $1 LIMIT 1`, [params.toolSlug]);
+  const toolId = toolResult.rows[0]?.id as string | undefined;
+  if (!toolId) {
+    console.warn(`[tools] ai_runs not saved — missing tools row for slug=${params.toolSlug}`);
+    return null;
+  }
+  const title = params.title.trim().slice(0, 255) || "AI run";
+  const runResult = await pool.query(
+    `INSERT INTO ai_runs (user_id, tool_id, title, status, input_json, output_json, model, tokens_used)
+     VALUES ($1, $2, $3, 'completed', $4::jsonb, $5::jsonb, $6, 0)
+     RETURNING id, title, status, input_json, output_json, created_at`,
+    [
+      params.userId,
+      toolId,
+      title,
+      JSON.stringify(params.inputJson),
+      JSON.stringify(params.outputJson),
+      params.model ?? "gemini-2.5-flash",
+    ]
+  );
+  const row = runResult.rows[0] as
+    | {
+        id: string;
+        title: string;
+        status: string;
+        input_json: unknown;
+        output_json: unknown;
+        created_at: Date;
+      }
+    | undefined;
+  return row ?? null;
+}
+
+function normalizeMeetingSummarizerAssignee(owner: string | undefined): string {
+  const t = (owner ?? "").trim();
+  return t.length > 0 ? t : "Unassigned";
+}
+
+function normalizeMeetingSummarizerPriority(p: string | undefined): string {
+  return p === "High" || p === "Low" || p === "Medium" ? p : "Medium";
+}
+
+function normalizeMeetingSummarizerDueDate(deadline: string | undefined): string {
+  const t = (deadline ?? "").trim();
+  return t.length > 0 ? t : "Not specified";
+}
+
+/** Active workspace from header — must be a member. */
+async function resolveWorkspaceIdFromHeader(req: Request, userId: string): Promise<string | null> {
+  const raw = req.headers["x-workspace-id"];
+  const workspaceId = typeof raw === "string" ? raw.trim() : "";
+  if (!workspaceId) return null;
+  const r = await pool.query(
+    "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1",
+    [workspaceId, userId]
+  );
+  return r.rows.length > 0 ? workspaceId : null;
+}
+
+async function resolveMeetingSummarizerMeetingContext(
+  userId: string,
+  meetingIdRaw: string | undefined,
+  meetingTitleRaw: string | undefined
+): Promise<{
+  meetingId: string | null;
+  meetingTitle: string;
+  meetingWorkspaceId: string | null;
+  /** meeting_sessions.user_id — reporter for workspace meeting action items (admin starter) */
+  sessionUserId: string | null;
+}> {
+  const fallbackTitle = (meetingTitleRaw ?? "").trim() || "Meeting Summary";
+  const id = (meetingIdRaw ?? "").trim();
+  if (!id) {
+    return { meetingId: null, meetingTitle: fallbackTitle, meetingWorkspaceId: null, sessionUserId: null };
+  }
+  const r = await pool.query<{ id: string; title: string | null; workspace_id: string | null; user_id: string }>(
+    "SELECT id, title, workspace_id, user_id FROM meeting_sessions WHERE id = $1 AND user_id = $2 LIMIT 1",
+    [id, userId]
+  );
+  const row = r.rows[0];
+  if (!row) {
+    return { meetingId: null, meetingTitle: fallbackTitle, meetingWorkspaceId: null, sessionUserId: null };
+  }
+  const title = (meetingTitleRaw ?? "").trim() || row.title?.trim() || "Meeting Summary";
+  return {
+    meetingId: row.id,
+    meetingTitle: title,
+    meetingWorkspaceId: row.workspace_id ?? null,
+    sessionUserId: row.user_id ?? null,
+  };
+}
+
+/** Prefer workspace from linked meeting (when member); else optional header workspace. */
+async function resolveActionItemWorkspaceForSummarizer(
+  req: Request,
+  userId: string,
+  meetingWorkspaceId: string | null
+): Promise<string | null> {
+  if (meetingWorkspaceId) {
+    const r = await pool.query(
+      "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1",
+      [meetingWorkspaceId, userId]
+    );
+    if (r.rows.length > 0) return meetingWorkspaceId;
+  }
+  return resolveWorkspaceIdFromHeader(req, userId);
+}
+
+async function persistMeetingSummarizerActionItems(params: {
+  plan: string;
+  workspaceId: string | null;
+  meetingId: string | null;
+  meetingTitle: string;
+  /** Workspace-linked meetings: meeting_sessions.user_id (starter); else summarizer user */
+  reporterUserId: string;
+  items: Array<{ task?: string; owner?: string; deadline?: string; priority?: string }>;
+}): Promise<void> {
+  if (!canUseActionItems(params.plan)) return;
+
+  const rows = params.items
+    .map((item) => ({
+      task: (item.task ?? "").trim(),
+      assignee: normalizeMeetingSummarizerAssignee(item.owner),
+      dueDate: normalizeMeetingSummarizerDueDate(item.deadline),
+      priority: normalizeMeetingSummarizerPriority(item.priority),
+    }))
+    .filter((row) => row.task.length > 0);
+
+  if (rows.length === 0) return;
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const row of rows) {
+      await client.query(
+        `INSERT INTO action_items (task, assignee, due_date, priority, completed, status, source, reporter_id, meeting_id, meeting_title, workspace_id, assignee_id)
+         VALUES ($1, $2, $3, $4, false, 'pending', 'meeting', $5, $6, $7, $8, NULL)`,
+        [
+          row.task,
+          row.assignee,
+          row.dueDate,
+          row.priority,
+          params.reporterUserId,
+          params.meetingId,
+          params.meetingTitle,
+          params.workspaceId,
+        ]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK");
+    console.error("[MeetingSummarizer] Failed to persist action items:", e instanceof Error ? e.message : e);
+  } finally {
+    client.release();
+  }
+}
+
 // ─── GET /api/tools ───────────────────────────────────────────────────────────
+
+// ─── GET /api/tools/catalog — UI catalog filtered by plan + active flag ──────
+
+toolsRouter.get("/catalog", async (req: Request, res: Response, next: NextFunction) => {
+  const plan = normalizePlan(req.appUser.plan);
+  try {
+    // Preferred schema (plan + active gating)
+    const { rows } = await pool.query(
+      `SELECT slug,
+              name,
+              description,
+              status,
+              is_active AS "isActive",
+              allowed_plans AS "allowedPlans",
+              sort_order AS "sortOrder",
+              category,
+              badge,
+              ui_config AS "uiConfig"
+       FROM tools
+       WHERE is_active = true
+         AND $1 = ANY(allowed_plans)
+       ORDER BY category NULLS LAST, sort_order NULLS LAST, name ASC`,
+      [plan]
+    );
+    return res.json({ success: true, plan, items: rows });
+  } catch (err) {
+    const code = (err as { code?: string }).code;
+    if (code === "42P01") {
+      return res.status(503).json({
+        success: false,
+        error: "tools table missing",
+        plan,
+        items: [],
+      });
+    }
+
+    // Back-compat: older tools table schema (no gating columns)
+    if (code === "42703") {
+      try {
+        const { rows } = await pool.query(`SELECT * FROM tools ORDER BY name ASC`);
+        const items = rows
+          .map((r: Record<string, unknown>) => {
+            const slug = String(r.slug ?? r.tool_slug ?? r.name ?? "").trim();
+            return {
+              slug,
+              name: String(r.name ?? slug),
+              description: String(r.description ?? ""),
+              status: String(r.status ?? "available"),
+              isActive: Boolean(r.is_active ?? true),
+              allowedPlans: r.allowed_plans ?? PLAN_IDS,
+              sortOrder: r.sort_order ?? null,
+              category: r.category ?? null,
+              badge: r.badge ?? null,
+              uiConfig: r.ui_config ?? null,
+            };
+          })
+          .filter((i) => i.slug.length > 0 && i.isActive);
+
+        return res.json({ success: true, plan, items });
+      } catch (fallbackErr) {
+        return next(fallbackErr);
+      }
+    }
+
+    return next(err);
+  }
+});
 
 toolsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -213,10 +509,50 @@ Return ONLY valid JSON with this exact structure:
 }
 `;
 
+async function getUserSettingString(userId: string, key: string): Promise<string | null> {
+  try {
+    const { rows } = await pool.query<{ value: unknown }>(
+      "SELECT value FROM user_settings WHERE user_id = $1 AND key = $2 LIMIT 1",
+      [userId, key]
+    );
+    const v = rows[0]?.value;
+    if (v === null || v === undefined) return null;
+    return typeof v === "string" ? v : String(v);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") return null; // user_settings not migrated yet
+    throw e;
+  }
+}
+
+function applySummaryLengthInstruction(summaryLength: string | null): string {
+  const s = String(summaryLength ?? "standard").toLowerCase();
+  if (s === "brief") return "Keep the summary very brief (1-2 sentences).";
+  if (s === "detailed") return "Write a detailed summary (5-8 sentences) including key context.";
+  return "Write a standard summary (2-4 sentences).";
+}
+
+function applyLanguageInstruction(language: string | null): string {
+  return String(language ?? "en").toLowerCase() === "hi"
+    ? "Write all output text in Hindi."
+    : "Write all output text in English.";
+}
+
 toolsRouter.post("/meeting-summarizer/run", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.appUser.id;
-    const { transcript, provider = "gemini", inputType = "transcript", originalTranscript, audioFileName, audioMimeType, transcriptionProvider } = req.body as {
+    const userPlan = req.appUser.plan;
+    const {
+      transcript,
+      provider = "gemini",
+      inputType = "transcript",
+      originalTranscript,
+      audioFileName,
+      audioMimeType,
+      transcriptionProvider,
+      meetingId: meetingIdBody,
+      meetingTitle: meetingTitleBody,
+    } = req.body as {
       transcript?: string;
       provider?: string;
       inputType?: string;
@@ -224,6 +560,8 @@ toolsRouter.post("/meeting-summarizer/run", async (req: Request, res: Response, 
       audioFileName?: string;
       audioMimeType?: string;
       transcriptionProvider?: string;
+      meetingId?: string;
+      meetingTitle?: string;
     };
 
     if (!transcript?.trim()) {
@@ -234,7 +572,20 @@ toolsRouter.post("/meeting-summarizer/run", async (req: Request, res: Response, 
       return next(new BadRequestError("Transcript must be at least 80 characters long to generate a useful summary."));
     }
 
-    const rawText = await callGeminiStructured(meetingSummarizerPrompt(transcript));
+    const [summaryLengthPref, languagePref] = await Promise.all([
+      getUserSettingString(userId, "summaryLength"),
+      getUserSettingString(userId, "language"),
+    ]);
+
+    const prompt = [
+      meetingSummarizerPrompt(transcript),
+      "",
+      "Additional user preferences:",
+      `- ${applySummaryLengthInstruction(summaryLengthPref)}`,
+      `- ${applyLanguageInstruction(languagePref)}`,
+    ].join("\n");
+
+    const rawText = await callGeminiStructured(prompt);
     const cleaned = cleanJson(rawText);
 
     let parsed: {
@@ -253,12 +604,6 @@ toolsRouter.post("/meeting-summarizer/run", async (req: Request, res: Response, 
     const keyPoints = Array.isArray(parsed.key_points) ? parsed.key_points : [];
     const actionItems = Array.isArray(parsed.action_items) ? parsed.action_items : [];
 
-    // Upsert ai_run record
-    const toolResult = await pool.query(
-      `SELECT id FROM tools WHERE slug = 'meeting-summarizer' LIMIT 1`
-    );
-    const toolId = toolResult.rows[0]?.id ?? null;
-
     const inputJson: Record<string, unknown> = {
       inputType,
       provider,
@@ -269,21 +614,35 @@ toolsRouter.post("/meeting-summarizer/run", async (req: Request, res: Response, 
     if (audioMimeType) inputJson.audioMimeType = audioMimeType;
     if (transcriptionProvider) inputJson.transcriptionProvider = transcriptionProvider;
 
-    const runResult = await pool.query(
-      `INSERT INTO ai_runs (user_id, tool_id, title, status, input_json, output_json, model, tokens_used)
-       VALUES ($1, $2, $3, 'completed', $4, $5, $6, 0)
-       RETURNING id, title, status, input_json, output_json, created_at`,
-      [
-        userId,
-        toolId,
-        "Meeting Summary",
-        JSON.stringify(inputJson),
-        JSON.stringify({ summary, key_points: keyPoints, action_items: actionItems }),
-        provider === "openai" ? "gpt-4o" : "gemini-2.5-flash",
-      ]
-    );
+    const run = await insertCompletedAiRun({
+      userId,
+      toolSlug: "meeting-summarizer",
+      title: "Meeting Summary",
+      inputJson,
+      outputJson: { summary, key_points: keyPoints, action_items: actionItems },
+      model: provider === "openai" ? "gpt-4o" : "gemini-2.5-flash",
+    });
 
-    const run = runResult.rows[0];
+    if (!run) {
+      return next(new Error("Could not save meeting run — meeting-summarizer tool may be missing from the database."));
+    }
+
+    const meetingCtx = await resolveMeetingSummarizerMeetingContext(userId, meetingIdBody, meetingTitleBody);
+    const workspaceIdForItems = await resolveActionItemWorkspaceForSummarizer(
+      req,
+      userId,
+      meetingCtx.meetingWorkspaceId
+    );
+    const reporterUserId =
+      workspaceIdForItems && meetingCtx.sessionUserId ? meetingCtx.sessionUserId : userId;
+    await persistMeetingSummarizerActionItems({
+      plan: userPlan,
+      workspaceId: workspaceIdForItems,
+      meetingId: meetingCtx.meetingId,
+      meetingTitle: meetingCtx.meetingTitle,
+      reporterUserId,
+      items: actionItems,
+    });
 
     // ── Fire-and-forget auto-share (same as bot meetings) ────────────────────
     void triggerAutoShareForTool(userId, {
@@ -454,21 +813,72 @@ Return ONLY valid JSON:
 }`;
 }
 
-toolsRouter.post("/document-analyzer", async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { text, extractOptions } = req.body as {
-      text?: string;
-      extractOptions?: ExtractOption[];
-    };
+const documentAnalyzerAllowedOptions = new Set<ExtractOption>([
+  "summary",
+  "actionItems",
+  "keyPoints",
+  "decisions",
+  "risks",
+  "rawInsights",
+]);
 
-    const documentText = (text ?? "").trim();
-    if (documentText.length < 10) {
-      return next(new BadRequestError("Text content is too short to analyze."));
+function documentAnalyzerUpload(req: Request, res: Response, next: NextFunction) {
+  upload.single("file")(req, res, (err: unknown) => {
+    if (err && typeof err === "object" && "code" in err) {
+      const code = String((err as { code?: string }).code);
+      if (code === "LIMIT_FILE_SIZE") {
+        return next(new BadRequestError("File too large (max 25MB)."));
+      }
+      if (err instanceof Error) return next(new BadRequestError(err.message));
+    }
+    next(err);
+  });
+}
+
+toolsRouter.post("/document-analyzer", documentAnalyzerUpload, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    let documentText = "";
+    let extractOptionsRaw: unknown;
+
+    if (req.file) {
+      const rawOpt = req.body?.extractOptions;
+      if (typeof rawOpt === "string") {
+        try {
+          extractOptionsRaw = JSON.parse(rawOpt) as unknown;
+        } catch {
+          return next(new BadRequestError("Invalid extractOptions."));
+        }
+      } else {
+        extractOptionsRaw = rawOpt;
+      }
+      try {
+        documentText = (await extractTextFromUploadedFile(req.file)).trim();
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return next(new BadRequestError(msg));
+      }
+    } else {
+      const body = req.body as { text?: string; extractOptions?: ExtractOption[] };
+      extractOptionsRaw = body.extractOptions;
+      documentText = (body.text ?? "").trim();
     }
 
-    const options: ExtractOption[] = Array.isArray(extractOptions) && extractOptions.length > 0
-      ? extractOptions
-      : defaultExtractOptions;
+    if (documentText.length < 10) {
+      return next(
+        new BadRequestError(
+          "Text content is too short to analyze. For uploads, use PDF/DOCX/TXT with real text; scanned PDFs need OCR or Paste Text."
+        )
+      );
+    }
+
+    const parsedOpts = Array.isArray(extractOptionsRaw)
+      ? extractOptionsRaw.filter(
+          (x): x is ExtractOption =>
+            typeof x === "string" && documentAnalyzerAllowedOptions.has(x as ExtractOption)
+        )
+      : [];
+
+    const options: ExtractOption[] = parsedOpts.length > 0 ? parsedOpts : defaultExtractOptions;
 
     const rawText = await callGeminiStructured(buildDocumentAnalyzerPrompt(documentText, options));
     const cleaned = cleanJson(rawText);
@@ -515,7 +925,41 @@ toolsRouter.post("/document-analyzer", async (req: Request, res: Response, next:
       raw_insights: typeof parsed.raw_insights === "string" ? parsed.raw_insights : null,
     };
 
-    res.json({ success: true, result });
+    const userId = req.appUser.id;
+    const docTitle =
+      (typeof result.summary === "string" && result.summary.trim().slice(0, 120)) || "Document analysis";
+    const source = req.file ? "upload" : "paste";
+    const inputMeta: Record<string, unknown> = {
+      extractOptions: options,
+      source,
+      textLength: documentText.length,
+      excerpt: documentText.slice(0, 6000),
+    };
+    if (req.file?.originalname) inputMeta.fileName = req.file.originalname;
+
+    const run = await insertCompletedAiRun({
+      userId,
+      toolSlug: "document-analyzer",
+      title: docTitle,
+      inputJson: inputMeta,
+      outputJson: result as Record<string, unknown>,
+    });
+
+    res.json({
+      success: true,
+      result,
+      ...(run && {
+        run: {
+          id: run.id,
+          title: run.title,
+          status: run.status,
+          tool: { slug: "document-analyzer", name: "Document Analyzer" },
+          inputJson: run.input_json,
+          outputJson: run.output_json,
+          createdAt: run.created_at,
+        },
+      }),
+    });
   } catch (err) {
     next(err);
   }
@@ -618,12 +1062,46 @@ toolsRouter.post("/task-generator", async (req: Request, res: Response, next: Ne
         })).filter((t) => t.task.trim().length > 0)
       : [];
 
+    const summaryLine = (parsed.summary ?? "").trim().slice(0, 255) || "Task extraction";
+    const userId = req.appUser.id;
+    const outputPayload = {
+      tasks,
+      summary: parsed.summary ?? "",
+      total_tasks: parsed.total_tasks ?? tasks.length,
+      unextractable: parsed.unextractable ?? "",
+    };
+    const run = await insertCompletedAiRun({
+      userId,
+      toolSlug: "task-generator",
+      title: summaryLine,
+      inputJson: {
+        mode,
+        teamMembers,
+        dateContext,
+        outputFormat,
+        autoPriority,
+        inputExcerpt: input.trim().slice(0, 12000),
+      },
+      outputJson: outputPayload,
+    });
+
     res.json({
       success: true,
       tasks,
       summary: parsed.summary ?? "",
       total_tasks: parsed.total_tasks ?? tasks.length,
       unextractable: parsed.unextractable ?? "",
+      ...(run && {
+        run: {
+          id: run.id,
+          title: run.title,
+          status: run.status,
+          tool: { slug: "task-generator", name: "Task Generator" },
+          inputJson: run.input_json,
+          outputJson: run.output_json,
+          createdAt: run.created_at,
+        },
+      }),
     });
   } catch (err) {
     next(err);
@@ -694,13 +1172,45 @@ toolsRouter.post("/email-generator", async (req: Request, res: Response, next: N
       return next(new Error("Failed to parse AI response."));
     }
 
+    const subject = (parsed.subject ?? "").trim();
+    const body = (parsed.body ?? "").replace(/\r\n/g, "\n").trim();
+    const userId = req.appUser.id;
+    const outputPayload = {
+      subject,
+      body,
+      email: `Subject: ${subject}\n\n${body}`,
+    };
+    const run = await insertCompletedAiRun({
+      userId,
+      toolSlug: "email-generator",
+      title: subject.slice(0, 255) || "Generated email",
+      inputJson: {
+        emailType,
+        tone,
+        recipients,
+        contextExcerpt: context.trim().slice(0, 12000),
+      },
+      outputJson: outputPayload,
+    });
+
     res.json({
       success: true,
       result: {
-        email: `Subject: ${(parsed.subject ?? "").trim()}\n\n${(parsed.body ?? "").replace(/\r\n/g, "\n").trim()}`,
+        email: outputPayload.email,
       },
-      subject: (parsed.subject ?? "").trim(),
-      body: (parsed.body ?? "").replace(/\r\n/g, "\n").trim(),
+      subject,
+      body,
+      ...(run && {
+        run: {
+          id: run.id,
+          title: run.title,
+          status: run.status,
+          tool: { slug: "email-generator", name: "Email Generator" },
+          inputJson: run.input_json,
+          outputJson: run.output_json,
+          createdAt: run.created_at,
+        },
+      }),
     });
   } catch (err) {
     next(err);

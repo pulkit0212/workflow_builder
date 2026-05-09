@@ -40,6 +40,8 @@ export function DashboardAccount({ initialProfile, compact = false }: DashboardA
         if (!response.ok) return;
         const data = (await response.json()) as ProfileApiResponse;
         if (isMounted && data.success) setProfile(data.profile);
+      } catch {
+        // API down, wrong NEXT_PUBLIC_API_URL, or CORS — keep SSR `initialProfile`
       } finally {
         if (isMounted) setIsRefreshing(false);
       }

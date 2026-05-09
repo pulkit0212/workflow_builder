@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
-import { ArrowRight, Download, History, Plus } from "lucide-react";
+import { ArrowRight, History, Plus } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
 import { Button } from "@/components/ui/button";
@@ -284,17 +284,9 @@ export default function HistoryPage() {
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-[22px] font-semibold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>History</h1>
-          <p className="text-sm text-[#5F6368] mt-0.5">Track every AI run across your account</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-4 py-2 text-sm font-medium text-[#5F6368] hover:bg-[#F8F9FA] transition-colors">
-            <Download className="h-4 w-4" />
-            Export History
-          </button>
-        </div>
+      <div>
+        <h1 className="text-[22px] font-semibold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>History</h1>
+        <p className="text-sm text-[#5F6368] mt-0.5">Track every AI run across your account</p>
       </div>
 
       {/* Filter bar — Stitch style */}
@@ -336,13 +328,6 @@ export default function HistoryPage() {
             <option value="all">All Time</option>
           </select>
           <span className="material-symbols-outlined text-[14px] text-[#9AA0A6]">calendar_today</span>
-        </div>
-
-        <div className="ml-auto">
-          <button type="button" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#6C3FF5] hover:underline">
-            <Download className="h-4 w-4" />
-            Export History
-          </button>
         </div>
       </div>
 
@@ -395,14 +380,6 @@ export default function HistoryPage() {
           </div>
         </>
       )}
-
-      {/* FAB */}
-      <div className="fixed bottom-8 right-8 z-50">
-        <Link href="/dashboard/tools"
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-[#6C3FF5] text-white shadow-xl hover:bg-[#5B2FE0] hover:scale-105 active:scale-95 transition-all">
-          <Plus className="h-6 w-6" />
-        </Link>
-      </div>
     </div>
   );
 }

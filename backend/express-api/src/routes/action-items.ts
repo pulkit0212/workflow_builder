@@ -1,12 +1,14 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db/client";
-import { ForbiddenError, NotFoundError } from "../lib/errors";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../lib/errors";
+import { canUseActionItems, canUseTeamWorkspace } from "../lib/subscription";
 
 export const actionItemsRouter = Router();
 
 function requirePaidPlan(req: Request, res: Response): boolean {
-  if (req.appUser.plan === "free") {
-    res.status(403).json({ error: "upgrade_required", currentPlan: "free" });
+  const plan = req.appUser.plan ?? "free";
+  if (!canUseActionItems(plan)) {
+    res.status(403).json({ error: "upgrade_required", currentPlan: plan });
     return true;
   }
   return false;
@@ -18,6 +20,74 @@ async function getWorkspaceRole(workspaceId: string, userId: string): Promise<st
     [workspaceId, userId]
   );
   return r.rows[0]?.role ?? null;
+}
+
+/** Admin or workspace owner — full access like personal-mode admin */
+function isWorkspaceElevatedRole(role: string | null): boolean {
+  return role === "admin" || role === "owner";
+}
+
+async function isUserActiveWorkspaceMember(workspaceId: string, memberUserId: string): Promise<boolean> {
+  const r = await pool.query(
+    "SELECT 1 FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 AND status = 'active' LIMIT 1",
+    [workspaceId, memberUserId]
+  );
+  return r.rows.length > 0;
+}
+
+async function resolveAssigneeDisplayName(userUuid: string): Promise<string> {
+  const r = await pool.query<{ full_name: string | null; email: string }>(
+    "SELECT full_name, email FROM users WHERE id = $1 LIMIT 1",
+    [userUuid]
+  );
+  const row = r.rows[0];
+  if (!row) return "Unknown";
+  return row.full_name?.trim() || row.email || "Unknown";
+}
+
+/**
+ * Workspace create rules: admin/owner may assign to any active member (or leave unassigned).
+ * Member or viewer may only set assigneeId to themselves or leave unassigned.
+ */
+async function normalizeAssigneeForWorkspaceCreate(params: {
+  workspaceId: string | null;
+  requesterId: string;
+  assigneeId: string | null;
+  assigneeText: string;
+}): Promise<{ assigneeId: string | null; assigneeText: string }> {
+  if (!params.workspaceId) {
+    if (params.assigneeId) {
+      const name = await resolveAssigneeDisplayName(params.assigneeId);
+      return { assigneeId: params.assigneeId, assigneeText: name };
+    }
+    return { assigneeId: null, assigneeText: params.assigneeText };
+  }
+
+  const role = await getWorkspaceRole(params.workspaceId, params.requesterId);
+  if (!role) throw new ForbiddenError("Not a member of this workspace");
+
+  if (isWorkspaceElevatedRole(role)) {
+    if (!params.assigneeId) {
+      return { assigneeId: null, assigneeText: params.assigneeText };
+    }
+    const ok = await isUserActiveWorkspaceMember(params.workspaceId, params.assigneeId);
+    if (!ok) throw new BadRequestError("Assignee must be an active member of this workspace.");
+    const name = await resolveAssigneeDisplayName(params.assigneeId);
+    return { assigneeId: params.assigneeId, assigneeText: name };
+  }
+
+  if (role === "member" || role === "viewer") {
+    if (params.assigneeId && params.assigneeId !== params.requesterId) {
+      throw new ForbiddenError("You can only assign workspace tasks to yourself or leave them unassigned.");
+    }
+    if (params.assigneeId === params.requesterId) {
+      const name = await resolveAssigneeDisplayName(params.requesterId);
+      return { assigneeId: params.requesterId, assigneeText: name };
+    }
+    return { assigneeId: null, assigneeText: params.assigneeText };
+  }
+
+  throw new ForbiddenError("You cannot create action items in this workspace.");
 }
 
 // GET / — list with workspace + role filtering, status/priority/member filters
@@ -43,14 +113,17 @@ actionItemsRouter.get("/", async (req: Request, res: Response, next: NextFunctio
     if (workspaceId) {
       conditions.push("ai.workspace_id = $" + p++);
       values.push(workspaceId);
-      if (role !== "admin") {
+      // Viewers only see items they created or are assigned to; admin/owner see all; members see all
+      if (role === "viewer") {
         conditions.push("(ai.reporter_id = $" + p + " OR ai.assignee_id = $" + p + ")");
         p++;
         values.push(userId);
-      } else if (memberId) {
-        conditions.push("(ai.reporter_id = $" + p + " OR ai.assignee_id = $" + p + ")");
-        p++;
-        values.push(memberId);
+      } else if (isWorkspaceElevatedRole(role)) {
+        if (memberId) {
+          conditions.push("(ai.reporter_id = $" + p + " OR ai.assignee_id = $" + p + ")");
+          p++;
+          values.push(memberId);
+        }
       }
     } else {
       conditions.push("(ai.reporter_id = $" + p + " OR ai.assignee_id = $" + p + ")");
@@ -62,14 +135,6 @@ actionItemsRouter.get("/", async (req: Request, res: Response, next: NextFunctio
     if (tab === "high_priority") {
       conditions.push("ai.priority = $" + p++);
       values.push("High");
-    } else if (tab === "this_week") {
-      // "Assigned to Me" — always scope to current user regardless of role
-      if (workspaceId && role === "admin") {
-        conditions.push("(ai.reporter_id = $" + p + " OR ai.assignee_id = $" + p + ")");
-        p++;
-        values.push(userId);
-      }
-      conditions.push("ai.created_at >= NOW() - INTERVAL '7 days'");
     } else if (tab === "completed") {
       conditions.push("ai.status = $" + p++);
       values.push("done");
@@ -128,11 +193,16 @@ actionItemsRouter.get("/by-user/:userId", async (req: Request, res: Response, ne
     const offset = (page - 1) * limit;
     const { tab, status, priority } = req.query as Record<string, string | undefined>;
 
-    // Security: requester can only query their own ID unless they are a workspace admin
+    if (workspaceId) {
+      const requesterRole = await getWorkspaceRole(workspaceId, requesterId);
+      if (!requesterRole) return res.status(403).json({ error: "Not a member of this workspace" });
+    }
+
+    // Security: requester can only query their own ID unless they are a workspace admin or owner
     if (targetUserId !== requesterId) {
       if (!workspaceId) return res.status(403).json({ error: "Forbidden" });
       const role = await getWorkspaceRole(workspaceId, requesterId);
-      if (role !== "admin") return res.status(403).json({ error: "Only admins can view other members' items" });
+      if (!isWorkspaceElevatedRole(role)) return res.status(403).json({ error: "Only admins or owners can view other members' items" });
     }
 
     const conditions: string[] = ["(ai.reporter_id = $1 OR ai.assignee_id = $1)"];
@@ -157,8 +227,6 @@ actionItemsRouter.get("/by-user/:userId", async (req: Request, res: Response, ne
     } else if (tab === "high_priority") {
       conditions.push("ai.priority = $" + p++);
       values.push("High");
-    } else if (tab === "this_week") {
-      conditions.push("ai.created_at >= NOW() - INTERVAL '7 days'");
     } else if (tab === "completed") {
       conditions.push("ai.status = $" + p++);
       values.push("done");
@@ -198,7 +266,7 @@ actionItemsRouter.get("/by-user/:userId", async (req: Request, res: Response, ne
   } catch (err) { next(err); }
 });
 
-// GET /export
+// GET /export — personal scope only (workspace-scoped rows stay under workspace views)
 actionItemsRouter.get("/export", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.appUser.id;
@@ -206,7 +274,7 @@ actionItemsRouter.get("/export", async (req: Request, res: Response, next: NextF
       "SELECT ai.id, ai.task, COALESCE(assignee_user.full_name, ai.assignee) AS assignee_name, ai.status, ai.source, ai.created_at " +
       "FROM action_items ai " +
       "LEFT JOIN users assignee_user ON assignee_user.id = ai.assignee_id " +
-      "WHERE ai.reporter_id = $1 ORDER BY ai.created_at DESC",
+      "WHERE ai.reporter_id = $1 AND ai.workspace_id IS NULL ORDER BY ai.created_at DESC",
       [userId]
     );
     const lines = ["id,task,assignee_name,status,source,createdAt"];
@@ -229,6 +297,13 @@ actionItemsRouter.post("/bulk-save", async (req: Request, res: Response, next: N
   try {
     const userId = req.appUser.id;
     const items: Array<Record<string, unknown>> = Array.isArray(req.body) ? req.body : req.body.items ?? [];
+    const plan = req.appUser.plan ?? "free";
+    if (
+      items.some((item) => item.workspaceId && String(item.workspaceId).trim()) &&
+      !canUseTeamWorkspace(plan)
+    ) {
+      return next(new ForbiddenError("Workspace action items require an Elite plan."));
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -242,12 +317,24 @@ actionItemsRouter.post("/bulk-save", async (req: Request, res: Response, next: N
           );
           if (r.rows[0]) saved.push(r.rows[0]);
         } else {
-          // INSERT: reporter_id = authenticated user; assignee text from AI, assignee_id null by default
-          const assigneeText = (item.assignee as string | undefined) ?? (item.owner as string | undefined) ?? "Unassigned";
-          const assigneeId = (item.assigneeId as string | null | undefined) ?? null;
+          const wsId =
+            item.workspaceId && String(item.workspaceId).trim()
+              ? String(item.workspaceId).trim()
+              : null;
+          const rawAssigneeText =
+            (item.assignee as string | undefined) ?? (item.owner as string | undefined) ?? "Unassigned";
+          let assigneeId = (item.assigneeId as string | null | undefined) ?? null;
+          const normalized = await normalizeAssigneeForWorkspaceCreate({
+            workspaceId: wsId,
+            requesterId: userId,
+            assigneeId,
+            assigneeText: rawAssigneeText,
+          });
+          assigneeId = normalized.assigneeId;
+          const assigneeText = normalized.assigneeText;
           const r = await client.query(
             "INSERT INTO action_items (task,assignee,due_date,priority,completed,status,source,reporter_id,meeting_id,meeting_title,workspace_id,assignee_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
-            [item.task ?? "", assigneeText, item.dueDate ?? "Not specified", item.priority ?? "Medium", item.completed ?? false, item.status ?? "pending", item.source ?? "meeting", userId, item.meetingId ?? null, item.meetingTitle ?? null, item.workspaceId ?? null, assigneeId]
+            [item.task ?? "", assigneeText, item.dueDate ?? "Not specified", item.priority ?? "Medium", item.completed ?? false, item.status ?? "pending", item.source ?? "meeting", userId, item.meetingId ?? null, item.meetingTitle ?? null, wsId, assigneeId]
           );
           if (r.rows[0]) saved.push(r.rows[0]);
         }
@@ -264,11 +351,23 @@ actionItemsRouter.post("/", async (req: Request, res: Response, next: NextFuncti
   try {
     const userId = req.appUser.id;
     // Strip any client-supplied reporter_id; always use authenticated user's ID
-    const { task, dueDate = "Not specified", priority = "Medium", completed = false, status = "pending", source = "meeting", meetingId = null, meetingTitle = null, workspaceId = null } = req.body;
-    // assignee text from body (AI-extracted or user-provided), default "Unassigned"
-    const assigneeText: string = (req.body.assignee as string | undefined) ?? (req.body.owner as string | undefined) ?? "Unassigned";
-    // assignee_id: null by default (set when user explicitly assigns to an Artivaa user)
-    const assigneeId: string | null = (req.body.assigneeId as string | null | undefined) ?? null;
+    const bodyWs = req.body.workspaceId;
+    const workspaceId =
+      bodyWs && typeof bodyWs === "string" && bodyWs.trim() ? bodyWs.trim() : null;
+    if (workspaceId && !canUseTeamWorkspace(req.appUser.plan ?? "free")) {
+      return next(new ForbiddenError("Workspace action items require an Elite plan."));
+    }
+    const { task, dueDate = "Not specified", priority = "Medium", completed = false, status = "pending", source = "meeting", meetingId = null, meetingTitle = null } = req.body;
+    const rawAssigneeText: string =
+      (req.body.assignee as string | undefined) ?? (req.body.owner as string | undefined) ?? "Unassigned";
+    let assigneeId: string | null = (req.body.assigneeId as string | null | undefined) ?? null;
+    const { assigneeId: aid, assigneeText } = await normalizeAssigneeForWorkspaceCreate({
+      workspaceId,
+      requesterId: userId,
+      assigneeId,
+      assigneeText: rawAssigneeText,
+    });
+    assigneeId = aid;
     const result = await pool.query(
       "INSERT INTO action_items (task,assignee,due_date,priority,completed,status,source,reporter_id,meeting_id,meeting_title,workspace_id,assignee_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *",
       [task, assigneeText, dueDate, priority, completed, status, source, userId, meetingId, meetingTitle, workspaceId, assigneeId]
@@ -285,7 +384,7 @@ actionItemsRouter.patch("/:id", async (req: Request, res: Response, next: NextFu
     const userId = req.appUser.id;
     const updates = req.body as Record<string, unknown>;
     const itemResult = await pool.query(
-      "SELECT id, reporter_id, workspace_id FROM action_items WHERE id = $1 LIMIT 1",
+      "SELECT id, reporter_id, workspace_id, assignee_id FROM action_items WHERE id = $1 LIMIT 1",
       [id]
     );
     const item = itemResult.rows[0];
@@ -295,16 +394,37 @@ actionItemsRouter.patch("/:id", async (req: Request, res: Response, next: NextFu
       role = await getWorkspaceRole(item.workspace_id as string, userId);
       if (!role) return next(new ForbiddenError("Not a member of this workspace"));
     }
-    const isOwner = item.reporter_id === userId;
-    const isAdmin = role === "admin";
-    const isMember = role === "member";
+    const isReporter = item.reporter_id === userId;
+    const isAssignee = item.assignee_id != null && item.assignee_id === userId;
+    const isElevated = isWorkspaceElevatedRole(role);
+    const isMemberRole = role === "member";
     const isViewer = role === "viewer";
     if (isViewer) return next(new ForbiddenError("Viewers cannot edit action items"));
-    if (role && !isAdmin && !isOwner) return next(new ForbiddenError("You can only edit your own action items"));
 
-    // assignee_id authorization: only Admin or Reporter can update it
+    if (
+      "workspaceId" in updates &&
+      updates.workspaceId != null &&
+      updates.workspaceId !== "" &&
+      !canUseTeamWorkspace(req.appUser.plan ?? "free")
+    ) {
+      return next(new ForbiddenError("Workspace action items require an Elite plan."));
+    }
+
+    if (item.workspace_id) {
+      if (isElevated) {
+        // admin / owner: full edit
+      } else if (isMemberRole && (isReporter || isAssignee)) {
+        // member: only own tasks (reporter or assignee)
+      } else if (isMemberRole) {
+        return next(new ForbiddenError("You can only edit your own action items"));
+      }
+    } else if (!isReporter && !isAssignee) {
+      return next(new ForbiddenError("You can only edit your own action items"));
+    }
+
+    // assignee_id authorization: only elevated or reporter can reassign
     if ("assigneeId" in updates) {
-      if (!isAdmin && !isOwner) {
+      if (!isElevated && !isReporter) {
         return res.status(403).json({ error: "Only admins or the reporter can reassign action items" });
       }
       const newAssigneeId = updates.assigneeId;
@@ -325,7 +445,14 @@ actionItemsRouter.patch("/:id", async (req: Request, res: Response, next: NextFu
     // reporter_id is never in allowedFields — it cannot be updated
     const adminFields = ["task", "assignee", "dueDate", "priority", "completed", "status", "source", "meetingId", "meetingTitle", "workspaceId", "completedAt", "assigneeId"];
     const memberFields = ["status", "dueDate", "completed", "completedAt"];
-    const allowedFields = (!role || isAdmin) ? adminFields : (isMember && isOwner) ? memberFields : [];
+    let allowedFields: string[] = [];
+    if (!item.workspace_id) {
+      allowedFields = adminFields;
+    } else if (isElevated) {
+      allowedFields = adminFields;
+    } else if (isMemberRole && (isReporter || isAssignee)) {
+      allowedFields = memberFields;
+    }
     const fieldMap: Record<string, string> = {
       task: "task", assignee: "assignee", dueDate: "due_date", priority: "priority",
       completed: "completed", status: "status", source: "source",
@@ -380,7 +507,7 @@ actionItemsRouter.delete("/:id", async (req: Request, res: Response, next: NextF
     if (item.workspace_id) {
       const role = await getWorkspaceRole(item.workspace_id as string, userId);
       if (!role) return next(new ForbiddenError("Not a member of this workspace"));
-      if (role !== "admin") return next(new ForbiddenError("Only admins can delete workspace action items"));
+      if (!isWorkspaceElevatedRole(role)) return next(new ForbiddenError("Only admins or owners can delete workspace action items"));
     } else {
       if (item.reporter_id !== userId) return next(new ForbiddenError("Not authorized"));
     }

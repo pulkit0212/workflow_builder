@@ -76,10 +76,10 @@ webhooksRouter.post(
         const lastName = (event.data.last_name as string | null) ?? null;
         const fullName = [firstName, lastName].filter(Boolean).join(" ") || null;
 
-        // Upsert user record
+        // Upsert user record (plan matches initial trial subscription)
         await pool.query(
           `INSERT INTO users (clerk_user_id, email, full_name, plan, created_at, updated_at)
-           VALUES ($1, $2, $3, 'free', NOW(), NOW())
+           VALUES ($1, $2, $3, 'trial', NOW(), NOW())
            ON CONFLICT (clerk_user_id) DO UPDATE SET
              email = EXCLUDED.email,
              full_name = EXCLUDED.full_name,

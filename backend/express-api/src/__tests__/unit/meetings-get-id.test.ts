@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import express, { Request, Response, NextFunction } from "express";
 import request from "supertest";
+import type { AppUser } from "../../lib/user-sync-cache";
 import { meetingsRouter } from "../../routes/meetings";
 
 // Mock the DB pool
@@ -18,7 +19,17 @@ vi.mock("../../lib/bot-client", () => ({
 
 import { pool } from "../../db/client";
 
-const mockPool = pool as { query: ReturnType<typeof vi.fn> };
+const mockPool = pool as unknown as { query: ReturnType<typeof vi.fn> };
+
+const mockAppUser: AppUser = {
+  id: "user-123",
+  clerkUserId: "clerk-user-123",
+  email: "test@example.com",
+  fullName: "Test User",
+  plan: "free",
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
 
 function createTestApp() {
   const app = express();
@@ -26,7 +37,7 @@ function createTestApp() {
 
   // Inject a fake authenticated user
   app.use((req: Request, _res: Response, next: NextFunction) => {
-    (req as Request & { appUser: { id: string } }).appUser = { id: "user-123" };
+    req.appUser = mockAppUser;
     next();
   });
 

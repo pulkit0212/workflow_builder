@@ -76,8 +76,19 @@ export default function InviteAcceptPage() {
         return;
       }
 
-      const acceptData = await acceptRes.json().catch(() => ({})) as { details?: { code?: string } };
-      const code = acceptData?.details?.code;
+      const acceptData = await acceptRes.json().catch(() => ({})) as {
+        details?: { code?: string };
+        code?: string;
+      };
+      const code = acceptData?.details?.code ?? acceptData?.code;
+
+      if (acceptRes.status === 403 && code === "upgrade_required") {
+        setState({
+          type: "error",
+          reason: "Team workspaces are part of the Elite plan. Upgrade to join this workspace.",
+        });
+        return;
+      }
 
       if (acceptRes.status === 403 && code === "email_mismatch") {
         const currentEmail = user?.primaryEmailAddress?.emailAddress ?? "";

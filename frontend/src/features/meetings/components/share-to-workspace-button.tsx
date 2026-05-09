@@ -50,6 +50,11 @@ export function ShareToWorkspaceButton({
   const isWorkspaceAdmin = currentUserWorkspaceRole === "admin";
 
   useEffect(() => {
+    setMoveStatus(initialMoveStatus);
+    setWorkspaceId(initialWorkspaceId);
+  }, [initialMoveStatus, initialWorkspaceId]);
+
+  useEffect(() => {
     if (!isOwner) {
       setIsLoading(false);
       return;

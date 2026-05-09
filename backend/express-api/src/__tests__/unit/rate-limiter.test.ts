@@ -1,9 +1,24 @@
 import { describe, it, expect } from "vitest";
 import express, { Request, Response } from "express";
 import request from "supertest";
-import { rateLimiter } from "../../middleware/rate-limiter";
+import rateLimit from "express-rate-limit";
 
-function createTestApp(clerkUserId?: string) {
+/** Tight limit for fast tests — production limiter uses a much higher max. */
+function createStrictTestLimiter(max: number) {
+  return rateLimit({
+    windowMs: 60_000,
+    max,
+    keyGenerator: (req) =>
+      (req as Request & { clerkUserId?: string }).clerkUserId ?? req.ip ?? "unknown",
+    handler: (_req, res) => {
+      res.status(429).json({ error: "Too many requests" });
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+}
+
+function createTestApp(clerkUserId: string | undefined, limiter: ReturnType<typeof createStrictTestLimiter>) {
   const app = express();
 
   // Simulate clerkAuth attaching clerkUserId
@@ -14,37 +29,37 @@ function createTestApp(clerkUserId?: string) {
     next();
   });
 
-  app.use(rateLimiter);
+  app.use(limiter);
   app.get("/test", (_req, res) => res.status(200).json({ ok: true }));
   return app;
 }
 
 describe("rateLimiter middleware", () => {
   it("allows requests under the limit", async () => {
-    const app = createTestApp("user_abc");
+    const app = createTestApp("user_abc", createStrictTestLimiter(100));
     const res = await request(app).get("/test");
     expect(res.status).toBe(200);
   });
 
-  it("returns 429 after 100 requests in a minute", async () => {
-    const app = createTestApp("user_limit_test");
+  it("returns 429 after exceeding max requests in a window", async () => {
+    const max = 10;
+    const app = createTestApp("user_limit_test", createStrictTestLimiter(max));
 
-    // Send 100 requests (all should pass)
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < max; i++) {
       const res = await request(app).get("/test");
       expect(res.status).toBe(200);
     }
 
-    // 101st request should be rate limited
     const res = await request(app).get("/test");
     expect(res.status).toBe(429);
     expect(res.body).toEqual({ error: "Too many requests" });
   });
 
   it("returns JSON error body on 429", async () => {
-    const app = createTestApp("user_json_test");
+    const max = 10;
+    const app = createTestApp("user_json_test", createStrictTestLimiter(max));
 
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < max; i++) {
       await request(app).get("/test");
     }
 

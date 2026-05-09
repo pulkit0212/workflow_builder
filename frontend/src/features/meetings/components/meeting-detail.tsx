@@ -563,6 +563,37 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     return () => { isMounted = false; };
   }, [meetingId]);
 
+  // While a workspace share is awaiting admin approval, refetch so the banner updates after approve/reject.
+  useEffect(() => {
+    if (!meeting || meeting.workspaceMoveStatus !== "pending") return;
+
+    function refreshWorkspaceShareState() {
+      void fetchMeetingById(meetingId)
+        .then((next) => {
+          setMeeting((prev) => {
+            if (!prev) return next;
+            return {
+              ...prev,
+              workspaceId: next.workspaceId,
+              workspaceMoveStatus: next.workspaceMoveStatus,
+            };
+          });
+        })
+        .catch(() => null);
+    }
+
+    const interval = window.setInterval(refreshWorkspaceShareState, 5000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshWorkspaceShareState();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [meetingId, meeting?.workspaceMoveStatus]);
+
   useEffect(() => {
     if (!session) return;
     setMeeting((cur) => {

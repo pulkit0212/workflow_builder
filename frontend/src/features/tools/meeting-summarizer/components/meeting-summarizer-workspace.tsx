@@ -29,6 +29,7 @@ import type {
 } from "@/features/tools/meeting-summarizer/types";
 import { toolRegistry } from "@/lib/ai/tool-registry";
 import { getUserMediaAudioStream } from "@/lib/media/get-user-media-audio";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { useApiFetch } from "@/hooks/useApiFetch";
 
 type MeetingSummarizerWorkspaceProps = {
@@ -168,6 +169,7 @@ export function MeetingSummarizerWorkspace({
   defaultProvider,
   defaultTranscriptionProvider
 }: MeetingSummarizerWorkspaceProps) {
+  const { activeWorkspaceId } = useWorkspaceContext();
   const apiFetch = useApiFetch();
   const [latestRun, setLatestRun] = useState(initialRun);
   const [serverError, setServerError] = useState<InlineErrorState>(
@@ -541,15 +543,18 @@ export function MeetingSummarizerWorkspace({
       try {
         setAudioFlowState("summarizing");
         const finalTranscript = reviewTranscript.trim();
-        const summaryResponse = await runMeetingSummarizer({
-          inputType: "audio",
-          provider: form.getValues("provider"),
-          transcriptionProvider,
-          audioFileName: recordedAudio.file.name,
-          audioMimeType: recordedAudio.file.type,
-          originalTranscript,
-          transcript: finalTranscript
-        });
+        const summaryResponse = await runMeetingSummarizer(
+          {
+            inputType: "audio",
+            provider: form.getValues("provider"),
+            transcriptionProvider,
+            audioFileName: recordedAudio.file.name,
+            audioMimeType: recordedAudio.file.type,
+            originalTranscript,
+            transcript: finalTranscript,
+          },
+          { workspaceId: activeWorkspaceId }
+        );
 
         form.reset({
           inputType: "audio",
@@ -580,10 +585,13 @@ export function MeetingSummarizerWorkspace({
 
     startTransition(async () => {
       try {
-        const response = await runMeetingSummarizer({
-          ...values,
-          inputType: "transcript"
-        });
+        const response = await runMeetingSummarizer(
+          {
+            ...values,
+            inputType: "transcript",
+          },
+          { workspaceId: activeWorkspaceId }
+        );
         setLatestRun(response.run);
       } catch (error) {
         const clientError = error as MeetingSummarizerClientError;

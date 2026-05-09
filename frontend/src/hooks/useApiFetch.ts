@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { createApiFetch } from "@/lib/api-client";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
@@ -24,7 +24,7 @@ export function useApiFetch(): (
     }
   }, [getToken]);
 
-  const apiFetch = createApiFetch(stableGetToken);
+  const apiFetch = useMemo(() => createApiFetch(stableGetToken), [stableGetToken]);
 
   return useCallback(
     (path: string, init?: RequestInit & { workspaceId?: string | null }) => {
@@ -36,8 +36,7 @@ export function useApiFetch(): (
           : (activeWorkspaceId ?? undefined);
       return apiFetch(path, { ...init, workspaceId });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [stableGetToken, activeWorkspaceId]
+    [apiFetch, activeWorkspaceId]
   );
 }
 

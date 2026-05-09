@@ -2,30 +2,11 @@ import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db/client";
 import { config } from "../config";
 import { BadRequestError, NotFoundError } from "../lib/errors";
+import { plainTextToHtmlEmailBody, sendHtmlToRecipients } from "../lib/gmail-integration-outbound";
 
 export const meetingExtrasRouter = Router();
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function toBase64Url(value: string) {
-  return Buffer.from(value, "utf8")
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function buildRawGmailMessage(recipients: string[], subject: string, body: string) {
-  return [
-    "MIME-Version: 1.0",
-    `To: ${recipients.join(", ")}`,
-    `Subject: ${subject}`,
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
-    "",
-    body,
-  ].join("\r\n");
-}
 
 function buildFollowUpPrompt(title: string, summary: string, keyPoints: unknown[], actionItems: unknown[]) {
   const keyPointLines = Array.isArray(keyPoints)
@@ -51,7 +32,7 @@ function buildFollowUpPrompt(title: string, summary: string, keyPoints: unknown[
     : "- No explicit action items were captured.";
 
   return [
-    "Write a professional, concise follow-up email after a meeting.",
+    "Write a follow-up email after a meeting.",
     "Return plain text only. Do not use markdown fences.",
     "Use this structure:",
     "1. Greeting",
@@ -61,8 +42,8 @@ function buildFollowUpPrompt(title: string, summary: string, keyPoints: unknown[
     "5. Professional closing",
     "",
     "Tone requirements:",
-    "- Professional and clear",
-    "- Concise but useful",
+    "- Use the requested tone",
+    "- Clear and actionable",
     "- Suitable to send directly after light editing",
     "",
     `Meeting title: ${title}`,
@@ -78,6 +59,34 @@ function buildFollowUpPrompt(title: string, summary: string, keyPoints: unknown[
     "",
     "Write the final email now.",
   ].join("\n");
+}
+
+async function getUserSettingString(userId: string, key: string): Promise<string | null> {
+  try {
+    const { rows } = await pool.query<{ value: unknown }>(
+      "SELECT value FROM user_settings WHERE user_id = $1 AND key = $2 LIMIT 1",
+      [userId, key]
+    );
+    const v = rows[0]?.value;
+    if (v === null || v === undefined) return null;
+    return typeof v === "string" ? v : String(v);
+  } catch (e) {
+    const code = (e as { code?: string }).code;
+    if (code === "42P01") return null; // user_settings not migrated yet
+    throw e;
+  }
+}
+
+function toneLabel(tone: string | null): string {
+  const t = String(tone ?? "professional").toLowerCase();
+  if (t === "friendly") return "Friendly";
+  if (t === "formal") return "Formal";
+  if (t === "concise") return "Concise";
+  return "Professional";
+}
+
+function languageLabel(lang: string | null): string {
+  return String(lang ?? "en").toLowerCase() === "hi" ? "Hindi" : "English";
 }
 
 async function callGemini(prompt: string): Promise<string> {
@@ -151,7 +160,21 @@ meetingExtrasRouter.post("/followup", async (req: Request, res: Response, next: 
       meeting.action_items ?? []
     );
 
-    const followUpEmail = await callGemini(prompt);
+    const [tonePref, langPref] = await Promise.all([
+      getUserSettingString(userId, "defaultEmailTone"),
+      getUserSettingString(userId, "language"),
+    ]);
+
+    const promptWithPrefs = [
+      prompt,
+      "",
+      `Requested tone: ${toneLabel(tonePref)}`,
+      `Requested language: ${languageLabel(langPref)}`,
+      "Write the email in the requested language.",
+      ...(toneLabel(tonePref) === "Concise" ? ["Keep it under ~150 words when possible."] : []),
+    ].join("\n");
+
+    const followUpEmail = await callGemini(promptWithPrefs);
 
     await pool.query(
       `UPDATE meeting_sessions SET follow_up_email = $1, updated_at = NOW() WHERE id = $2`,
@@ -195,38 +218,16 @@ meetingExtrasRouter.post("/send-email", async (req: Request, res: Response, next
       return next(new BadRequestError("Generate a follow-up email before sending."));
     }
 
-    const integrationResult = await pool.query(
-      `SELECT access_token FROM user_integrations
-       WHERE user_id = $1 AND provider = 'google'
-       LIMIT 1`,
-      [userId]
-    );
-
-    const integration = integrationResult.rows[0] ?? null;
-    if (!integration?.access_token) {
-      return next(new BadRequestError("Connect Google with Gmail access before sending email."));
-    }
-
     const subject = `Summary & Next Steps – ${meeting.title}`;
-    const raw = toBase64Url(buildRawGmailMessage(recipients, subject, meeting.follow_up_email));
-
-    const gmailResponse = await fetch(
-      "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${integration.access_token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ raw }),
-      }
-    );
-
-    if (!gmailResponse.ok) {
-      if (gmailResponse.status === 401 || gmailResponse.status === 403) {
-        return next(new BadRequestError("Reconnect Google to grant Gmail sending access, then try again."));
-      }
-      return next(new Error("Failed to send the email with Gmail."));
+    const html = plainTextToHtmlEmailBody(meeting.follow_up_email);
+    const sent = await sendHtmlToRecipients({
+      userId,
+      recipients,
+      subject,
+      html,
+    });
+    if (!sent.ok) {
+      return next(new BadRequestError(sent.message));
     }
 
     await pool.query(

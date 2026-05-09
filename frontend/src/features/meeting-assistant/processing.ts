@@ -15,6 +15,8 @@ type SummarizeMeetingSessionTranscriptInput = {
   transcript: string;
   provider: MeetingAiProvider;
   transcriptionProvider?: MeetingTranscriptionProvider;
+  /** Personal vs workspace scope for persisted action items */
+  workspaceId?: string | null;
 };
 
 export async function summarizeMeetingSessionTranscript(
@@ -23,13 +25,18 @@ export async function summarizeMeetingSessionTranscript(
   session: Awaited<ReturnType<typeof updateMeetingSessionRecord>>;
   run: ToolRunResponse<MeetingSummarizerOutput>["run"];
 }> {
-  const response = await runMeetingSummarizer({
-    inputType: "transcript",
-    provider: input.provider,
-    transcriptionProvider: input.transcriptionProvider,
-    originalTranscript: input.transcript,
-    transcript: input.transcript
-  });
+  const response = await runMeetingSummarizer(
+    {
+      inputType: "transcript",
+      provider: input.provider,
+      transcriptionProvider: input.transcriptionProvider,
+      originalTranscript: input.transcript,
+      transcript: input.transcript,
+      meetingId: input.sessionId,
+      meetingTitle: input.title,
+    },
+    { workspaceId: input.workspaceId }
+  );
 
   const session = await updateMeetingSessionRecord(input.sessionId, {
     title: input.title,

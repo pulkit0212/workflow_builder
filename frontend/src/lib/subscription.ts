@@ -8,6 +8,8 @@ export type SubscriptionLimits = {
   history: boolean;
   meetingsPerMonth: number;
   unlimited: boolean;
+  /** Team workspace — Elite only */
+  teamWorkspace: boolean;
 };
 
 export type PlanDefinition = {
@@ -46,12 +48,12 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
     price: 0,
     badge: "Current",
     badgeTone: "neutral",
-    description: "Unlimited generation tools with three meeting previews per month.",
+    description: "Unlimited generation tools with seven meeting previews per month.",
     features: [
       "Email Generator (unlimited)",
       "Task Generator (unlimited)",
       "Document Analyzer (unlimited)",
-      "3 meeting recordings/month (preview only)"
+      "7 meeting recordings/month (preview only)"
     ],
     limits: {
       meetingBot: false,
@@ -59,8 +61,9 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       summary: false,
       actionItems: false,
       history: false,
-      meetingsPerMonth: 3,
-      unlimited: false
+      meetingsPerMonth: 7,
+      unlimited: false,
+      teamWorkspace: false
     }
   },
   pro: {
@@ -77,7 +80,7 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       "Auto Summary",
       "Action Items extraction",
       "Meeting History",
-      "10 meetings/month"
+      "20 meetings/month"
     ],
     limits: {
       meetingBot: true,
@@ -85,8 +88,9 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       summary: true,
       actionItems: true,
       history: true,
-      meetingsPerMonth: 10,
-      unlimited: false
+      meetingsPerMonth: 20,
+      unlimited: false,
+      teamWorkspace: false
     }
   },
   elite: {
@@ -100,8 +104,7 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       "Everything in Pro",
       "Unlimited meetings",
       "Priority support",
-      "Slack/Email export (coming soon)",
-      "Team workspace (coming soon)",
+      "Team workspace (shared meetings & invites)",
       "All future features"
     ],
     limits: {
@@ -111,7 +114,8 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       actionItems: true,
       history: true,
       meetingsPerMonth: 999999,
-      unlimited: true
+      unlimited: true,
+      teamWorkspace: true
     }
   },
   trial: {
@@ -120,8 +124,13 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
     price: 0,
     badge: "30 Days",
     badgeTone: "pending",
-    description: "Full Elite access for 30 days after signup.",
-    features: ["Everything in Elite", "30-day free trial", "Full feature access"],
+    description: "Full Elite-level access during your trial — team workspaces, unlimited meetings, every feature.",
+    features: [
+      "Everything in Elite",
+      "Team workspace & invites",
+      "Unlimited meetings during trial",
+      "30-day free trial",
+    ],
     limits: {
       meetingBot: true,
       transcription: true,
@@ -129,9 +138,10 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       actionItems: true,
       history: true,
       meetingsPerMonth: 999999,
-      unlimited: true
-    }
-  }
+      unlimited: true,
+      teamWorkspace: true,
+    },
+  },
 };
 
 export function getPlanLimits(plan: string): SubscriptionLimits {
@@ -153,6 +163,10 @@ export function canUseHistory(plan: string) {
 
 export function canUseActionItems(plan: string) {
   return getPlanLimits(plan).actionItems;
+}
+
+export function canUseTeamWorkspace(plan: string) {
+  return getPlanLimits(plan).teamWorkspace;
 }
 
 export function isTrialActive(sub: Pick<SubscriptionRecord, "plan" | "trialEndsAt">) {

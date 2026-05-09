@@ -1,7 +1,7 @@
 import { verifyToken } from "@clerk/backend";
 import { Request, Response, NextFunction } from "express";
 import { config } from "../config";
-import { db } from "../db/client";
+import { db, pool } from "../db/client";
 import { syncUser, AppUser } from "../lib/user-sync-cache";
 
 // Augment Express Request to include Clerk auth fields
@@ -32,6 +32,19 @@ export async function clerkAuth(req: Request, res: Response, next: NextFunction)
 
     const appUser = await syncUser(clerkUserId, db);
     req.appUser = appUser;
+
+    try {
+      const { rows } = await pool.query<{ plan: string }>(
+        `SELECT plan FROM subscriptions WHERE user_id = $1 LIMIT 1`,
+        [clerkUserId]
+      );
+      const subPlan = rows[0]?.plan;
+      if (subPlan) {
+        req.appUser = { ...req.appUser, plan: subPlan };
+      }
+    } catch {
+      // If subscriptions table is missing or DB errors, fall back to users.plan
+    }
 
     next();
   } catch {

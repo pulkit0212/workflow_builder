@@ -91,13 +91,17 @@ function getErrorMessage(payload: ToolErrorResponse) {
   return payload.message;
 }
 
-export async function runMeetingSummarizer(input: MeetingSummarizerInput) {
+export async function runMeetingSummarizer(
+  input: MeetingSummarizerInput,
+  options?: { workspaceId?: string | null }
+) {
   const response = await clientApiFetch("/api/tools/meeting-summarizer/run", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(input)
+    body: JSON.stringify(input),
+    workspaceId: options?.workspaceId ?? undefined,
   });
 
   const payload = (await response.json()) as ToolRunResponse<MeetingSummarizerOutput> | ToolErrorResponse;

@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -21,7 +22,7 @@ export type WorkspaceInfo = {
   id: string;
   name: string;
   type: 'personal' | 'team';
-  role: 'admin' | 'member' | 'viewer';
+  role: 'admin' | 'owner' | 'member' | 'viewer';
 };
 
 export type WorkspaceContextValue = {
@@ -29,9 +30,12 @@ export type WorkspaceContextValue = {
   activeWorkspaceId: string | null;
   activeWorkspace: WorkspaceInfo | null;
   workspaces: WorkspaceInfo[];
+  /** Elite plan — create/join team workspaces and link meetings to them */
+  canUseTeamWorkspace: boolean;
   switchToPersonal: () => void;
   switchToWorkspace: (id: string) => void;
   refreshWorkspaces: () => Promise<void>;
+  refreshPlanEntitlements: () => Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -55,10 +59,18 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const { getToken, isLoaded } = useAuth();
 
-  const apiFetch = createApiFetch(async () => {
+  // Must be stable across renders — otherwise refreshWorkspaces / refreshPlanEntitlements
+  // change every render and the load effect hammers the API (429 + broken UI).
+  const stableGetToken = useCallback(async (): Promise<string | null> => {
     if (!isLoaded) await new Promise((r) => setTimeout(r, 500));
-    try { return await getToken(); } catch { return null; }
-  });
+    try {
+      return await getToken();
+    } catch {
+      return null;
+    }
+  }, [isLoaded, getToken]);
+
+  const apiFetch = useMemo(() => createApiFetch(stableGetToken), [stableGetToken]);
 
   // Resolve initial activeWorkspaceId:
   // 1. URL ?workspace param (authoritative)
@@ -72,6 +84,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const [workspaces, setWorkspaces] = useState<WorkspaceInfo[]>([]);
+  const [teamWorkspaceEntitlement, setTeamWorkspaceEntitlement] = useState<boolean | null>(null);
+
+  const canUseTeamWorkspace = teamWorkspaceEntitlement === true;
 
   // ---------------------------------------------------------------------------
   // Hydrate from localStorage on mount (after SSR)
@@ -110,12 +125,23 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // keep current state on error
     }
-  }, []);
+  }, [apiFetch]);
+
+  const refreshPlanEntitlements = useCallback(async () => {
+    try {
+      const res = await apiFetch('/api/subscription', { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as { limits?: { teamWorkspace?: boolean } };
+      setTeamWorkspaceEntitlement(Boolean(data.limits?.teamWorkspace));
+    } catch {
+      /* keep null — avoid treating network errors as non-Elite */
+    }
+  }, [apiFetch]);
 
   useEffect(() => {
-    refreshWorkspaces();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void refreshWorkspaces();
+    void refreshPlanEntitlements();
+  }, [refreshWorkspaces, refreshPlanEntitlements]);
 
   // ---------------------------------------------------------------------------
   // Actions
@@ -152,6 +178,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
 
   const mode: WorkspaceMode = activeWorkspaceId ? 'workspace' : 'personal';
 
+  useEffect(() => {
+    if (teamWorkspaceEntitlement !== false) return;
+    if (activeWorkspaceId === null) return;
+    switchToPersonal();
+  }, [teamWorkspaceEntitlement, activeWorkspaceId, switchToPersonal]);
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -159,9 +191,11 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
         activeWorkspaceId,
         activeWorkspace,
         workspaces,
+        canUseTeamWorkspace,
         switchToPersonal,
         switchToWorkspace,
         refreshWorkspaces,
+        refreshPlanEntitlements,
       }}
     >
       {children}

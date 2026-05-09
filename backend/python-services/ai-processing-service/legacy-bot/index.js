@@ -788,34 +788,36 @@ async function stopBot(meetingId, onStatusUpdate) {
     }
 
     // Save action items to action_items table (non-fatal)
+    // Schema: assignee (text), reporter_id (was user_id), workspace_id, assignee_id optional — matches Express API / Drizzle.
     const actionItemsList = Array.isArray(summary.action_items) ? summary.action_items : [];
     if (actionItemsList.length > 0 && dbPool) {
       try {
-        const sessionRow = await getSessionFromDB(meetingId);
-        const meetingTitle = sessionRow?.title || "Meeting";
-        // Get the userId from the meeting_sessions row
         const userResult = await dbPool.query(
-          "SELECT user_id, shared_with_user_ids FROM meeting_sessions WHERE id = $1",
+          "SELECT user_id, workspace_id, title FROM meeting_sessions WHERE id = $1",
           [meetingId]
         );
-        const ownerUserId = userResult.rows[0]?.user_id;
-        const sharedUserIds = userResult.rows[0]?.shared_with_user_ids || [];
-        const allUserIds = ownerUserId ? [ownerUserId, ...sharedUserIds] : [];
-        const now = new Date();
-        for (const userId of allUserIds) {
+        const meetingTitle =
+          (userResult.rows[0]?.title && String(userResult.rows[0].title).trim()) || "Meeting";
+        const reporterId = userResult.rows[0]?.user_id;
+        const workspaceId = userResult.rows[0]?.workspace_id ?? null;
+        const normalizePriority = (p) =>
+          p === "High" || p === "Low" || p === "Medium" ? p : "Medium";
+        if (reporterId) {
           for (const item of actionItemsList) {
+            const task = (item.task || "").trim();
+            if (!task) continue;
             await dbPool.query(
-              `INSERT INTO action_items (id, task, owner, due_date, priority, completed, status, meeting_id, meeting_title, user_id, source, created_at, updated_at)
-               VALUES (gen_random_uuid(), $1, $2, $3, $4, false, 'pending', $5, $6, $7, 'meeting', $8, $8)`,
+              `INSERT INTO action_items (task, assignee, due_date, priority, completed, status, source, reporter_id, meeting_id, meeting_title, workspace_id, assignee_id)
+               VALUES ($1, $2, $3, $4, false, 'pending', 'meeting', $5, $6, $7, $8, NULL)`,
               [
-                item.task || "",
-                item.owner || "Unassigned",
-                item.due_date || "Not specified",
-                item.priority || "Medium",
+                task,
+                (item.owner || "").trim() || "Unassigned",
+                (item.due_date || "").trim() || "Not specified",
+                normalizePriority(item.priority),
+                reporterId,
                 meetingId,
                 meetingTitle,
-                userId,
-                now,
+                workspaceId,
               ]
             );
           }

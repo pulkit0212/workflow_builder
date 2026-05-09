@@ -31,6 +31,7 @@ type SubscriptionResponse = {
     history: boolean;
     meetingsPerMonth: number;
     unlimited: boolean;
+    teamWorkspace?: boolean;
   };
   payments: Array<{
     id: string;
@@ -400,6 +401,14 @@ export default function SettingsPage() {
   const [preferences, setPreferences] = useState<PreferencesState>(defaultPreferences);
   const [savedPreferences, setSavedPreferences] = useState<PreferencesState>(defaultPreferences);
   const [isSavingPrefs, setIsSavingPrefs] = useState(false);
+  const [prefsCatalog, setPrefsCatalog] = useState<Array<{
+    key: string;
+    groupKey: string;
+    label: string;
+    description: string;
+    fieldType: "boolean" | "enum" | "string";
+    enumOptions?: unknown;
+  }>>([]);
 
   // Modals
   const [isDeleteAccountOpen, setIsDeleteAccountOpen] = useState(false);
@@ -463,10 +472,11 @@ export default function SettingsPage() {
     async function loadData() {
       setIsLoading(true);
       try {
-        const [subRes, usageRes, prefsRes] = await Promise.all([
+        const [subRes, usageRes, prefsRes, prefsCatalogRes] = await Promise.all([
           apiFetch("/api/subscription", { cache: "no-store" }),
           apiFetch("/api/settings/usage", { cache: "no-store" }),
           apiFetch("/api/settings/preferences", { cache: "no-store" }),
+          apiFetch("/api/settings/preferences/catalog", { cache: "no-store" }),
         ]);
 
         if (!isMounted) return;
@@ -504,6 +514,44 @@ export default function SettingsPage() {
             };
             setPreferences(mapped);
             setSavedPreferences(mapped);
+          }
+        }
+
+        if (prefsCatalogRes.ok) {
+          const payload = (await prefsCatalogRes.json()) as {
+            success?: boolean;
+            catalog?: Array<{
+              key: string;
+              groupKey: string;
+              label: string;
+              description: string;
+              fieldType: "boolean" | "enum" | "string";
+              enumOptions?: unknown;
+            }>;
+            values?: any;
+          };
+
+          if (payload.success && Array.isArray(payload.catalog)) {
+            setPrefsCatalog(payload.catalog);
+            const v = payload.values;
+            if (v) {
+              const mapped: PreferencesState = {
+                meetingSummaryEmail: Boolean(v.emailNotifications?.meetingSummary),
+                actionItemsEmail: Boolean(v.emailNotifications?.actionItems),
+                weeklyDigest: Boolean(v.emailNotifications?.weeklyDigest),
+                productUpdates: Boolean(v.emailNotifications?.productUpdates),
+                defaultTone: (String(v.defaultEmailTone ?? "professional").charAt(0).toUpperCase() + String(v.defaultEmailTone ?? "professional").slice(1)) as PreferencesState["defaultTone"],
+                summaryLength: (v.summaryLength ?? "standard") as PreferencesState["summaryLength"],
+                language: v.language === "hi" ? "Hindi" : "English",
+                botDisplayName: String(v.botDisplayName ?? "Artiva Notetaker"),
+                autoShareSlack: Boolean(v.autoShareTargets?.slack),
+                autoShareGmail: Boolean(v.autoShareTargets?.gmail),
+                autoShareNotion: Boolean(v.autoShareTargets?.notion),
+                autoShareJira: Boolean(v.autoShareTargets?.jira),
+              };
+              setPreferences(mapped);
+              setSavedPreferences(mapped);
+            }
           }
         }
 
@@ -666,6 +714,22 @@ export default function SettingsPage() {
   );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
+
+  const prefMeta = useMemo(() => {
+    const map = new Map<string, { label: string; description: string; enumOptions?: string[] }>();
+    for (const item of prefsCatalog) {
+      const opts = Array.isArray(item.enumOptions)
+        ? item.enumOptions.map((x) => String(x))
+        : undefined;
+      map.set(item.key, { label: item.label, description: item.description, enumOptions: opts });
+    }
+    return map;
+  }, [prefsCatalog]);
+
+  const toneOptions = (prefMeta.get("defaultEmailTone")?.enumOptions ?? ["professional", "friendly", "concise", "formal"])
+    .map((x) => (x.charAt(0).toUpperCase() + x.slice(1)) as PreferencesState["defaultTone"]);
+  const summaryOptions = (prefMeta.get("summaryLength")?.enumOptions ?? ["brief", "standard", "detailed"]) as Array<PreferencesState["summaryLength"]>;
+  const languageOptions = (prefMeta.get("language")?.enumOptions ?? ["en", "hi"]).map((x) => (x === "hi" ? "Hindi" : "English") as PreferencesState["language"]);
 
   return (
     <div className="min-h-screen bg-[#F8F9FA]">
@@ -1271,10 +1335,26 @@ export default function SettingsPage() {
                   <p className="mb-4 text-sm font-semibold text-[#202124]">Email Notifications</p>
                   <div className="space-y-4">
                     {[
-                      { key: "meetingSummaryEmail" as const, label: "Meeting Summary", desc: "Receive an email when your meeting summary is ready." },
-                      { key: "actionItemsEmail" as const, label: "Action Items", desc: "Get emailed your action items after each meeting." },
-                      { key: "weeklyDigest" as const, label: "Weekly Digest", desc: "A weekly roundup of all your meetings and insights." },
-                      { key: "productUpdates" as const, label: "Product Updates", desc: "New features, improvements, and announcements." },
+                      {
+                        key: "meetingSummaryEmail" as const,
+                        label: prefMeta.get("emailNotifications.meetingSummary")?.label ?? "Meeting Summary",
+                        desc: prefMeta.get("emailNotifications.meetingSummary")?.description ?? "Receive an email when your meeting summary is ready.",
+                      },
+                      {
+                        key: "actionItemsEmail" as const,
+                        label: prefMeta.get("emailNotifications.actionItems")?.label ?? "Action Items",
+                        desc: prefMeta.get("emailNotifications.actionItems")?.description ?? "Get emailed your action items after each meeting.",
+                      },
+                      {
+                        key: "weeklyDigest" as const,
+                        label: prefMeta.get("emailNotifications.weeklyDigest")?.label ?? "Weekly Digest",
+                        desc: prefMeta.get("emailNotifications.weeklyDigest")?.description ?? "A weekly roundup of all your meetings and insights.",
+                      },
+                      {
+                        key: "productUpdates" as const,
+                        label: prefMeta.get("emailNotifications.productUpdates")?.label ?? "Product Updates",
+                        desc: prefMeta.get("emailNotifications.productUpdates")?.description ?? "New features, improvements, and announcements.",
+                      },
                     ].map((item) => (
                       <div key={item.key} className="flex items-start justify-between gap-4">
                         <div className="min-w-0">
@@ -1296,34 +1376,42 @@ export default function SettingsPage() {
                   <div className="space-y-5">
                     {/* Preferred Email Tone */}
                     <div>
-                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Preferred Email Tone</p>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">
+                        {prefMeta.get("defaultEmailTone")?.label ?? "Preferred Email Tone"}
+                      </p>
                       <ChipSelector
-                        options={["Professional", "Friendly", "Concise", "Formal"] as const}
+                        options={toneOptions as any}
                         value={preferences.defaultTone}
                         onChange={(v) => setPreferences((p) => ({ ...p, defaultTone: v }))}
                       />
                     </div>
                     {/* Summary Length */}
                     <div>
-                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Summary Length</p>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">
+                        {prefMeta.get("summaryLength")?.label ?? "Summary Length"}
+                      </p>
                       <ChipSelector
-                        options={["brief", "standard", "detailed"] as const}
+                        options={summaryOptions as any}
                         value={preferences.summaryLength}
                         onChange={(v) => setPreferences((p) => ({ ...p, summaryLength: v }))}
                       />
                     </div>
                     {/* Primary Language */}
                     <div>
-                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Primary Language</p>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">
+                        {prefMeta.get("language")?.label ?? "Primary Language"}
+                      </p>
                       <ChipSelector
-                        options={["English", "Hindi"] as const}
+                        options={languageOptions as any}
                         value={preferences.language}
                         onChange={(v) => setPreferences((p) => ({ ...p, language: v }))}
                       />
                     </div>
                     {/* Bot display name */}
                     <div>
-                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Notetaker Display Name</p>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">
+                        {prefMeta.get("botDisplayName")?.label ?? "Notetaker Display Name"}
+                      </p>
                       <input
                         value={preferences.botDisplayName}
                         onChange={(e) => setPreferences((p) => ({ ...p, botDisplayName: e.target.value }))}
@@ -1341,11 +1429,37 @@ export default function SettingsPage() {
                 <p className="mb-5 text-xs text-[#9AA0A6]">Automatically send the summary to selected destinations as soon as it&apos;s generated.</p>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                   {([
-                    { key: "autoShareSlack" as const,  label: "Slack",  emoji: "💬", desc: "Post to your channel" },
-                    { key: "autoShareGmail" as const,  label: "Gmail",  emoji: "📧", desc: "Email to recipients" },
-                    { key: "autoShareNotion" as const, label: "Notion", emoji: "📝", desc: "Create a Notion page" },
-                    { key: "autoShareJira" as const,   label: "Jira",   emoji: "🎯", desc: "Create tickets" },
-                  ]).map((item) => (
+                    {
+                      key: "autoShareSlack" as const,
+                      catalogKey: "autoShareTargets.slack",
+                      label: prefMeta.get("autoShareTargets.slack")?.label ?? "Slack",
+                      emoji: "💬",
+                      desc: prefMeta.get("autoShareTargets.slack")?.description ?? "Post to your channel",
+                    },
+                    {
+                      key: "autoShareGmail" as const,
+                      catalogKey: "autoShareTargets.gmail",
+                      label: prefMeta.get("autoShareTargets.gmail")?.label ?? "Gmail",
+                      emoji: "📧",
+                      desc: prefMeta.get("autoShareTargets.gmail")?.description ?? "Email to recipients",
+                    },
+                    {
+                      key: "autoShareNotion" as const,
+                      catalogKey: "autoShareTargets.notion",
+                      label: prefMeta.get("autoShareTargets.notion")?.label ?? "Notion",
+                      emoji: "📝",
+                      desc: prefMeta.get("autoShareTargets.notion")?.description ?? "Create a Notion page",
+                    },
+                    {
+                      key: "autoShareJira" as const,
+                      catalogKey: "autoShareTargets.jira",
+                      label: prefMeta.get("autoShareTargets.jira")?.label ?? "Jira",
+                      emoji: "🎯",
+                      desc: prefMeta.get("autoShareTargets.jira")?.description ?? "Create tickets",
+                    },
+                  ])
+                    .filter((item) => prefMeta.has(item.catalogKey))
+                    .map((item) => (
                     <div
                       key={item.key}
                       className={cn(

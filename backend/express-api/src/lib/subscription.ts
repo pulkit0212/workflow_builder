@@ -11,6 +11,8 @@ export type SubscriptionLimits = {
   history: boolean;
   meetingsPerMonth: number;
   unlimited: boolean;
+  /** Team / shared workspace (invite members, workspace-scoped meetings) — Elite only */
+  teamWorkspace: boolean;
 };
 
 export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
@@ -21,8 +23,9 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       summary: false,
       actionItems: false,
       history: false,
-      meetingsPerMonth: 3,
+      meetingsPerMonth: 7,
       unlimited: false,
+      teamWorkspace: false,
     },
   },
   pro: {
@@ -32,8 +35,9 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       summary: true,
       actionItems: true,
       history: true,
-      meetingsPerMonth: 10,
+      meetingsPerMonth: 20,
       unlimited: false,
+      teamWorkspace: false,
     },
   },
   elite: {
@@ -45,6 +49,7 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       history: true,
       meetingsPerMonth: 999999,
       unlimited: true,
+      teamWorkspace: true,
     },
   },
   trial: {
@@ -56,6 +61,7 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       history: true,
       meetingsPerMonth: 999999,
       unlimited: true,
+      teamWorkspace: true,
     },
   },
 };
@@ -75,4 +81,8 @@ export function canUseHistory(plan: string) {
 
 export function canUseActionItems(plan: string) {
   return getPlanLimits(plan).actionItems;
+}
+
+export function canUseTeamWorkspace(plan: string) {
+  return getPlanLimits(plan).teamWorkspace;
 }

@@ -3,150 +3,239 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { UserButton } from "@clerk/nextjs";
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { motion, useInView } from "framer-motion";
+import {
+  ArrowRight,
+  BarChart3,
+  Bot,
+  Calendar,
+  Check,
+  History as HistoryIcon,
+  LayoutDashboard,
+  Link2,
+  Sparkles,
+  Users,
+  Zap,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { hasClerkPublishableKey } from "@/lib/auth/clerk-env";
+import { allTools } from "@/lib/ai/tool-registry";
+import { planDefinitions } from "@/lib/subscription";
 
 const signInRoute = "/sign-in" as Route;
 const signUpRoute = "/sign-up" as Route;
 const dashboardRoute = "/dashboard" as Route;
 
+const ACCENT = "#6C3FF5";
+
 const fadeUp = {
-  hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: "easeOut" as const } },
+  hidden: { opacity: 0, y: 14 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" as const } },
 };
-const stagger = { visible: { transition: { staggerChildren: 0.07 } } };
+const stagger = { visible: { transition: { staggerChildren: 0.06 } } };
 
 function AnimatedSection({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: "-40px" });
+  const inView = useInView(ref, { once: true, margin: "-48px" });
   return (
-    <motion.div ref={ref} variants={stagger} initial="hidden" animate={inView ? "visible" : "hidden"} className={className}>
+    <motion.div
+      ref={ref}
+      variants={stagger}
+      initial="hidden"
+      animate={inView ? "visible" : "hidden"}
+      className={className}
+    >
       {children}
     </motion.div>
   );
 }
 
-// ─── Navbar ────────────────────────────────────────────────────────────────
+/** Wide editorial shell — uses horizontal space like a real marketing site, not a skinny column */
+function Shell({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div
+      className={`mx-auto w-full max-w-[1600px] px-5 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: ReactNode;
+}) {
+  const hasDesc = description != null && description !== "";
+  return (
+    <div className="mb-12 grid gap-6 lg:mb-16 lg:grid-cols-12 lg:items-end lg:gap-x-10 lg:gap-y-0">
+      <div className={`text-left ${hasDesc ? "lg:col-span-5" : "lg:col-span-12 lg:max-w-3xl"}`}>
+        <p className="text-xs font-semibold uppercase tracking-widest text-violet-600">{eyebrow}</p>
+        <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">{title}</h2>
+      </div>
+      {hasDesc ? (
+        <div className="text-left text-base leading-relaxed text-slate-600 lg:col-span-6 lg:col-start-7">
+          {description}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+    >
+      {children}
+    </a>
+  );
+}
+
 function Navbar({ isAuthenticated }: { isAuthenticated: boolean }) {
   return (
-    <nav className="fixed top-0 left-0 right-0 w-full z-50 bg-white border-b border-slate-100 shadow-sm">
-      <div className="flex justify-between items-center h-16 w-full px-14">
-        <div className="flex items-center gap-10">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-[#6C3FF5] flex items-center justify-center">
-              <span className="text-white text-xs font-black">A</span>
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-md">
+      <Shell className="flex h-14 items-center justify-between gap-4 sm:h-16">
+        <div className="flex items-center gap-8">
+          <Link href="/" className="flex items-center gap-2">
+            <div
+              className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white shadow-sm"
+              style={{ background: ACCENT }}
+            >
+              A
             </div>
-            <span className="text-slate-900 text-base font-bold" style={{ fontFamily: "'Work Sans', sans-serif" }}>Artivaa AI</span>
-          </div>
-          <div className="hidden md:flex gap-7 items-center">
-            {["Product", "Features", "Pricing", "Integrations"].map((item) => (
-              <a key={item} href={`#${item.toLowerCase()}`}
-                className="text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors flex items-center gap-1">
-                {item}
-                <span className="material-symbols-outlined text-[14px] text-slate-400">expand_more</span>
-              </a>
-            ))}
-          </div>
+            <span className="text-[15px] font-semibold tracking-tight text-slate-900">Artivaa AI</span>
+          </Link>
+          <nav className="hidden items-center gap-6 md:flex">
+            <NavLink href="#product">Product</NavLink>
+            <NavLink href="#tools">AI tools</NavLink>
+            <NavLink href="#integrations">Integrations</NavLink>
+            <NavLink href="#pricing">Pricing</NavLink>
+          </nav>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {isAuthenticated ? (
             <>
-              <Button asChild size="sm" className="bg-[#6C3FF5] hover:bg-[#5B2FE0] text-white font-semibold rounded-lg">
-                <Link href={dashboardRoute}>Open Dashboard</Link>
+              <Button asChild size="sm" className="rounded-lg font-semibold shadow-sm" style={{ background: ACCENT }}>
+                <Link href={dashboardRoute} className="text-white hover:opacity-95">
+                  Dashboard
+                </Link>
               </Button>
               {hasClerkPublishableKey && <UserButton afterSignOutUrl="/" />}
             </>
           ) : (
             <>
-              <Button asChild variant="ghost" size="sm" className="text-slate-600 hover:text-slate-900 font-medium">
-                <Link href={signInRoute}>Login</Link>
+              <Button asChild variant="ghost" size="sm" className="font-medium text-slate-600">
+                <Link href={signInRoute}>Log in</Link>
               </Button>
-              <Button asChild size="sm" className="bg-[#6C3FF5] hover:bg-[#5B2FE0] text-white font-semibold rounded-lg shadow-md shadow-purple-200">
-                <Link href={signUpRoute}>Try for free!</Link>
+              <Button
+                asChild
+                size="sm"
+                className="rounded-lg font-semibold shadow-sm shadow-violet-200/80"
+                style={{ background: ACCENT }}
+              >
+                <Link href={signUpRoute} className="text-white hover:opacity-95">
+                  Get started
+                </Link>
               </Button>
             </>
           )}
         </div>
-      </div>
-    </nav>
+      </Shell>
+    </header>
   );
 }
 
-function ProductMockup() {
+/** Decorative dashboard preview aligned with real sidebar labels */
+function ProductPreview() {
+  const sidebar = [
+    { icon: LayoutDashboard, label: "Dashboard", active: false },
+    { icon: Calendar, label: "Meetings", active: true },
+    { icon: BarChart3, label: "Reports", active: false },
+    { icon: Check, label: "Action Items", active: false },
+    { icon: HistoryIcon, label: "History", active: false },
+    { icon: Link2, label: "Integrations", active: false },
+    { icon: Sparkles, label: "Tools", active: false },
+  ];
   return (
-    <div className="relative w-full rounded-2xl overflow-hidden border border-slate-200 shadow-2xl shadow-purple-100">
-      {/* Browser bar */}
-      <div className="flex items-center gap-2 px-5 py-3 bg-slate-50 border-b border-slate-200">
+    <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-[0_24px_80px_-12px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/5">
+      <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/90 px-4 py-2.5">
         <div className="flex gap-1.5">
-          <div className="h-3 w-3 rounded-full bg-red-400" />
-          <div className="h-3 w-3 rounded-full bg-yellow-400" />
-          <div className="h-3 w-3 rounded-full bg-green-400" />
+          <span className="h-2.5 w-2.5 rounded-full bg-red-400/90" />
+          <span className="h-2.5 w-2.5 rounded-full bg-amber-400/90" />
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400/90" />
         </div>
-        <div className="mx-auto flex h-6 w-64 items-center rounded border border-slate-200 bg-white px-3 text-xs text-slate-400">
-          app.artivaa.ai/dashboard
+        <div className="mx-auto flex max-w-[220px] flex-1 items-center rounded-md border border-slate-200/80 bg-white px-3 py-1 text-[11px] text-slate-400">
+          artivaa.ai/dashboard/meetings
         </div>
       </div>
-      {/* Dashboard */}
-      <div className="flex bg-[#F8F9FA]">
-        {/* Sidebar */}
-        <div className="w-44 bg-white border-r border-slate-100 p-3">
-          <div className="flex items-center gap-2 mb-4 p-2 rounded-lg bg-slate-50">
-            <div className="w-6 h-6 rounded bg-[#6C3FF5] flex items-center justify-center">
-              <span className="text-white text-[10px] font-black">A</span>
-            </div>
-            <span className="text-xs font-bold text-slate-700">Artivaa AI</span>
-          </div>
-          {[
-            { icon: "dashboard", label: "Dashboard", active: true },
-            { icon: "videocam", label: "Meetings", active: false },
-            { icon: "bar_chart", label: "Reports", active: false },
-            { icon: "assignment", label: "Actions", active: false },
-          ].map((item) => (
-            <div key={item.label}
-              className={`flex items-center gap-2 px-2 py-2 rounded-r-sm text-xs mb-1 border-l-2 ${
-                item.active ? "bg-[#EDE9FE] text-[#6C3FF5] border-[#6C3FF5] font-semibold" : "text-slate-400 border-transparent"
-              }`}>
-              <span className="material-symbols-outlined text-[14px]">{item.icon}</span>
-              {item.label}
+      <div className="flex min-h-[280px] bg-[#f8f9fb] sm:min-h-[320px]">
+        <aside className="hidden w-[148px] shrink-0 border-r border-slate-200/80 bg-white py-3 pl-2 pr-1 sm:block">
+          {sidebar.map(({ icon: Icon, label, active }) => (
+            <div
+              key={label}
+              className={`mb-0.5 flex items-center gap-2 rounded-lg px-2 py-1.5 text-[11px] font-medium ${
+                active ? "bg-violet-50 text-violet-700" : "text-slate-500"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0 opacity-80" strokeWidth={2} />
+              <span className="truncate">{label}</span>
             </div>
           ))}
-        </div>
-        {/* Content */}
-        <div className="flex-1 p-4">
-          <div className="grid grid-cols-4 gap-2 mb-4">
+        </aside>
+        <div className="flex flex-1 flex-col gap-3 p-4">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             {[
-              { label: "Meetings", value: "124", color: "#6C3FF5" },
-              { label: "This Month", value: "32", color: "#059669" },
-              { label: "Actions", value: "18", color: "#D97706" },
-              { label: "Pending", value: "07", color: "#DC2626" },
-            ].map((s) => (
-              <div key={s.label} className="bg-white rounded-lg p-3 border border-slate-100">
-                <p className="text-[9px] text-slate-400 uppercase tracking-wider mb-1">{s.label}</p>
-                <p className="text-lg font-bold" style={{ color: s.color }}>{s.value}</p>
+              { k: "This month", v: "—", c: "text-slate-800" },
+              { k: "Summaries", v: "AI", c: "text-emerald-600" },
+              { k: "Actions", v: "Sync", c: "text-amber-600" },
+              { k: "Tools", v: "4", c: "text-violet-600" },
+            ].map((x) => (
+              <div key={x.k} className="rounded-xl border border-slate-100 bg-white p-3 shadow-sm">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">{x.k}</p>
+                <p className={`mt-1 text-lg font-semibold tabular-nums ${x.c}`}>{x.v}</p>
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { title: "Product Roadmap Sync", time: "10:00 AM", tag: "GOOGLE MEET", tagColor: "#DC2626", tagBg: "#FEF2F2" },
-              { title: "Design Review", time: "1:30 PM", tag: "MS TEAMS", tagColor: "#1D4ED8", tagBg: "#EFF6FF" },
-            ].map((m) => (
-              <div key={m.title} className="bg-white rounded-lg p-3 border border-slate-100">
-                <div className="flex justify-between items-start mb-2">
-                  <span className="text-[9px] font-bold px-2 py-0.5 rounded"
-                    style={{ background: m.tagBg, color: m.tagColor }}>{m.tag}</span>
-                  <span className="text-[9px] text-slate-400">{m.time}</span>
-                </div>
-                <p className="text-xs font-semibold text-slate-800 mb-2">{m.title}</p>
-                <div className="w-full rounded-lg py-1.5 text-[9px] font-bold text-white flex items-center justify-center gap-1"
-                  style={{ background: "#6C3FF5" }}>
-                  <span className="material-symbols-outlined text-[10px]">smart_toy</span>
-                  Start AI Notetaker
-                </div>
+          <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="rounded-md bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700">
+                  Google Meet
+                </span>
+                <span className="text-[10px] text-slate-400">Today · 3:00 PM</span>
               </div>
-            ))}
+              <p className="text-sm font-semibold text-slate-800">Weekly planning</p>
+              <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                Summary · Key decisions · Action items ready to save
+              </p>
+              <div
+                className="mt-3 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold text-white"
+                style={{ background: ACCENT }}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                AI summary & actions
+              </div>
+            </div>
+            <div className="rounded-xl border border-dashed border-slate-200 bg-white/60 p-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Tools</p>
+              <ul className="mt-3 space-y-2 text-xs text-slate-600">
+                <li className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+                  Meeting Summarizer
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+                  Email · Document · Tasks
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -154,452 +243,511 @@ function ProductMockup() {
   );
 }
 
+const WORKPLACE_ICONS: Record<string, string> = {
+  "Google Meet": "videocam",
+  "Microsoft Teams": "groups",
+  Zoom: "video_call",
+  Slack: "chat",
+  Notion: "article",
+  Jira: "bug_report",
+  Gmail: "mail",
+  "Google Calendar": "calendar_month",
+};
+
 export function LandingPage({ isAuthenticated }: { isAuthenticated: boolean }) {
   const primaryRoute = isAuthenticated ? dashboardRoute : signUpRoute;
+  const freePlan = planDefinitions.free;
+  const proPlan = planDefinitions.pro;
+  const elitePlan = planDefinitions.elite;
 
   return (
-    <div className="min-h-screen w-full bg-white text-slate-900" style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div className="min-h-screen bg-[#fafafa] text-slate-900 antialiased">
       <Navbar isAuthenticated={isAuthenticated} />
 
-      {/* ── HERO — left text, right mockup ── */}
-      <section className="w-full pt-16" style={{ background: "linear-gradient(180deg, #F5F3FF 0%, #FFFFFF 100%)" }}>
-        <div className="w-full px-14 py-14 md:py-18">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-            {/* Left */}
-            <motion.div variants={stagger} initial="hidden" animate="visible">
-              <motion.h1 variants={fadeUp}
-                className="text-7xl md:text-8xl font-black leading-[1.0] mb-6"
-                style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                <span style={{ color: "#6C3FF5" }}>Meeting</span>
-                <br />
-                <span className="text-slate-900">Copilot</span>
-              </motion.h1>
-              <motion.p variants={fadeUp} className="text-slate-600 text-xl leading-relaxed mb-8 max-w-lg">
-                Artivaa is your AI copilot — transforming meetings, emails, and messages into summaries, insights, and instant answers{" "}
-                <span className="font-semibold text-[#6C3FF5]">on every device, wherever you work.</span>
+      <main className="pt-14 sm:pt-16">
+        {/* Hero — asymmetric grid + bleed so it doesn’t feel like a centered card */}
+        <section className="relative overflow-hidden border-b border-slate-200/60 bg-white">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.55]"
+            style={{
+              backgroundImage: `radial-gradient(ellipse 120% 80% at 0% 0%, rgba(108,63,245,0.11) 0%, transparent 55%),
+                radial-gradient(ellipse 90% 70% at 100% 15%, rgba(99,102,241,0.08) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 40% at 70% 100%, rgba(139,92,246,0.06) 0%, transparent 45%)`,
+            }}
+          />
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.45]"
+            style={{
+              backgroundImage: `linear-gradient(to right, rgb(148 163 184 / 0.06) 1px, transparent 1px),
+                linear-gradient(to bottom, rgb(148 163 184 / 0.06) 1px, transparent 1px)`,
+              backgroundSize: "44px 44px",
+              maskImage: "linear-gradient(to bottom, black 0%, black 70%, transparent 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 70%, transparent 100%)",
+            }}
+          />
+          <Shell className="relative grid items-center gap-12 py-14 lg:grid-cols-12 lg:gap-10 lg:py-[4.5rem] xl:gap-14">
+            <motion.div variants={stagger} initial="hidden" animate="visible" className="text-left lg:col-span-5 xl:col-span-5">
+              <motion.p
+                variants={fadeUp}
+                className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm"
+              >
+                <Zap className="h-3.5 w-3.5 text-violet-600" />
+                Meetings + AI tools in one workspace
               </motion.p>
-              <motion.div variants={fadeUp} className="mb-6">
-                <Button asChild size="lg"
-                  className="h-14 px-10 text-lg font-bold text-white rounded-xl shadow-lg shadow-purple-200 hover:shadow-purple-300 transition-all"
-                  style={{ background: "#6C3FF5" }}>
-                  <Link href={primaryRoute}>Get Started for Free</Link>
+              <motion.h1
+                variants={fadeUp}
+                className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl lg:text-[3.25rem] lg:leading-[1.1]"
+              >
+                From live meetings to{" "}
+                <span className="bg-gradient-to-r from-violet-600 to-violet-500 bg-clip-text text-transparent">
+                  summaries
+                </span>
+                , tasks, and follow-ups
+              </motion.h1>
+              <motion.p variants={fadeUp} className="mt-5 max-w-none text-base leading-relaxed text-slate-600 sm:max-w-xl sm:text-lg lg:max-w-lg">
+                Artivaa captures your meetings, runs structured AI summaries, extracts action items, and gives you four
+                productivity tools—Email, Document Analyzer, Task Generator, and Meeting Summarizer—with optional sharing
+                to Slack, Gmail, Notion, and Jira.
+              </motion.p>
+              <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center gap-3">
+                <Button
+                  asChild
+                  size="lg"
+                  className="h-12 rounded-xl px-7 text-base font-semibold shadow-lg shadow-violet-300/40"
+                  style={{ background: ACCENT }}
+                >
+                  <Link href={primaryRoute} className="text-white hover:opacity-95">
+                    {isAuthenticated ? "Open app" : "Create free account"}
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" size="lg" className="h-12 rounded-xl border-slate-200 px-6 font-semibold">
+                  <a href="#tools">Explore tools</a>
                 </Button>
               </motion.div>
-              <motion.div variants={fadeUp} className="flex flex-wrap items-center gap-6 text-base text-slate-500">
-                {["5 free meetings / month", "No install required", "No credit card"].map((item) => (
-                  <span key={item} className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[#6C3FF5] text-[18px]">check_circle</span>
-                    {item}
-                  </span>
-                ))}
-              </motion.div>
+              <motion.ul variants={fadeUp} className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-500">
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />
+                  {freePlan.limits.meetingsPerMonth} meeting previews / month on Free
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />
+                  Unlimited AI tools on Free
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check className="h-4 w-4 text-emerald-600" strokeWidth={2.5} />
+                  No credit card to start
+                </li>
+              </motion.ul>
             </motion.div>
-
-            {/* Right — product mockup — bigger */}
             <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
-              className="flex justify-center md:justify-end w-full">
-              <div className="w-full">
-                <ProductMockup />
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.12 }}
+              className="relative mt-12 min-w-0 lg:col-span-7 lg:mt-0 xl:col-span-7"
+            >
+              <div
+                className="pointer-events-none absolute -right-8 -top-10 hidden h-64 w-64 rounded-full bg-violet-400/20 blur-3xl lg:block xl:-right-4 xl:h-80 xl:w-80"
+                aria-hidden
+              />
+              <div className="relative translate-x-0 lg:translate-x-2 xl:translate-x-6 2xl:translate-x-10">
+                <ProductPreview />
               </div>
             </motion.div>
-          </div>
-        </div>
+          </Shell>
 
-        {/* Platforms strip */}
-        <div className="w-full border-t border-slate-100 bg-white py-8">
-          <div className="w-full px-14">
-            <p className="text-center text-sm font-semibold text-slate-400 mb-6">Use Artivaa wherever you work</p>
-            <div className="flex flex-wrap justify-center gap-4">
-              {[
-                { name: "Google Meet", icon: "videocam", color: "#EA4335", bg: "#FEF2F2" },
-                { name: "MS Teams", icon: "groups", color: "#6264A7", bg: "#EDE9FE" },
-                { name: "Zoom", icon: "video_call", color: "#2D8CFF", bg: "#EFF6FF" },
-                { name: "Slack", icon: "chat", color: "#E01E5A", bg: "#FFF0F3" },
-                { name: "Notion", icon: "article", color: "#000000", bg: "#F8F8F8" },
-                { name: "Jira", icon: "bug_report", color: "#0052CC", bg: "#EFF6FF" },
-                { name: "Gmail", icon: "mail", color: "#EA4335", bg: "#FEF2F2" },
-              ].map((p) => (
-                <div key={p.name} className="flex flex-col items-center gap-2 w-20 cursor-default group">
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center border border-slate-100 shadow-sm group-hover:shadow-md transition-shadow"
-                    style={{ background: p.bg }}>
-                    <span className="material-symbols-outlined text-[24px]" style={{ color: p.color }}>{p.icon}</span>
-                  </div>
-                  <span className="text-xs text-slate-500 font-medium text-center">{p.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS — 3 column like read.ai ── */}
-      <section id="features" className="w-full py-20 bg-white">
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <motion.div variants={fadeUp} className="text-center mb-12">
-              <p className="text-sm font-semibold text-[#6C3FF5] mb-2">How Artivaa Works</p>
-              <h2 className="text-4xl md:text-5xl font-black mb-4" style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                Turn Conversations into Action with AI
-              </h2>
-              <p className="text-slate-500 text-lg max-w-2xl mx-auto">
-                From meeting recaps to Search Copilot, uncover the insights you need — when you need them.
+          {/* Integrations strip — edge-to-edge row, not a centered cluster */}
+          <div className="border-t border-slate-100 bg-slate-50/90 py-10 lg:py-12">
+            <Shell className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between lg:gap-12">
+              <p className="max-w-[220px] text-left text-xs font-semibold uppercase leading-snug tracking-widest text-slate-500">
+                Connects with tools you already use
               </p>
-            </motion.div>
-
-            {/* 3 column feature list — read.ai style */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-0 border-t border-slate-100">
-              {[
-                {
-                  title: "Make Meetings Work for You",
-                  color: "#6C3FF5",
-                  items: [
-                    { label: "Capture & summarize", rest: "every meeting effortlessly" },
-                    { label: "Auto-generated recaps,", rest: "action items, and highlights" },
-                    { label: "Works with", rest: "Google Meet, Zoom, and Teams" },
-                  ],
-                },
-                {
-                  title: "Find Answers Instantly",
-                  color: "#6C3FF5",
-                  items: [
-                    { label: "Search smarter", rest: "— find insights across meetings, emails, and chats in seconds" },
-                    { label: "AI-powered search", rest: "across conversations, docs, and notes" },
-                    { label: "Get immediate context", rest: "with citations to where information was discussed" },
-                  ],
-                },
-                {
-                  title: "Keep Everyone in the Loop",
-                  color: "#6C3FF5",
-                  items: [
-                    { label: "Break down silos", rest: "by sharing knowledge across teams" },
-                    { label: "Seamlessly share summaries", rest: "and decisions in Slack, email, or your workspace" },
-                    { label: "Easily sync Artivaa", rest: "with your favorite integrations to keep your team up to date" },
-                  ],
-                },
-              ].map((col, i) => (
-                <motion.div key={col.title} variants={fadeUp}
-                  className={`py-10 px-8 ${i < 2 ? "border-r border-slate-100" : ""}`}>
-                  <h3 className="text-xl font-bold text-slate-900 mb-6 leading-tight" style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                    {col.title}
-                  </h3>
-                  <ul className="space-y-4">
-                    {col.items.map((item, j) => (
-                      <li key={j} className="text-slate-600 text-sm leading-relaxed">
-                        <span className="font-semibold" style={{ color: col.color }}>{item.label}</span>{" "}
-                        {item.rest}
-                      </li>
-                    ))}
-                  </ul>
-                </motion.div>
-              ))}
-            </div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── AUTOMATE SECTION — left text + right product grid ── */}
-      <section className="w-full py-20 border-t border-slate-100" style={{ background: "#FAFAFA" }}>
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
-              {/* Left */}
-              <motion.div variants={fadeUp}>
-                <h2 className="text-4xl font-black mb-8 leading-tight" style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                  Automate summaries &amp; insights across platforms
-                </h2>
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { title: "Meeting Notes & Playback", desc: "AI-generated notes, topics, and action items.", icon: "description" },
-                    { title: "Search Copilot", desc: "Find answers across meetings, emails, and messages.", icon: "search" },
-                    { title: "Meeting Assistant", desc: "Artivaa joins your meetings automatically.", icon: "smart_toy" },
-                    { title: "Email Summaries", desc: "Concise summaries of key email threads.", icon: "mail" },
-                  ].map((card) => (
-                    <div key={card.title} className="bg-white rounded-xl p-4 border border-slate-200 hover:border-[#6C3FF5]/30 hover:shadow-sm transition-all cursor-default">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="material-symbols-outlined text-[#6C3FF5] text-[18px]">{card.icon}</span>
-                        <h4 className="text-sm font-bold text-slate-900">{card.title}</h4>
-                      </div>
-                      <p className="text-xs text-slate-500 leading-relaxed">{card.desc}</p>
+              <div className="flex min-w-0 flex-1 flex-wrap items-center justify-start gap-x-6 gap-y-6 sm:gap-x-8 lg:justify-end xl:justify-between xl:gap-x-4">
+                {Object.entries(WORKPLACE_ICONS).map(([name, icon]) => (
+                  <div key={name} className="flex flex-col gap-2">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200/90 bg-white shadow-sm sm:h-12 sm:w-12">
+                      <span className="material-symbols-outlined text-[20px] text-slate-700 sm:text-[22px]">{icon}</span>
                     </div>
-                  ))}
-                </div>
-              </motion.div>
-
-              {/* Right — mini product UI */}
-              <motion.div variants={fadeUp} className="relative">
-                <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-xl shadow-slate-100"
-                  style={{ background: "linear-gradient(135deg, #EDE9FE 0%, #F5F3FF 100%)" }}>
-                  <div className="p-4 bg-white border-b border-slate-100">
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-6 h-6 rounded bg-[#6C3FF5] flex items-center justify-center">
-                        <span className="text-white text-[9px] font-black">A</span>
-                      </div>
-                      <span className="text-sm font-bold text-slate-700">Artivaa Dashboard</span>
-                    </div>
-                    <div className="flex gap-2 mb-3">
-                      {["Date", "Source", "Access"].map((f) => (
-                        <span key={f} className="px-2 py-1 rounded-lg bg-slate-100 text-xs text-slate-500 font-medium">{f}</span>
-                      ))}
-                    </div>
-                    <div className="bg-slate-50 rounded-lg px-3 py-2 text-xs text-slate-400 border border-slate-200">
-                      What&apos;s the status of...
-                    </div>
+                    <span className="max-w-[92px] text-[10px] font-medium leading-tight text-slate-500 sm:text-[11px]">{name}</span>
                   </div>
-                  <div className="p-4 space-y-2">
-                    {[
-                      { title: "Product Roadmap Review", time: "5-6pm · 4 participants", status: "In Progress", statusColor: "#6C3FF5", statusBg: "#EDE9FE" },
-                      { title: "Team Sync", time: "3-4pm · 12 participants", status: "Ready", statusColor: "#059669", statusBg: "#D1FAE5" },
-                    ].map((item) => (
-                      <div key={item.title} className="bg-white rounded-xl p-3 border border-slate-100 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-800">{item.title}</p>
-                          <p className="text-xs text-slate-400">{item.time}</p>
-                        </div>
-                        <span className="px-2 py-1 rounded-lg text-xs font-bold"
-                          style={{ background: item.statusBg, color: item.statusColor }}>
-                          {item.status}
-                        </span>
-                      </div>
-                    ))}
-                    <div className="bg-[#6C3FF5] rounded-xl py-2.5 text-center text-sm font-bold text-white cursor-pointer hover:bg-[#5B2FE0] transition-colors">
-                      Artivaa Dashboard
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── INTEGRATIONS ── */}
-      <section id="integrations" className="w-full py-20 bg-white border-t border-slate-100">
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <motion.div variants={fadeUp} className="text-center mb-10">
-              <p className="text-sm font-semibold text-[#6C3FF5] mb-2">Integrations</p>
-              <h2 className="text-4xl font-black mb-4" style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                Works with your favorite tools
-              </h2>
-              <p className="text-slate-500 max-w-2xl mx-auto text-base">
-                Artivaa is independent and platform-agnostic — connecting across all your tools to deliver truly unified insights.
-              </p>
-            </motion.div>
-            <motion.div variants={fadeUp} className="flex flex-wrap justify-center gap-3 mb-8">
-              {[
-                { name: "Google Meet", icon: "videocam", color: "#EA4335" },
-                { name: "Zoom", icon: "video_call", color: "#2D8CFF" },
-                { name: "Teams", icon: "groups", color: "#6264A7" },
-                { name: "Gmail", icon: "mail", color: "#EA4335" },
-                { name: "Outlook", icon: "inbox", color: "#0078D4" },
-                { name: "Slack", icon: "chat", color: "#E01E5A" },
-                { name: "Notion", icon: "article", color: "#000000" },
-                { name: "Jira", icon: "bug_report", color: "#0052CC" },
-                { name: "Google Calendar", icon: "calendar_month", color: "#4285F4" },
-                { name: "HubSpot", icon: "hub", color: "#FF7A59" },
-                { name: "Salesforce", icon: "cloud", color: "#00A1E0" },
-                { name: "Asana", icon: "task_alt", color: "#F06A6A" },
-              ].map((tool) => (
-                <div key={tool.name}
-                  className="w-14 h-14 rounded-2xl border border-slate-200 bg-white flex items-center justify-center hover:border-[#6C3FF5]/30 hover:shadow-md transition-all cursor-default shadow-sm">
-                  <span className="material-symbols-outlined text-[22px]" style={{ color: tool.color }}>{tool.icon}</span>
-                </div>
-              ))}
-            </motion.div>
-            <motion.div variants={fadeUp} className="flex justify-center gap-4">
-              <Button asChild className="bg-[#6C3FF5] hover:bg-[#5B2FE0] text-white font-semibold rounded-xl px-6">
-                <Link href={signUpRoute}>Connect Your Tools</Link>
-              </Button>
-              <Button asChild variant="ghost" className="text-[#6C3FF5] font-semibold hover:bg-purple-50">
-                <a href="#features">
-                  View all integrations
-                  <span className="material-symbols-outlined text-[16px] ml-1">arrow_forward</span>
-                </a>
-              </Button>
-            </motion.div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── TESTIMONIALS ── */}
-      <section className="w-full py-20 border-t border-slate-100" style={{ background: "#FAFAFA" }}>
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <motion.div variants={fadeUp} className="text-center mb-10">
-              <h2 className="text-4xl font-black mb-2" style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                What people are saying about Artivaa AI
-              </h2>
-            </motion.div>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {[
-                { quote: "Record and transcribe meetings automatically, improving documentation and accessibility.", name: "U.S. Chamber of Commerce" },
-                { quote: "It learns me — and it's starting to think like I do.", name: "– Tony Reese, Particle41" },
-                { quote: "Our favorite tool for saving hours every week.", name: "– Tiger Sisters, top 10 business podcast" },
-                { quote: "If you're yearning for a personal assistant to take over pesky note-taking, Artivaa just might have the fix.", name: "– Fortune Magazine" },
-                { quote: "If you don't have Artivaa AI, you're losing out.", name: "– Lauren G., Nitrogen PR" },
-              ].map((t) => (
-                <motion.div key={t.name} variants={fadeUp}
-                  className="bg-white rounded-2xl p-6 border border-slate-200 hover:border-[#6C3FF5]/30 hover:shadow-md transition-all">
-                  <span className="text-[#6C3FF5] text-3xl font-black leading-none block mb-3">&ldquo;</span>
-                  <p className="text-slate-700 text-sm leading-relaxed mb-4">{t.quote}</p>
-                  <p className="text-xs text-slate-400 font-medium">{t.name}</p>
-                </motion.div>
-              ))}
-            </div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── BENEFITS ── */}
-      <section className="w-full py-20 bg-white border-t border-slate-100">
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <motion.div variants={fadeUp} className="text-center mb-12">
-              <p className="text-sm font-semibold text-[#6C3FF5] mb-2">Benefits</p>
-              <h2 className="text-4xl font-black" style={{ fontFamily: "'Work Sans', sans-serif" }}>Why choose Artivaa AI?</h2>
-            </motion.div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-3xl mx-auto">
-              {[
-                { icon: "devices", title: "One assistant for everything", desc: "Works across all meeting platforms, emails, and messages." },
-                { icon: "security", title: "Secure & Private", desc: "SOC II certified, and no training on your data by default." },
-                { icon: "translate", title: "Multi-language support", desc: "Supports 20+ languages and always adding more." },
-                { icon: "insights", title: "Data-driven insights", desc: "Summarizes and surfaces the most important details for you." },
-              ].map((b) => (
-                <motion.div key={b.title} variants={fadeUp} className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: "#EDE9FE" }}>
-                    <span className="material-symbols-outlined text-[#6C3FF5] text-[20px]">{b.icon}</span>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-900 mb-1">{b.title}</h4>
-                    <p className="text-sm text-slate-500">{b.desc}</p>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── PRICING ── */}
-      <section id="pricing" className="w-full py-20 border-t border-slate-100" style={{ background: "#FAFAFA" }}>
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <motion.div variants={fadeUp} className="text-center mb-12">
-              <p className="text-sm font-semibold text-[#6C3FF5] mb-2">Pricing</p>
-              <h2 className="text-4xl font-black mb-3" style={{ fontFamily: "'Work Sans', sans-serif" }}>Simple, transparent pricing</h2>
-              <p className="text-slate-500">Start free. Upgrade when your team is ready.</p>
-            </motion.div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { name: "Free", price: "₹0", period: "forever", features: ["5 meetings/month", "Basic transcripts", "AI summaries", "Action items"], cta: "Get started free", highlight: false },
-                { name: "Pro", price: "₹999", period: "per month", features: ["Unlimited meetings", "Full transcripts", "Gemini AI summaries", "Action items + export", "5 workspaces", "Calendar sync", "Slack & Notion"], cta: "Start Pro trial", highlight: true },
-                { name: "Team", price: "₹2,999", period: "per month", features: ["Everything in Pro", "Unlimited workspaces", "Team member invites", "Role-based access", "Jira integration", "Priority support"], cta: "Start Team trial", highlight: false },
-              ].map((plan) => (
-                <motion.div key={plan.name} variants={fadeUp}
-                  className={`rounded-2xl p-8 border relative ${plan.highlight ? "border-[#6C3FF5] shadow-xl shadow-purple-100" : "border-slate-200 bg-white"}`}
-                  style={plan.highlight ? { background: "linear-gradient(135deg, #F5F3FF 0%, #FFFFFF 100%)" } : {}}>
-                  {plan.highlight && (
-                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#6C3FF5] text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                      Most Popular
-                    </div>
-                  )}
-                  <div className="mb-6">
-                    <h3 className="text-lg font-bold text-slate-900 mb-1" style={{ fontFamily: "'Work Sans', sans-serif" }}>{plan.name}</h3>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-black text-slate-900">{plan.price}</span>
-                      <span className="text-slate-400 text-sm">/{plan.period}</span>
-                    </div>
-                  </div>
-                  <ul className="space-y-3 mb-8">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-center gap-2.5 text-sm text-slate-600">
-                        <span className="material-symbols-outlined text-[#6C3FF5] text-[16px]">check</span>
-                        {f}
-                      </li>
-                    ))}
-                  </ul>
-                  <Button asChild
-                    className={`w-full h-11 font-semibold rounded-xl ${plan.highlight ? "text-white hover:bg-[#5B2FE0]" : "border border-slate-200 text-slate-700 bg-white hover:bg-slate-50"}`}
-                    style={plan.highlight ? { background: "#6C3FF5" } : {}}>
-                    <Link href={signUpRoute}>{plan.cta}</Link>
-                  </Button>
-                </motion.div>
-              ))}
-            </div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── CTA BANNER — read.ai style purple banner ── */}
-      <section className="w-full py-16 bg-white border-t border-slate-100">
-        <div className="w-full px-14">
-          <AnimatedSection>
-            <motion.div variants={fadeUp}
-              className="rounded-2xl p-12 text-center text-white relative overflow-hidden"
-              style={{ background: "linear-gradient(135deg, #6C3FF5 0%, #8B5CF6 100%)" }}>
-              <h2 className="text-4xl font-black mb-4" style={{ fontFamily: "'Work Sans', sans-serif" }}>
-                Work smarter, everywhere.
-              </h2>
-              <p className="text-white/80 text-lg mb-8 max-w-xl mx-auto">
-                Join thousands of teams who never miss an action item again.
-              </p>
-              <div className="flex flex-col sm:flex-row justify-center gap-4">
-                <Button asChild size="lg"
-                  className="h-12 px-8 text-base font-bold bg-white text-[#6C3FF5] hover:bg-slate-50 shadow-lg rounded-xl">
-                  <Link href={primaryRoute}>Try Artivaa AI for Free!</Link>
-                </Button>
-                <Button asChild size="lg" variant="outline"
-                  className="h-12 px-8 text-base font-semibold border-white/30 text-white bg-white/10 hover:bg-white/20 rounded-xl">
-                  <a href="#features">
-                    Learn more
-                    <span className="material-symbols-outlined text-[16px] ml-1">arrow_forward</span>
-                  </a>
-                </Button>
-              </div>
-              <p className="text-white/50 text-xs mt-4">5 free meetings/month · No install required · No credit card</p>
-            </motion.div>
-          </AnimatedSection>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer className="w-full bg-slate-900 text-white">
-        <div className="w-full grid grid-cols-1 md:grid-cols-5 gap-8 py-12 px-4 md:px-6">
-          <div className="md:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-7 h-7 rounded-lg bg-[#6C3FF5] flex items-center justify-center">
-                <span className="text-white text-xs font-black">A</span>
-              </div>
-              <span className="text-white font-bold" style={{ fontFamily: "'Work Sans', sans-serif" }}>Artivaa AI</span>
-            </div>
-            <p className="text-slate-400 text-sm leading-relaxed">The intelligent meeting assistant for modern teams.</p>
-          </div>
-          {[
-            { title: "Product", links: ["Features", "Integrations", "Enterprise", "Security"] },
-            { title: "Features", links: ["Meeting Notes", "AI Summaries", "Action Items", "Search Copilot"] },
-            { title: "Company", links: ["About Us", "Blog", "Careers", "Contact"] },
-            { title: "Support", links: ["Documentation", "API Reference", "Privacy Policy", "Terms"] },
-          ].map((col) => (
-            <div key={col.title}>
-              <h4 className="font-semibold text-sm text-slate-300 mb-4" style={{ fontFamily: "'Work Sans', sans-serif" }}>{col.title}</h4>
-              <ul className="space-y-2.5">
-                {col.links.map((link) => (
-                  <li key={link}>
-                    <a href="#" className="text-slate-500 hover:text-white transition-colors text-sm">{link}</a>
-                  </li>
                 ))}
+              </div>
+            </Shell>
+          </div>
+        </section>
+
+        {/* Product pillars */}
+        <section id="product" className="scroll-mt-20 border-b border-slate-200/60 bg-[#fafafa] py-16 lg:py-24">
+          <Shell>
+            <AnimatedSection>
+              <motion.div variants={fadeUp}>
+                <SectionHeader
+                  eyebrow="Product"
+                  title="Built around how you actually work"
+                  description="Calendar-linked meetings, structured AI summaries, a dedicated action-items workflow, run history on Pro and Elite, and shared workspaces when your team needs one source of truth."
+                />
+              </motion.div>
+              <div className="grid gap-6 md:grid-cols-3 lg:gap-8">
+                {[
+                  {
+                    title: "Meetings & assistant",
+                    desc: "Schedule and join from Google Calendar, capture transcripts, and generate structured summaries with decisions and risks.",
+                    icon: Calendar,
+                  },
+                  {
+                    title: "Action pipeline",
+                    desc: "Promote AI suggestions into trackable action items, assign owners and dates, and keep them scoped to your workspace.",
+                    icon: Check,
+                  },
+                  {
+                    title: "Team-ready",
+                    desc: "Elite unlocks shared workspaces, invites, and role-aware access so leadership and ICs stay aligned.",
+                    icon: Users,
+                  },
+                ].map(({ title, desc, icon: Icon }) => (
+                  <motion.div
+                    key={title}
+                    variants={fadeUp}
+                    className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-sm ring-1 ring-slate-900/5"
+                  >
+                    <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
+                      <Icon className="h-5 w-5" strokeWidth={2} />
+                    </div>
+                    <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </AnimatedSection>
+          </Shell>
+        </section>
+
+        {/* AI Tools — from registry */}
+        <section id="tools" className="scroll-mt-20 border-b border-slate-200/60 bg-white py-16 lg:py-24">
+          <Shell>
+            <AnimatedSection>
+              <motion.div variants={fadeUp}>
+                <SectionHeader
+                  eyebrow="AI tools"
+                  title="Four tools, one workspace shell"
+                  description="Same navigation, history, and sharing patterns across Meeting Summarizer, Email Generator, Document Analyzer, and Task Generator—so nothing feels like a separate product bolted on."
+                />
+              </motion.div>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-12 lg:gap-6">
+                {allTools.map((tool) => {
+                  const Icon = tool.icon;
+                  return (
+                    <motion.div
+                      key={tool.slug}
+                      variants={fadeUp}
+                      className="group flex gap-4 rounded-2xl border border-slate-200/90 bg-[#fafafa] p-5 transition-colors hover:border-violet-200 hover:bg-white sm:p-6 lg:col-span-6"
+                    >
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200/80">
+                        <Icon className="h-6 w-6 text-violet-600" strokeWidth={2} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-slate-900">{tool.name}</h3>
+                        <p className="mt-1 text-sm leading-relaxed text-slate-600">{tool.description}</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </AnimatedSection>
+          </Shell>
+        </section>
+
+        {/* How it works */}
+        <section id="features" className="scroll-mt-20 border-b border-slate-200/60 bg-[#fafafa] py-16 lg:py-24">
+          <Shell>
+            <AnimatedSection>
+              <motion.div variants={fadeUp}>
+                <SectionHeader
+                  eyebrow="Workflow"
+                  title="Capture → understand → ship"
+                  description="A straight line from conversation to structured output—without bouncing between five different AI tabs."
+                />
+              </motion.div>
+              <div className="grid gap-10 border-t border-slate-200/80 pt-12 md:grid-cols-3 md:gap-8 lg:gap-12 lg:pt-14">
+                {[
+                  {
+                    step: "01",
+                    title: "Connect & meet",
+                    body: "Link calendar and conferencing flows. Join or upload audio where supported; transcripts feed the same summary pipeline.",
+                  },
+                  {
+                    step: "02",
+                    title: "Summarize with structure",
+                    body: "Get summaries, key points, decisions, and risks—not a wall of text. Tune sharing targets per integration.",
+                  },
+                  {
+                    step: "03",
+                    title: "Act & automate",
+                    body: "Save action items, run the task and email tools on supporting plans, and revisit past runs from History.",
+                  },
+                ].map((s, i) => (
+                  <motion.div key={s.step} variants={fadeUp} className={`relative text-left ${i < 2 ? "md:border-r md:border-slate-200/80 md:pr-8" : ""}`}>
+                    <span className="text-xs font-bold tabular-nums text-violet-600">{s.step}</span>
+                    <h3 className="mt-2 text-lg font-semibold text-slate-900">{s.title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-slate-600">{s.body}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </AnimatedSection>
+          </Shell>
+        </section>
+
+        {/* Integrations */}
+        <section id="integrations" className="scroll-mt-20 border-b border-slate-200/60 bg-white py-16 lg:py-24">
+          <Shell>
+            <AnimatedSection>
+              <motion.div variants={fadeUp}>
+                <SectionHeader
+                  eyebrow="Integrations"
+                  title="Share outcomes where your team lives"
+                  description={
+                    <>
+                      Push summaries and action items to{" "}
+                      <strong className="font-medium text-slate-800">Slack</strong>,{" "}
+                      <strong className="font-medium text-slate-800">Gmail</strong>,{" "}
+                      <strong className="font-medium text-slate-800">Notion</strong>, and{" "}
+                      <strong className="font-medium text-slate-800">Jira</strong>
+                      —wired from your dashboard after sign-in.
+                    </>
+                  }
+                />
+              </motion.div>
+              <motion.div variants={fadeUp} className="flex flex-wrap justify-start gap-3 lg:justify-end">
+                {[
+                  { name: "Slack", icon: "chat", color: "#4A154B" },
+                  { name: "Gmail", icon: "mail", color: "#EA4335" },
+                  { name: "Notion", icon: "article", color: "#111" },
+                  { name: "Jira", icon: "bug_report", color: "#0052CC" },
+                ].map((x) => (
+                  <div
+                    key={x.name}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-5 py-3 shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-[22px]" style={{ color: x.color }}>
+                      {x.icon}
+                    </span>
+                    <span className="text-sm font-semibold text-slate-800">{x.name}</span>
+                  </div>
+                ))}
+              </motion.div>
+              <motion.div variants={fadeUp} className="mt-10 flex justify-start lg:justify-end">
+                <Button asChild variant="outline" className="rounded-xl border-slate-200 font-semibold">
+                  <Link href={isAuthenticated ? dashboardRoute : signUpRoute}>
+                    {isAuthenticated ? "Manage integrations" : "Sign up to connect"}
+                  </Link>
+                </Button>
+              </motion.div>
+            </AnimatedSection>
+          </Shell>
+        </section>
+
+        {/* Value props — honest, no fabricated quotes */}
+        <section className="border-b border-slate-200/60 bg-[#fafafa] py-16 lg:py-20">
+          <Shell>
+            <AnimatedSection>
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  { title: "Single workspace", desc: "Meetings, tools, billing, and settings without tab sprawl." },
+                  { title: "INR-first pricing", desc: "Transparent plans with clear meeting limits as you scale." },
+                  { title: "History on Pro+", desc: "Revisit AI tool runs when your plan includes History." },
+                  { title: "Workspace controls", desc: "Elite adds shared workspaces and member roles." },
+                ].map((x) => (
+                  <motion.div key={x.title} variants={fadeUp} className="rounded-xl border border-slate-200/90 bg-white p-5 shadow-sm">
+                    <h3 className="font-semibold text-slate-900">{x.title}</h3>
+                    <p className="mt-2 text-sm text-slate-600">{x.desc}</p>
+                  </motion.div>
+                ))}
+              </div>
+            </AnimatedSection>
+          </Shell>
+        </section>
+
+        {/* Pricing — aligned with planDefinitions */}
+        <section id="pricing" className="scroll-mt-20 border-b border-slate-200/60 bg-white py-16 lg:py-24">
+          <Shell>
+            <AnimatedSection>
+              <motion.div variants={fadeUp}>
+                <SectionHeader
+                  eyebrow="Pricing"
+                  title="Plans that mirror what you unlock in-app"
+                  description="Start on Free with full access to the AI tools; upgrade when you want the meeting bot, transcription, history, and higher meeting limits."
+                />
+              </motion.div>
+              <div className="grid gap-6 lg:grid-cols-3 lg:gap-8">
+                {[
+                  {
+                    name: freePlan.name,
+                    price: freePlan.price,
+                    period: "forever",
+                    features: freePlan.features,
+                    highlight: false,
+                  },
+                  {
+                    name: proPlan.name,
+                    price: proPlan.price,
+                    period: "per month",
+                    features: proPlan.features,
+                    highlight: true,
+                  },
+                  {
+                    name: elitePlan.name,
+                    price: elitePlan.price,
+                    period: "per month",
+                    features: elitePlan.features,
+                    highlight: false,
+                  },
+                ].map((plan) => (
+                  <motion.div
+                    key={plan.name}
+                    variants={fadeUp}
+                    className={`relative flex flex-col rounded-2xl border p-8 shadow-sm ${
+                      plan.highlight
+                        ? "border-violet-300 bg-gradient-to-b from-violet-50/80 to-white ring-2 ring-violet-500/20"
+                        : "border-slate-200 bg-white"
+                    }`}
+                  >
+                    {plan.highlight && (
+                      <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-violet-600 px-3 py-1 text-[10px] font-bold uppercase tracking-wide text-white">
+                        {proPlan.badge}
+                      </span>
+                    )}
+                    <h3 className="text-lg font-semibold text-slate-900">{plan.name}</h3>
+                    <div className="mt-4 flex items-baseline gap-1">
+                      <span className="text-4xl font-semibold tracking-tight text-slate-900">
+                        {plan.price === 0 ? "₹0" : `₹${plan.price}`}
+                      </span>
+                      <span className="text-sm text-slate-500">/{plan.period}</span>
+                    </div>
+                    <ul className="mt-8 flex flex-1 flex-col gap-3">
+                      {plan.features.map((f) => (
+                        <li key={f} className="flex gap-2 text-sm text-slate-600">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" strokeWidth={2.5} />
+                          <span>{f}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      asChild
+                      className={`mt-8 h-11 w-full rounded-xl font-semibold ${
+                        plan.highlight ? "text-white shadow-md shadow-violet-300/50" : ""
+                      }`}
+                      variant={plan.highlight ? "default" : "outline"}
+                      style={plan.highlight ? { background: ACCENT } : undefined}
+                    >
+                      <Link href={signUpRoute}>{plan.price === 0 ? "Start free" : `Choose ${plan.name}`}</Link>
+                    </Button>
+                  </motion.div>
+                ))}
+              </div>
+              <motion.p variants={fadeUp} className="mt-8 text-left text-xs text-slate-500 lg:text-right">
+                Trial users get Elite-level access for a limited time. See billing in-app for current offers.
+              </motion.p>
+            </AnimatedSection>
+          </Shell>
+        </section>
+
+        {/* CTA */}
+        <section className="bg-white py-16 lg:py-20">
+          <Shell>
+            <AnimatedSection>
+              <motion.div
+                variants={fadeUp}
+                className="overflow-hidden rounded-2xl px-8 py-12 text-white sm:px-12 lg:flex lg:items-center lg:justify-between lg:gap-12 lg:py-14"
+                style={{
+                  background: `linear-gradient(135deg, ${ACCENT} 0%, #5b21b6 100%)`,
+                }}
+              >
+                <div className="max-w-xl text-left">
+                  <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+                    Ready to shorten the gap from talk to done?
+                  </h2>
+                  <p className="mt-4 text-base text-white/85">
+                    Create an account, connect your calendar where supported, and open the tools that fit your workflow.
+                  </p>
+                </div>
+                <div className="mt-8 flex shrink-0 flex-col gap-3 sm:flex-row lg:mt-0">
+                  <Button asChild size="lg" className="h-12 rounded-xl bg-white px-8 font-semibold text-violet-700 hover:bg-slate-50">
+                    <Link href={primaryRoute}>{isAuthenticated ? "Go to dashboard" : "Get started free"}</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    size="lg"
+                    variant="outline"
+                    className="h-12 rounded-xl border-white/40 bg-white/10 px-8 font-semibold text-white hover:bg-white/15"
+                  >
+                    <Link href={signInRoute}>Log in</Link>
+                  </Button>
+                </div>
+              </motion.div>
+            </AnimatedSection>
+          </Shell>
+        </section>
+      </main>
+
+      <footer className="border-t border-slate-800 bg-slate-950 text-slate-300">
+        <Shell className="py-12">
+          <div className="grid gap-10 md:grid-cols-4">
+            <div className="md:col-span-2">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold text-white" style={{ background: ACCENT }}>
+                  A
+                </div>
+                <span className="font-semibold text-white">Artivaa AI</span>
+              </div>
+              <p className="mt-4 max-w-sm text-sm leading-relaxed text-slate-400">
+                Meeting intelligence and AI tools for teams that want structured output—not another generic chatbot.
+              </p>
+            </div>
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Product</h4>
+              <ul className="mt-4 space-y-2 text-sm">
+                <li>
+                  <a href="#product" className="text-slate-400 hover:text-white">
+                    Overview
+                  </a>
+                </li>
+                <li>
+                  <a href="#tools" className="text-slate-400 hover:text-white">
+                    AI tools
+                  </a>
+                </li>
+                <li>
+                  <a href="#pricing" className="text-slate-400 hover:text-white">
+                    Pricing
+                  </a>
+                </li>
               </ul>
             </div>
-          ))}
-        </div>
-        <div className="w-full border-t border-slate-800 py-6 px-4 md:px-6 flex justify-between items-center">
-          <p className="text-sm text-slate-500">© {new Date().getFullYear()} Artivaa AI. All rights reserved.</p>
-          <p className="text-sm text-slate-500">English (US)</p>
-        </div>
+            <div>
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Account</h4>
+              <ul className="mt-4 space-y-2 text-sm">
+                <li>
+                  <Link href={signInRoute} className="text-slate-400 hover:text-white">
+                    Log in
+                  </Link>
+                </li>
+                <li>
+                  <Link href={signUpRoute} className="text-slate-400 hover:text-white">
+                    Sign up
+                  </Link>
+                </li>
+                <li>
+                  <Link href={dashboardRoute} className="text-slate-400 hover:text-white">
+                    Dashboard
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div className="mt-12 flex flex-col items-start justify-between gap-4 border-t border-slate-800 pt-8 text-xs text-slate-500 sm:flex-row sm:items-center">
+            <p>© {new Date().getFullYear()} Artivaa AI. All rights reserved.</p>
+          </div>
+        </Shell>
       </footer>
     </div>
   );

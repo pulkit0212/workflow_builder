@@ -34,6 +34,10 @@ export function setCachedUser(clerkUserId: string, user: AppUser): void {
   });
 }
 
+export function invalidateCachedUser(clerkUserId: string): void {
+  cache.delete(clerkUserId);
+}
+
 export async function syncUser(clerkUserId: string, db: DrizzleDB): Promise<AppUser> {
   // Check cache first
   const cached = getCachedUser(clerkUserId);

@@ -9,8 +9,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Artivaa AI - From meetings to meaningful work",
-  description: "Artivaa captures meetings, generates summaries, and turns conversations into actionable tasks."
+  title: "Artivaa AI — Meetings, summaries, and AI tools in one workspace",
+  description:
+    "Calendar-backed meetings, structured AI summaries, action items, and four dashboard tools—Meeting Summarizer, Email Generator, Document Analyzer, and Task Generator—with Slack, Gmail, Notion, and Jira sharing.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
