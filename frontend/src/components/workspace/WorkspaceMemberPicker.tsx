@@ -114,7 +114,7 @@ export function WorkspaceMemberPicker({
               placeholder="Search by name or email"
               className="w-full border-0 bg-transparent p-0 text-sm text-[#111827] outline-none placeholder:text-[#9ca3af]"
             />
-            {isLoading ? <LoaderCircle className="h-4 w-4 animate-spin text-[#6c63ff]" /> : null}
+            {isLoading ? <LoaderCircle className="h-4 w-4 animate-spin text-[#6C3FF5]" /> : null}
           </div>
           {results.length > 0 ? (
             <div className="mt-3 space-y-2">

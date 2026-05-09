@@ -11,7 +11,7 @@ import { useWorkspaceContext } from "@/contexts/workspace-context";
  */
 export function useApiFetch(): (
   path: string,
-  init?: RequestInit & { workspaceId?: string }
+  init?: RequestInit & { workspaceId?: string | null }
 ) => Promise<Response> {
   const { getToken } = useAuth();
   const { activeWorkspaceId } = useWorkspaceContext();
@@ -27,8 +27,13 @@ export function useApiFetch(): (
   const apiFetch = createApiFetch(stableGetToken);
 
   return useCallback(
-    (path: string, init?: RequestInit & { workspaceId?: string }) => {
-      const workspaceId = init?.workspaceId ?? activeWorkspaceId ?? undefined;
+    (path: string, init?: RequestInit & { workspaceId?: string | null }) => {
+      // If caller explicitly passes workspaceId (even null), use that.
+      // Otherwise fall back to activeWorkspaceId from context.
+      const workspaceId =
+        "workspaceId" in (init ?? {})
+          ? (init?.workspaceId ?? undefined)
+          : (activeWorkspaceId ?? undefined);
       return apiFetch(path, { ...init, workspaceId });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps

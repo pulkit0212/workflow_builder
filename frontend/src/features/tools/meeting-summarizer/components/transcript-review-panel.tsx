@@ -32,7 +32,7 @@ export function TranscriptReviewPanel({
       <div className="space-y-5">
         <div className="space-y-2">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
-            <FileText className="h-4 w-4 text-[#6c63ff]" />
+            <FileText className="h-4 w-4 text-[#6C3FF5]" />
             Review transcript
           </div>
           <p className="text-sm leading-6 text-slate-600">

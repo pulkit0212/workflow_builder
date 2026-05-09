@@ -179,19 +179,30 @@ aiRunsRouter.post("/:id/share", async (req: Request, res: Response, next: NextFu
         if (target === "slack") {
           const webhookUrl = String(config.webhookUrl ?? "");
           if (!webhookUrl) { results[target] = { success: false, message: "Slack webhook URL not configured." }; continue; }
-          const aiText = actionItems.length > 0
-            ? actionItems.map((i) => `• *${String(i.task ?? "")}*`).join("\n")
+
+          // Slack has a 3000 char limit per text block — show first 20 items max
+          const MAX_ITEMS = 20;
+          const displayItems = actionItems.slice(0, MAX_ITEMS);
+          const remaining = actionItems.length - displayItems.length;
+          const aiText = displayItems.length > 0
+            ? displayItems.map((i) => `• *${String(i.task ?? "").slice(0, 100)}*`).join("\n")
+              + (remaining > 0 ? `\n_...and ${remaining} more item${remaining !== 1 ? "s" : ""}_` : "")
             : "_No action items_";
+
           const slackRes = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ blocks: [
               { type: "header", text: { type: "plain_text", text: `📋 ${title}`, emoji: true } },
-              { type: "section", text: { type: "mrkdwn", text: summary } },
-              { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items*\n${aiText}` } },
+              { type: "section", text: { type: "mrkdwn", text: String(summary ?? "").slice(0, 3000) } },
+              { type: "section", text: { type: "mrkdwn", text: `*✅ Action Items (${actionItems.length})*\n${aiText}` } },
             ]}),
           });
-          results[target] = slackRes.ok ? { success: true, message: "Posted to Slack." } : { success: false, message: `Slack error: ${slackRes.status}` };
+          results[target] = slackRes.ok
+            ? { success: true, message: "Posted to Slack." }
+            : { success: false, message: slackRes.status === 400
+                ? "Slack webhook rejected the request. Your webhook URL may be invalid or expired. Please reconnect Slack in Integrations."
+                : `Slack error: ${slackRes.status}` };
         } else if (target === "jira") {
           const webhookUrl = String(config.webhookUrl ?? "");
           if (!webhookUrl) { results[target] = { success: false, message: "Jira webhook URL not configured." }; continue; }

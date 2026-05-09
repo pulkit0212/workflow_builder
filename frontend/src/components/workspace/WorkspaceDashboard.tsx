@@ -213,7 +213,7 @@ export function WorkspaceDashboard({ workspaceId }: WorkspaceDashboardProps) {
           <Card className="overflow-hidden p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6c63ff]">
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#6C3FF5]">
                   Workspace Overview
                 </p>
                 <h2 className="text-2xl font-semibold text-[#111827]">{workspace.name}</h2>
@@ -227,7 +227,7 @@ export function WorkspaceDashboard({ workspaceId }: WorkspaceDashboardProps) {
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <div className="rounded-[1.6rem] border border-[#e5e7eb] bg-[#f9fafb] p-5">
                 <div className="flex items-center gap-2 text-sm font-medium text-[#6b7280]">
-                  <Users className="h-4 w-4 text-[#6c63ff]" />
+                  <Users className="h-4 w-4 text-[#6C3FF5]" />
                   Members
                 </div>
                 <p className="mt-2 text-3xl font-semibold text-[#111827]">{members.length}</p>
@@ -469,7 +469,7 @@ export function WorkspaceDashboard({ workspaceId }: WorkspaceDashboardProps) {
                 </p>
               </div>
               <div className="rounded-[1.4rem] border border-dashed border-[#c7d2fe] bg-[#f8faff] p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6c63ff]">Workspace ID</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6C3FF5]">Workspace ID</p>
                 <p className="mt-2 break-all text-sm text-[#111827]">{workspace.id}</p>
               </div>
             </div>
@@ -478,7 +478,7 @@ export function WorkspaceDashboard({ workspaceId }: WorkspaceDashboardProps) {
           <Card className="p-5">
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-semibold text-[#111827]">
-                <BriefcaseBusiness className="h-4 w-4 text-[#6c63ff]" />
+                <BriefcaseBusiness className="h-4 w-4 text-[#6C3FF5]" />
                 Collaboration rules
               </div>
               <div className="space-y-2 text-sm leading-6 text-[#6b7280]">

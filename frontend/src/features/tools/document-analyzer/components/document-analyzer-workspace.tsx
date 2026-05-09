@@ -123,7 +123,7 @@ function ActionItemsSection({
               !isMyItem
                 ? "cursor-not-allowed border-slate-100 bg-slate-50/40 opacity-50"
                 : isSelected
-                  ? "border-[#6c63ff] bg-[#f5f3ff]"
+                  ? "border-[#6C3FF5] bg-[#f5f3ff]"
                   : "border-slate-100 bg-slate-50/60 hover:bg-[#faf9ff]"
             )}
           >
@@ -132,7 +132,7 @@ function ActionItemsSection({
               !isMyItem
                 ? "border-slate-200 bg-slate-100"
                 : isSelected
-                  ? "border-[#6c63ff] bg-[#6c63ff]"
+                  ? "border-[#6C3FF5] bg-[#6C3FF5]"
                   : "border-slate-300 bg-white"
             )}>
               {isSelected && isMyItem && (
@@ -142,10 +142,10 @@ function ActionItemsSection({
               )}
             </div>
             <div className="min-w-0 flex-1">
-              <p className={cn("text-sm font-medium", isSelected && isMyItem ? "text-[#6c63ff]" : "text-slate-900")}>{item.task}</p>
+              <p className={cn("text-sm font-medium", isSelected && isMyItem ? "text-[#6C3FF5]" : "text-slate-900")}>{item.task}</p>
               <p className="mt-0.5 text-xs text-slate-400">
                 {[item.owner || "Unassigned", item.due_date || "No date"].join(" · ")}
-                {isMyItem && <span className="ml-1.5 rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6c63ff]">You</span>}
+                {isMyItem && <span className="ml-1.5 rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6C3FF5]">You</span>}
               </p>
             </div>
             <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1", getPriorityClass(item.priority))}>
@@ -159,7 +159,7 @@ function ActionItemsSection({
         type="button"
         onClick={() => onSave(Array.from(selected))}
         disabled={selected.size === 0 || isSavingItems || actionItemsSaved}
-        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-[#6c63ff] px-4 py-2.5 text-sm font-semibold text-[#6c63ff] transition hover:bg-[#f5f3ff] disabled:opacity-50"
+        className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl border border-[#6C3FF5] px-4 py-2.5 text-sm font-semibold text-[#6C3FF5] transition hover:bg-[#f5f3ff] disabled:opacity-50"
       >
         {isSavingItems ? <><LoadingSpinner size="sm" /> Saving…</>
           : actionItemsSaved ? <><CheckCircle2 className="h-4 w-4 text-emerald-600" /> Saved!</>
@@ -184,18 +184,18 @@ function ResultSection({
   children: ReactNode;
 }) {
   const map = {
-    purple: { bg: "bg-[#f5f3ff]", text: "text-[#6c63ff]", border: "border-[#ede9fe]", hdr: "bg-[#f5f3ff]" },
-    amber:  { bg: "bg-amber-50",  text: "text-amber-600",  border: "border-amber-200",  hdr: "bg-amber-50" },
-    blue:   { bg: "bg-blue-50",   text: "text-blue-600",   border: "border-blue-100",   hdr: "bg-blue-50" },
-    green:  { bg: "bg-emerald-50",text: "text-emerald-600",border: "border-emerald-100",hdr: "bg-emerald-50" },
+    purple: { border: "border-[#EDE9FE]", hdr: "bg-[#F5F3FF]", text: "text-[#6C3FF5]", leftBorder: "border-l-[#6C3FF5]" },
+    amber:  { border: "border-[#FEF7E0]", hdr: "bg-[#FFFDF5]", text: "text-[#B06000]", leftBorder: "border-l-[#B06000]" },
+    blue:   { border: "border-[#DBEAFE]", hdr: "bg-[#EFF6FF]", text: "text-[#2563EB]", leftBorder: "border-l-[#2563EB]" },
+    green:  { border: "border-[#E6F4EA]", hdr: "bg-[#F0FDF4]", text: "text-[#137333]", leftBorder: "border-l-[#34A853]" },
   };
   const c = map[accent];
   return (
-    <div className={`overflow-hidden rounded-2xl border ${c.border} bg-white shadow-sm`}>
+    <div className={`overflow-hidden rounded-xl border border-l-4 ${c.border} ${c.leftBorder} bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]`}>
       <div className={`flex items-center justify-between gap-3 border-b ${c.border} ${c.hdr} px-5 py-3.5`}>
         <div className="flex items-center gap-2.5">
           <span className={c.text}><Icon className="h-4 w-4" /></span>
-          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+          <h3 className="text-sm font-semibold text-[#202124]">{title}</h3>
         </div>
         {action}
       </div>
@@ -299,7 +299,7 @@ export function DocumentAnalyzerWorkspace() {
       <div className="space-y-4">
 
         {/* Mode toggle */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
           <div className="flex">
             {(["file", "text"] as const).map((m) => (
               <button
@@ -308,28 +308,24 @@ export function DocumentAnalyzerWorkspace() {
                 onClick={() => setMode(m)}
                 className={cn(
                   "flex-1 py-3 text-sm font-semibold transition-all",
-                  mode === m
-                    ? "bg-[#6c63ff] text-white"
-                    : "text-slate-500 hover:bg-slate-50"
+                  mode === m ? "bg-[#6C3FF5] text-white" : "text-[#5F6368] hover:bg-[#F8F9FA]"
                 )}
               >
-                {m === "file" ? "📎 Upload File" : "📝 Paste Text"}
+                {m === "file" ? "Upload File" : "Paste Text"}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Input area */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">
-              {mode === "file" ? "Document" : "Text Content"}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-400">
-              {mode === "file" ? "PDF, DOCX, TXT, PNG, JPG supported" : "Paste meeting notes, reports, or any text"}
+        {/* Source Document */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+            <p className="text-sm font-semibold text-[#202124]">Source Document</p>
+            <p className="mt-0.5 text-xs text-[#5F6368]">
+              {mode === "file" ? "PDF, DOCX, TXT, PNG, JPG · Max 25MB" : "Paste meeting notes, reports, or any text"}
             </p>
           </div>
-          <div className="p-3">
+          <div className="p-4">
             {mode === "text" ? (
               <div className="space-y-2">
                 <textarea
@@ -337,20 +333,20 @@ export function DocumentAnalyzerWorkspace() {
                   onChange={(e) => setText(e.target.value)}
                   rows={10}
                   placeholder="Paste document text, meeting notes, or any content here..."
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                  className="w-full resize-none rounded-lg border border-[#DADCE0] bg-[#F8F9FA] p-3 text-sm leading-6 text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]"
                 />
-                <p className="text-right text-xs text-slate-400">{text.length.toLocaleString()} chars</p>
+                <p className="text-right text-xs text-[#9AA0A6]">{text.length.toLocaleString()} / 2,000 characters</p>
               </div>
             ) : file ? (
-              <div className="flex items-center gap-3 rounded-xl border border-[#ede9fe] bg-[#f5f3ff] px-4 py-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">
-                  <FileText className="h-5 w-5 text-[#6c63ff]" />
+              <div className="flex items-center gap-3 rounded-lg border border-[#EDE9FE] bg-[#F5F3FF] px-4 py-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm">
+                  <FileText className="h-5 w-5 text-[#6C3FF5]" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-slate-900">{file.name}</p>
-                  <p className="text-xs text-slate-400">{formatFileSize(file.size)}</p>
+                  <p className="truncate text-sm font-semibold text-[#202124]">{file.name}</p>
+                  <p className="text-xs text-[#5F6368]">{formatFileSize(file.size)}</p>
                 </div>
-                <button type="button" onClick={() => setFile(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-white hover:text-slate-600 transition">
+                <button type="button" onClick={() => setFile(null)} className="rounded-lg p-1.5 text-[#9AA0A6] hover:bg-white hover:text-[#5F6368] transition">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -361,35 +357,35 @@ export function DocumentAnalyzerWorkspace() {
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
                 className={cn(
-                  "flex min-h-[180px] cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-6 text-center transition-all",
-                  isDragging
-                    ? "border-[#6c63ff] bg-[#f5f3ff]"
-                    : "border-slate-200 bg-slate-50 hover:border-[#c4b5fd] hover:bg-[#faf9ff]"
+                  "flex min-h-[160px] cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-6 text-center transition-all",
+                  isDragging ? "border-[#6C3FF5] bg-[#EDE9FE]" : "border-[#DADCE0] bg-[#F8F9FA] hover:border-[#6C3FF5]/50 hover:bg-[#faf9ff]"
                 )}
               >
-                <div className={cn("flex h-14 w-14 items-center justify-center rounded-2xl transition-all", isDragging ? "bg-[#6c63ff] text-white" : "bg-white text-slate-300 shadow-sm")}>
-                  <UploadCloud className="h-7 w-7" />
+                <div className={cn("flex h-12 w-12 items-center justify-center rounded-xl transition-all", isDragging ? "bg-[#6C3FF5] text-white" : "bg-white text-[#DADCE0] shadow-sm")}>
+                  <UploadCloud className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-slate-700">Drop your file here</p>
-                  <p className="mt-0.5 text-xs text-slate-400">or click to browse</p>
+                  <p className="text-sm font-semibold text-[#202124]">Click or drag to upload</p>
+                  <p className="mt-0.5 text-xs text-[#5F6368]">PDF, DOCX, or TXT (Max 25MB)</p>
                 </div>
-                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
-                  PDF · DOCX · TXT · PNG · JPG
-                </span>
+                <div className="flex gap-2">
+                  {["PDF", "DOCX"].map((f) => (
+                    <span key={f} className="rounded-full border border-[#DADCE0] bg-white px-2.5 py-0.5 text-[11px] font-bold text-[#5F6368]">{f}</span>
+                  ))}
+                </div>
               </div>
             )}
             <input ref={fileInputRef} type="file" className="hidden" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg" onChange={(e) => handleFile(e.target.files?.[0] ?? null)} />
           </div>
         </div>
 
-        {/* Extract options */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">What to extract</p>
-            <p className="mt-0.5 text-xs text-slate-400">Select the insights you need</p>
+        {/* What to extract */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+            <p className="text-sm font-semibold text-[#202124]">What to extract</p>
+            <p className="mt-0.5 text-xs text-[#5F6368]">Select the insights you need</p>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 p-3">
+          <div className="grid grid-cols-2 gap-2 p-4">
             {EXTRACT_OPTIONS.map(({ key, label, icon }) => {
               const checked = extractOptions[key];
               return (
@@ -398,15 +394,13 @@ export function DocumentAnalyzerWorkspace() {
                   type="button"
                   onClick={() => setExtractOptions((c) => ({ ...c, [key]: !c[key] }))}
                   className={cn(
-                    "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-all",
-                    checked
-                      ? "border-[#6c63ff] bg-[#f5f3ff]"
-                      : "border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                    "flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-all",
+                    checked ? "border-[#6C3FF5] bg-[#EDE9FE]" : "border-[#DADCE0] bg-white hover:border-[#6C3FF5]/40 hover:bg-[#faf9ff]"
                   )}
                 >
                   <div className={cn(
                     "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
-                    checked ? "border-[#6c63ff] bg-[#6c63ff]" : "border-slate-300 bg-white"
+                    checked ? "border-[#6C3FF5] bg-[#6C3FF5]" : "border-[#DADCE0] bg-white"
                   )}>
                     {checked && (
                       <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
@@ -414,8 +408,8 @@ export function DocumentAnalyzerWorkspace() {
                       </svg>
                     )}
                   </div>
-                  <span className="text-base leading-none">{icon}</span>
-                  <span className={cn("text-xs font-semibold", checked ? "text-[#6c63ff]" : "text-slate-600")}>{label}</span>
+                  <span className="text-sm leading-none">{icon}</span>
+                  <span className={cn("text-xs font-semibold", checked ? "text-[#6C3FF5]" : "text-[#5F6368]")}>{label}</span>
                 </button>
               );
             })}
@@ -423,20 +417,21 @@ export function DocumentAnalyzerWorkspace() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div className="flex items-center gap-2 rounded-lg border border-[#FCE8E6] bg-[#FCE8E6] px-4 py-3 text-sm text-[#C5221F]">
             <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
           </div>
         )}
 
         <button
+          id="document-analyzer-form"
           type="button"
           disabled={!canAnalyze}
           onClick={() => void handleAnalyze()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6c63ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5B2FE0] disabled:opacity-50 shadow-sm"
         >
           {isAnalyzing
             ? <><LoadingSpinner size="sm" /> Analyzing…</>
-            : <><Wand2 className="h-4 w-4" /> Analyze Document</>}
+            : <><Wand2 className="h-4 w-4" /> Run Analysis</>}
         </button>
       </div>
 
@@ -445,70 +440,67 @@ export function DocumentAnalyzerWorkspace() {
         {!result ? (
           isAnalyzing ? (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 rounded-2xl border border-[#ede9fe] bg-[#f5f3ff] px-5 py-4">
-                <LoadingSpinner />
-                <div>
-                  <p className="text-sm font-semibold text-[#6c63ff]">Artivaa is reading your document…</p>
-                  <p className="text-xs text-[#9b8fff]">Extracting insights, action items, and key points</p>
+              <div className="flex items-center justify-between rounded-xl border border-[#EDE9FE] bg-[#F5F3FF] px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <LoadingSpinner />
+                  <div>
+                    <p className="text-sm font-semibold text-[#6C3FF5]">Artivaa is reading your document…</p>
+                    <p className="text-xs text-[#9AA0A6]">Extracting insights, action items, and key points</p>
+                  </div>
                 </div>
+                <span className="text-xs font-bold text-[#6C3FF5]">PROCESSING</span>
               </div>
               {[0, 1, 2].map((i) => (
-                <div key={i} className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                  <div className="h-12 animate-pulse bg-slate-50" />
+                <div key={i} className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <div className="h-11 animate-pulse bg-[#F8F9FA]" />
                   <div className="space-y-3 p-5">
-                    <div className="h-4 w-3/4 animate-pulse rounded-full bg-slate-100" />
-                    <div className="h-4 w-full animate-pulse rounded-full bg-slate-100" />
-                    <div className="h-4 w-5/6 animate-pulse rounded-full bg-slate-100" />
+                    <div className="h-3.5 w-3/4 animate-pulse rounded-full bg-[#F1F3F4]" />
+                    <div className="h-3.5 w-full animate-pulse rounded-full bg-[#F1F3F4]" />
+                    <div className="h-3.5 w-5/6 animate-pulse rounded-full bg-[#F1F3F4]" />
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="flex min-h-[500px] flex-col items-center justify-center gap-5 rounded-2xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
-              <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-[#f5f3ff]">
-                <Sparkles className="h-10 w-10 text-[#6c63ff]" />
+            <div className="flex min-h-[500px] flex-col items-center justify-center gap-5 rounded-xl border-2 border-dashed border-[#DADCE0] bg-white p-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#FEF3C7]">
+                <Sparkles className="h-8 w-8 text-[#D97706]" />
               </div>
               <div>
-                <p className="text-base font-bold text-slate-900">Upload a document to get started</p>
-                <p className="mt-1 text-sm text-slate-400">AI will extract summaries, action items, key points, and more</p>
+                <p className="text-base font-bold text-[#202124]">Upload a document to get started</p>
+                <p className="mt-1 text-sm text-[#5F6368]">AI will extract summaries, action items, key points, and more</p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 {["PDF", "DOCX", "TXT", "PNG", "JPG"].map((fmt) => (
-                  <span key={fmt} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-500">{fmt}</span>
+                  <span key={fmt} className="rounded-full border border-[#DADCE0] bg-[#F8F9FA] px-3 py-1 text-xs font-semibold text-[#5F6368]">{fmt}</span>
                 ))}
               </div>
             </div>
           )
         ) : (
           <div className="space-y-4">
-            {/* Results header */}
-            <div className="flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5">
+            {/* Analysis complete banner */}
+            <div className="flex items-center justify-between rounded-xl border border-[#E6F4EA] bg-[#E6F4EA] px-5 py-3.5">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <p className="text-sm font-bold text-emerald-800">Analysis complete</p>
+                <CheckCircle2 className="h-5 w-5 text-[#137333]" />
+                <p className="text-sm font-bold text-[#137333]">Analysis complete</p>
               </div>
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void navigator.clipboard.writeText(copyText)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
-                >
+                <button type="button" onClick={() => void navigator.clipboard.writeText(copyText)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#34A853]/30 bg-white px-3 py-1.5 text-xs font-semibold text-[#137333] transition hover:bg-[#E6F4EA]">
                   Copy All
                 </button>
-                <button
-                  type="button"
-                  onClick={() => { setResult(null); setError(null); }}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                >
+                <button type="button" onClick={() => { setResult(null); setError(null); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#DADCE0] bg-white px-3 py-1.5 text-xs font-semibold text-[#5F6368] transition hover:bg-[#F8F9FA]">
                   <RefreshCw className="h-3.5 w-3.5" /> Analyze Another
                 </button>
               </div>
             </div>
 
-            {/* Summary */}
+            {/* Executive Summary */}
             {extractOptions.summary && result.summary && (
-              <ResultSection icon={Sparkles} title="Summary" accent="purple" action={<CopyButton text={result.summary} label="Copy" />}>
-                <div className="space-y-3 text-sm leading-7 text-slate-700">
+              <ResultSection icon={Sparkles} title="Executive Summary" accent="purple" action={<CopyButton text={result.summary} label="Copy" />}>
+                <div className="space-y-3 text-sm leading-7 text-[#374151]">
                   {result.summary.split(/\n\s*\n/).map((p, i) => <p key={i}>{p}</p>)}
                 </div>
               </ResultSection>
@@ -520,15 +512,10 @@ export function DocumentAnalyzerWorkspace() {
                 action={<CopyButton text={result.action_items.map((item, i) => `${i + 1}. ${item.task} | ${item.owner || "Unassigned"} | ${item.due_date || "No date"} | ${item.priority}`).join("\n")} label="Copy" />}
               >
                 {result.action_items.length === 0 ? (
-                  <p className="text-sm text-slate-400">No action items extracted.</p>
+                  <p className="text-sm text-[#9AA0A6]">No action items extracted.</p>
                 ) : (
-                  <ActionItemsSection
-                    items={result.action_items}
-                    isSavingItems={isSavingItems}
-                    actionItemsSaved={actionItemsSaved}
-                    onSave={handleSaveSelectedActionItems}
-                    currentUserName={currentUserName}
-                  />
+                  <ActionItemsSection items={result.action_items} isSavingItems={isSavingItems}
+                    actionItemsSaved={actionItemsSaved} onSave={handleSaveSelectedActionItems} currentUserName={currentUserName} />
                 )}
               </ResultSection>
             )}
@@ -536,14 +523,11 @@ export function DocumentAnalyzerWorkspace() {
             {/* Key Points */}
             {extractOptions.keyPoints && result.key_points.length > 0 && (
               <ResultSection icon={Lightbulb} title="Key Points" accent="blue" action={<CopyButton text={result.key_points.map((p) => `• ${p}`).join("\n")} label="Copy" />}>
-                <ul className="space-y-2">
+                <div className="flex flex-wrap gap-2">
                   {result.key_points.map((point, i) => (
-                    <li key={i} className="flex gap-2.5 text-sm text-slate-700">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6c63ff]" />
-                      {point}
-                    </li>
+                    <span key={i} className="rounded-full bg-[#EDE9FE] px-3 py-1 text-xs font-semibold text-[#6C3FF5]">{point}</span>
                   ))}
-                </ul>
+                </div>
               </ResultSection>
             )}
 
@@ -552,8 +536,8 @@ export function DocumentAnalyzerWorkspace() {
               <ResultSection icon={CheckSquare} title="Decisions Made" accent="purple" action={<CopyButton text={result.decisions.map((d, i) => `${i + 1}. ${d}`).join("\n")} label="Copy" />}>
                 <ol className="space-y-2">
                   {result.decisions.map((decision, i) => (
-                    <li key={i} className="flex gap-3 text-sm text-slate-700">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6c63ff]/10 text-[10px] font-bold text-[#6c63ff]">{i + 1}</span>
+                    <li key={i} className="flex gap-3 text-sm text-[#374151]">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#EDE9FE] text-[10px] font-bold text-[#6C3FF5]">{i + 1}</span>
                       {decision}
                     </li>
                   ))}
@@ -561,14 +545,13 @@ export function DocumentAnalyzerWorkspace() {
               </ResultSection>
             )}
 
-            {/* Risks */}
+            {/* Critical Risks */}
             {extractOptions.risks && result.risks.length > 0 && (
-              <ResultSection icon={ShieldAlert} title="Risks & Concerns" accent="amber" action={<CopyButton text={result.risks.map((r) => `• ${r}`).join("\n")} label="Copy" />}>
+              <ResultSection icon={ShieldAlert} title="Critical Risks" accent="amber" action={<CopyButton text={result.risks.map((r) => `• ${r}`).join("\n")} label="Copy" />}>
                 <ul className="space-y-2">
                   {result.risks.map((risk, i) => (
-                    <li key={i} className="flex gap-2.5 text-sm text-amber-800">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                      {risk}
+                    <li key={i} className="rounded-lg border border-[#FEF7E0] bg-[#FFFDF5] px-4 py-3 text-sm italic text-[#713f12]">
+                      &ldquo;{risk}&rdquo;
                     </li>
                   ))}
                 </ul>
@@ -578,7 +561,7 @@ export function DocumentAnalyzerWorkspace() {
             {/* Raw Insights */}
             {extractOptions.rawInsights && result.raw_insights && (
               <ResultSection icon={PencilLine} title="Raw Insights" accent="blue" action={<CopyButton text={result.raw_insights} label="Copy" />}>
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-7 text-slate-700 whitespace-pre-wrap">
+                <div className="rounded-lg border border-[#DADCE0] bg-[#F8F9FA] p-4 text-sm leading-7 text-[#374151] whitespace-pre-wrap font-mono">
                   {result.raw_insights}
                 </div>
               </ResultSection>

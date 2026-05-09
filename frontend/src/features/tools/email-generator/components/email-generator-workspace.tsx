@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useEffect, useState } from "react";
 import {
-  Check, CheckCircle2, Clipboard, Mail, RefreshCw, Search, Sparkles, User, Wand2,
+  Check, CheckCircle2, Clipboard, Mail, RefreshCw, Search, Sparkles, Trash2, User, Wand2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -47,7 +47,7 @@ function initials(value: string) {
 }
 
 const AVATAR_COLORS = [
-  "bg-[#6c63ff]", "bg-[#2563eb]", "bg-[#059669]", "bg-[#d97706]", "bg-[#dc2626]",
+  "bg-[#6C3FF5]", "bg-[#2563eb]", "bg-[#059669]", "bg-[#d97706]", "bg-[#dc2626]",
 ];
 
 function avatarColor(id: string) {
@@ -128,58 +128,48 @@ export function EmailGeneratorWorkspace() {
       <div className="space-y-4">
 
         {/* Meeting selector */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">Select a meeting</p>
-            <p className="mt-0.5 text-xs text-slate-400">Pick a recorded meeting to use as context</p>
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+            <p className="text-sm font-semibold text-[#202124]">Select Meeting Context</p>
+            <p className="mt-0.5 text-xs text-[#5F6368]">Pick a recorded meeting to use as context</p>
           </div>
           <div className="p-3">
-            {/* Search */}
             <div className="relative mb-3">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9AA0A6]" />
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search meetings..."
-                className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 text-sm text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                className="h-9 w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] pl-8 pr-3 text-sm text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]"
               />
             </div>
-
             {isLoadingMeetings ? (
               <div className="space-y-2">
-                {[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-slate-100" />)}
+                {[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-[#F1F3F4]" />)}
               </div>
             ) : meetings.length === 0 ? (
               <div className="py-8 text-center">
-                <Mail className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-sm text-slate-500">No meetings found</p>
+                <Mail className="mx-auto h-8 w-8 text-[#DADCE0]" />
+                <p className="mt-2 text-sm text-[#5F6368]">No meetings found</p>
               </div>
             ) : (
-              <div className="max-h-[280px] space-y-1.5 overflow-y-auto pr-0.5">
+              <div className="max-h-[280px] space-y-1 overflow-y-auto pr-0.5">
                 {meetings.map((meeting) => {
                   const selected = meeting.id === selectedMeetingId;
                   return (
-                    <button
-                      key={meeting.id}
-                      type="button"
-                      onClick={() => handleSelectMeeting(meeting)}
+                    <button key={meeting.id} type="button" onClick={() => handleSelectMeeting(meeting)}
                       className={cn(
-                        "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
-                        selected
-                          ? "border-[#6c63ff] bg-[#f5f3ff] shadow-sm"
-                          : "border-transparent hover:border-slate-200 hover:bg-slate-50"
-                      )}
-                    >
+                        "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all",
+                        selected ? "border-[#6C3FF5] bg-[#EDE9FE]" : "border-transparent hover:border-[#DADCE0] hover:bg-[#F8F9FA]"
+                      )}>
                       <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white", avatarColor(meeting.id))}>
                         {initials(meeting.title)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={cn("truncate text-sm font-semibold", selected ? "text-[#6c63ff]" : "text-slate-900")}>
-                          {meeting.title}
-                        </p>
-                        <p className="text-xs text-slate-400">{formatMeetingDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
+                        <p className={cn("truncate text-sm font-semibold", selected ? "text-[#6C3FF5]" : "text-[#202124]")}>{meeting.title}</p>
+                        <p className="text-xs text-[#5F6368]">{formatMeetingDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
                       </div>
-                      {selected && <Check className="h-4 w-4 shrink-0 text-[#6c63ff]" />}
+                      {selected && <Check className="h-4 w-4 shrink-0 text-[#6C3FF5]" />}
                     </button>
                   );
                 })}
@@ -188,196 +178,134 @@ export function EmailGeneratorWorkspace() {
           </div>
         </div>
 
-        {/* Context */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">Meeting context</p>
-            <p className="mt-0.5 text-xs text-slate-400">Auto-filled from selection, or type manually</p>
+        {/* Additional Notes */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+            <p className="text-sm font-semibold text-[#202124]">Additional Notes</p>
+            <p className="mt-0.5 text-xs text-[#5F6368]">Auto-filled from selection, or type manually</p>
           </div>
           <div className="p-3">
-            <textarea
-              rows={5}
-              value={context}
-              onChange={(e) => setContext(e.target.value)}
-              placeholder="Paste meeting notes, summary, or describe what the meeting was about..."
-              className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-            />
+            <textarea rows={5} value={context} onChange={(e) => setContext(e.target.value)}
+              placeholder="Paste extra context or specific points to mention..."
+              className="w-full resize-none rounded-lg border border-[#DADCE0] bg-[#F8F9FA] p-3 text-sm leading-6 text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]" />
           </div>
         </div>
 
-        {/* Email type */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">Email type</p>
+        {/* Email Type */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+            <p className="text-sm font-semibold text-[#202124]">Email Type</p>
           </div>
-          <div className="grid grid-cols-3 gap-1.5 p-3">
+          <div className="grid grid-cols-2 gap-2 p-3">
             {emailTypes.map((option) => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setEmailType(option)}
+              <button key={option} type="button" onClick={() => setEmailType(option)}
                 className={cn(
-                  "flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-center transition-all",
-                  emailType === option
-                    ? "border-[#6c63ff] bg-[#f5f3ff] text-[#6c63ff]"
-                    : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                )}
-              >
-                <span className="text-base leading-none">{EMAIL_TYPE_ICONS[option]}</span>
-                <span className="text-[11px] font-semibold leading-tight">{option}</span>
+                  "flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-all",
+                  emailType === option ? "border-[#6C3FF5] bg-[#EDE9FE] text-[#6C3FF5]" : "border-[#DADCE0] text-[#5F6368] hover:border-[#6C3FF5]/40 hover:bg-[#faf9ff]"
+                )}>
+                <span className="text-sm leading-none">{EMAIL_TYPE_ICONS[option]}</span>
+                <span className="text-xs font-semibold">{option}</span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Tone + Recipients */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">Tone & Recipients</p>
+        {/* Tone & Recipients */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+            <p className="text-sm font-semibold text-[#202124]">Tone &amp; Recipients</p>
           </div>
           <div className="space-y-3 p-3">
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {tones.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setTone(option)}
+                <button key={option} type="button" onClick={() => setTone(option)}
                   className={cn(
-                    "rounded-xl border px-2 py-2 text-center text-[11px] font-semibold transition-all",
-                    tone === option
-                      ? "border-[#6c63ff] bg-[#f5f3ff] text-[#6c63ff]"
-                      : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                  )}
-                >
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition-all",
+                    tone === option ? "border-[#6C3FF5] bg-[#6C3FF5] text-white" : "border-[#DADCE0] text-[#5F6368] hover:border-[#6C3FF5]/40"
+                  )}>
                   {option}
                 </button>
               ))}
             </div>
-            <div className="relative">
-              <User className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <input
-                value={recipients}
-                onChange={(e) => setRecipients(e.target.value)}
-                placeholder="Recipients (optional)"
-                className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 text-sm text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-              />
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Recipient Emails</p>
+              <div className="relative">
+                <User className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9AA0A6]" />
+                <input value={recipients} onChange={(e) => setRecipients(e.target.value)}
+                  placeholder="Add recipients..."
+                  className="h-9 w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] pl-8 pr-3 text-sm text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]" />
+              </div>
             </div>
           </div>
         </div>
 
         {error && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+          <div className="rounded-lg border border-[#FCE8E6] bg-[#FCE8E6] px-4 py-3 text-sm text-[#C5221F]">{error}</div>
         )}
 
-        <button
-          type="button"
-          disabled={!context.trim() || isGenerating}
-          onClick={() => void handleGenerate()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6c63ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
-        >
-          {isGenerating ? (
-            <><LoadingSpinner size="sm" /> Generating…</>
-          ) : (
-            <><Wand2 className="h-4 w-4" /> Generate Email</>
-          )}
+        <button type="button" disabled={!context.trim() || isGenerating} onClick={() => void handleGenerate()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5B2FE0] disabled:opacity-50 shadow-sm">
+          {isGenerating ? <><LoadingSpinner size="sm" /> Generating…</> : <><Wand2 className="h-4 w-4" /> Generate Email</>}
         </button>
       </div>
 
       {/* ── Right panel ── */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
         {!generatedEmail ? (
           <div className="flex h-full min-h-[500px] flex-col items-center justify-center gap-4 p-8 text-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f5f3ff]">
-              <Sparkles className="h-8 w-8 text-[#6c63ff]" />
+            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#DBEAFE]">
+              <Sparkles className="h-8 w-8 text-[#2563EB]" />
             </div>
             <div>
-              <p className="text-base font-bold text-slate-900">Your email will appear here</p>
-              <p className="mt-1 text-sm text-slate-400">Select a meeting and click Generate Email</p>
+              <p className="text-base font-bold text-[#202124]">Your email will appear here</p>
+              <p className="mt-1 text-sm text-[#5F6368]">Select a meeting and click Generate Email</p>
             </div>
           </div>
         ) : (
           <div className="flex h-full flex-col">
             {/* Output header */}
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3.5">
+            <div className="flex items-center justify-between border-b border-[#DADCE0] bg-[#F8F9FA] px-5 py-3.5">
               <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#f5f3ff]">
-                  <Mail className="h-3.5 w-3.5 text-[#6c63ff]" />
-                </div>
-                <p className="text-sm font-bold text-slate-900">Generated Email</p>
-                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                  {emailType}
+                <span className="rounded-full bg-[#EDE9FE] px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6C3FF5]">
+                  EMAIL DRAFT: {emailType.toUpperCase()}
                 </span>
+                <span className="text-xs text-[#9AA0A6]">Generated just now</span>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleGenerate()}
-                disabled={isGenerating || !context.trim()}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", isGenerating && "animate-spin")} />
-                Regenerate
+              <button type="button" onClick={() => void handleGenerate()} disabled={isGenerating || !context.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#DADCE0] bg-white px-3 py-1.5 text-xs font-semibold text-[#5F6368] transition hover:bg-[#F8F9FA] disabled:opacity-50">
+                <RefreshCw className={cn("h-3.5 w-3.5", isGenerating && "animate-spin")} /> Regenerate
               </button>
             </div>
 
-            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+            <div className="flex-1 space-y-5 overflow-y-auto p-5">
               {/* Subject */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="email-subject" className="text-xs font-semibold uppercase tracking-widest text-slate-400">Subject</label>
-                  <button
-                    type="button"
-                    onClick={() => void copyText(generatedEmail.subject, "subject")}
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                  >
-                    {copied === "subject" ? <><CheckCircle2 className="h-3 w-3 text-emerald-600" /> Copied</> : <><Clipboard className="h-3 w-3" /> Copy</>}
-                  </button>
-                </div>
-                <input
-                  id="email-subject"
-                  value={generatedEmail.subject}
-                  onChange={(e) => setGeneratedEmail((c) => c ? { ...c, subject: e.target.value } : c)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-                />
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Subject Line</p>
+                <p className="text-base font-bold text-[#202124] leading-snug">{generatedEmail.subject}</p>
               </div>
 
               {/* Body */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="email-body" className="text-xs font-semibold uppercase tracking-widest text-slate-400">Body</label>
-                  <button
-                    type="button"
-                    onClick={() => void copyText(generatedEmail.body, "body")}
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                  >
-                    {copied === "body" ? <><CheckCircle2 className="h-3 w-3 text-emerald-600" /> Copied</> : <><Clipboard className="h-3 w-3" /> Copy</>}
-                  </button>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Email Body</p>
+                <div className="rounded-lg border border-[#DADCE0] bg-[#F8F9FA] p-4 text-sm leading-7 text-[#374151] whitespace-pre-wrap">
+                  {generatedEmail.body}
                 </div>
-                <textarea
-                  id="email-body"
-                  value={generatedEmail.body}
-                  onChange={(e) => setGeneratedEmail((c) => c ? { ...c, body: e.target.value } : c)}
-                  rows={18}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-                />
               </div>
             </div>
 
-            {/* Footer actions */}
-            <div className="flex items-center gap-2 border-t border-slate-100 px-5 py-3.5">
-              <button
-                type="button"
-                onClick={() => void copyText(combinedEmail, "full")}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#5b52e0]"
-              >
-                {copied === "full" ? <><CheckCircle2 className="h-4 w-4" /> Copied!</> : <><Clipboard className="h-4 w-4" /> Copy Full Email</>}
-              </button>
-              <button
-                type="button"
-                onClick={() => setGeneratedEmail(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-              >
-                Clear
-              </button>
+            {/* Footer */}
+            <div className="flex items-center justify-between border-t border-[#DADCE0] bg-[#F8F9FA] px-5 py-3.5">
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => void copyText(combinedEmail, "full")}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#5B2FE0]">
+                  {copied === "full" ? <><CheckCircle2 className="h-4 w-4" /> Copied!</> : <><Clipboard className="h-4 w-4" /> Copy Full Email</>}
+                </button>
+                <button type="button" onClick={() => setGeneratedEmail(null)}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#DADCE0] bg-white px-4 py-2 text-sm font-semibold text-[#5F6368] transition hover:bg-[#F8F9FA]">
+                  <Trash2 className="h-4 w-4" /> Clear
+                </button>
+              </div>
+              <span className="text-xs text-[#9AA0A6]">Powered by Artivaa Llama 3</span>
             </div>
           </div>
         )}

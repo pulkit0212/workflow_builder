@@ -103,7 +103,7 @@ export default function DebugPage() {
         onClick={() => void runTests()}
         disabled={loading}
         style={{
-          background: "#6c63ff",
+          background: "#6C3FF5",
           color: "white",
           border: "none",
           padding: "10px 24px",

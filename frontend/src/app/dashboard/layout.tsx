@@ -17,30 +17,29 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     throw new Error("Authenticated profile could not be resolved.");
   }
 
+  const profileData = {
+    id: profile.id,
+    clerkUserId: profile.clerkUserId,
+    email: profile.email,
+    fullName: profile.fullName,
+    plan: profile.plan
+  };
+
   return (
     <Suspense>
       <WorkspaceProvider>
-        <div className="min-h-screen bg-[#f3f4f6] lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
-          <DashboardSidebar
-            profile={{
-              id: profile.id,
-              clerkUserId: profile.clerkUserId,
-              email: profile.email,
-              fullName: profile.fullName,
-              plan: profile.plan
-            }}
-          />
-          <div className="min-w-0 bg-[#f3f4f6]">
-            <DashboardHeader
-              profile={{
-                id: profile.id,
-                clerkUserId: profile.clerkUserId,
-                email: profile.email,
-                fullName: profile.fullName,
-                plan: profile.plan
-              }}
-            />
-            <main className="px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</main>
+        <div className="min-h-screen bg-[#F8F9FA]">
+          {/* Fixed sidebar */}
+          <div className="hidden lg:block fixed left-0 top-0 h-screen w-[240px] z-40">
+            <DashboardSidebar profile={profileData} />
+          </div>
+
+          {/* Main content — offset by sidebar width */}
+          <div className="lg:ml-[240px] flex flex-col min-h-screen">
+            <DashboardHeader profile={profileData} />
+            <main className="flex-1 p-3 lg:p-5">
+              {children}
+            </main>
           </div>
         </div>
       </WorkspaceProvider>

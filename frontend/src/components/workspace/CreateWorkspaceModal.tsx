@@ -62,7 +62,7 @@ export function CreateWorkspaceModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
       <div className="w-full max-w-lg rounded-[28px] border border-[#d8dcff] bg-white p-6 shadow-2xl">
         <div className="flex items-start gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f1efff] text-[#6c63ff]">
+          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#f1efff] text-[#6C3FF5]">
             <Plus className="h-5 w-5" />
           </div>
           <div className="space-y-2">
@@ -85,7 +85,7 @@ export function CreateWorkspaceModal({
                 setError(null);
               }
             }}
-            className="w-full rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#111827] outline-none focus:border-[#6c63ff]"
+            className="w-full rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#111827] outline-none focus:border-[#6C3FF5]"
             placeholder="Product Team"
           />
         </div>

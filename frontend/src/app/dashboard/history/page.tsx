@@ -3,25 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Route } from "next";
 import Link from "next/link";
-import {
-  ArrowRight,
-  CheckCircle2,
-  Clock,
-  FileText,
-  History,
-  ListTodo,
-  Mail,
-  XCircle,
-  Zap,
-} from "lucide-react";
+import { ArrowRight, Download, History, Plus } from "lucide-react";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Pagination } from "@/components/shared/pagination";
-import { ResultState } from "@/components/tools/result-state";
 import { Button } from "@/components/ui/button";
 import { formatHistoryDate, formatPreview } from "@/features/history/helpers";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
-const ITEMS_PER_PAGE = 8;
+const ITEMS_PER_PAGE = 6;
 
 type HistoryRun = {
   id: string;
@@ -33,59 +22,202 @@ type HistoryRun = {
   tokensUsed: number | null;
   createdAt: string;
   updatedAt: string;
-  tool: {
-    slug: string;
-    name: string;
-    description: string;
-  };
+  tool: { slug: string; name: string; description: string };
 };
 
-const TOOL_ICONS: Record<string, React.ReactNode> = {
-  "email-generator": <Mail className="h-4 w-4" />,
-  "task-generator": <ListTodo className="h-4 w-4" />,
-  "document-analyzer": <FileText className="h-4 w-4" />,
-  "meeting-summarizer": <FileText className="h-4 w-4" />,
+// ─── Tool config ──────────────────────────────────────────────────────────────
+const TOOL_CONFIG: Record<string, { label: string; icon: string; color: string; bg: string }> = {
+  "meeting-summarizer":  { label: "MEETING SUMMARIZER",  icon: "description",    color: "#6C3FF5", bg: "#EDE9FE" },
+  "task-generator":      { label: "TASK GENERATOR",      icon: "task_alt",       color: "#059669", bg: "#D1FAE5" },
+  "document-analyzer":   { label: "DOCUMENT ANALYSIS",   icon: "article",        color: "#D97706", bg: "#FEF3C7" },
+  "email-generator":     { label: "EMAIL GENERATOR",     icon: "mail",           color: "#2563EB", bg: "#DBEAFE" },
+  "ai-strategy-run":     { label: "AI STRATEGY RUN",     icon: "psychology",     color: "#7C3AED", bg: "#EDE9FE" },
+  "document-summarizer": { label: "DOCUMENT SUMMARIZER", icon: "summarize",      color: "#B45309", bg: "#FEF3C7" },
 };
 
-const TOOL_COLORS: Record<string, { bg: string; text: string; ring: string }> = {
-  "email-generator":     { bg: "bg-blue-50",   text: "text-blue-600",   ring: "ring-blue-200" },
-  "task-generator":      { bg: "bg-emerald-50", text: "text-emerald-600", ring: "ring-emerald-200" },
-  "document-analyzer":   { bg: "bg-amber-50",  text: "text-amber-600",  ring: "ring-amber-200" },
-  "meeting-summarizer":  { bg: "bg-[#f5f3ff]", text: "text-[#6c63ff]",  ring: "ring-[#c4b5fd]" },
-};
+function getToolConfig(slug: string) {
+  return TOOL_CONFIG[slug] ?? { label: slug.toUpperCase().replace(/-/g, " "), icon: "auto_awesome", color: "#6C3FF5", bg: "#EDE9FE" };
+}
 
-function StatusBadge({ status }: { status: string }) {
-  if (status === "completed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-        <CheckCircle2 className="h-3 w-3" /> completed
-      </span>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-semibold text-red-600 ring-1 ring-red-200">
-        <XCircle className="h-3 w-3" /> failed
-      </span>
-    );
-  }
+function getStatusStyle(status: string) {
+  if (status === "completed") return { bg: "#E6F4EA", color: "#137333", label: "Completed" };
+  if (status === "failed")    return { bg: "#FCE8E6", color: "#C5221F", label: "Failed" };
+  if (status === "processing" || status === "running") return { bg: "#E8F0FE", color: "#1A73E8", label: "Processing" };
+  return { bg: "#FEF7E0", color: "#B06000", label: status };
+}
+
+// ─── Run Card — Stitch style ──────────────────────────────────────────────────
+function RunCard({ run }: { run: HistoryRun }) {
+  const tool = getToolConfig(run.tool.slug);
+  const status = getStatusStyle(run.status);
+  const preview = formatPreview(run);
+  const isProcessing = run.status === "processing" || run.status === "running";
+  const isFailed = run.status === "failed";
+
+  // Safely extract rich content from outputJson
+  const out = (run.outputJson && typeof run.outputJson === "object" ? run.outputJson : {}) as Record<string, unknown>;
+
+  // Key points — try multiple field names
+  const keyPoints: string[] = (() => {
+    const candidates = [out.keyPoints, out.key_points, out.keypoints, out.highlights, out.insights];
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) {
+        return (c as unknown[]).slice(0, 3).map((p) => typeof p === "string" ? p : typeof p === "object" && p !== null && "text" in p ? String((p as Record<string, unknown>).text) : "").filter(Boolean);
+      }
+    }
+    return [];
+  })();
+
+  // Action items — try multiple field names
+  const actionItems: string[] = (() => {
+    const candidates = [out.actionItems, out.action_items, out.tasks, out.items];
+    for (const c of candidates) {
+      if (Array.isArray(c) && c.length > 0) {
+        return (c as unknown[]).slice(0, 3).map((p) => {
+          if (typeof p === "string") return p;
+          if (typeof p === "object" && p !== null) {
+            const obj = p as Record<string, unknown>;
+            return String(obj.task ?? obj.title ?? obj.text ?? obj.description ?? "");
+          }
+          return "";
+        }).filter(Boolean);
+      }
+    }
+    return [];
+  })();
+
+  // Summary text
+  const summaryText: string = (() => {
+    const candidates = [out.summary, out.text, out.content, out.result, out.output];
+    for (const c of candidates) {
+      if (typeof c === "string" && c.trim().length > 20) return c.trim();
+    }
+    // Try nested objects
+    for (const val of Object.values(out)) {
+      if (typeof val === "string" && val.trim().length > 30) return val.trim();
+    }
+    return preview || "";
+  })();
+
+  // Decide what to show: keyPoints > actionItems > summary
+  const showKeyPoints = keyPoints.length > 0;
+  const showActionItems = !showKeyPoints && actionItems.length > 0;
+  const showSummary = !showKeyPoints && !showActionItems && summaryText.length > 0;
+
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-600 ring-1 ring-amber-200">
-      <Clock className="h-3 w-3" /> {status}
-    </span>
+    <div className="flex flex-col rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-all hover:shadow-md hover:border-[#6C3FF5]/30 overflow-hidden min-h-[360px]">
+      {/* Card header */}
+      <div className="p-6 pb-4 flex-1">
+        <div className="flex items-start justify-between gap-2 mb-3">
+          {/* Tool badge */}
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" style={{ background: tool.bg }}>
+              <span className="material-symbols-outlined text-[16px]" style={{ color: tool.color }}>{tool.icon}</span>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: tool.color }}>
+              {tool.label}
+            </span>
+          </div>
+          {/* Status badge */}
+          <span className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
+            style={{ background: status.bg, color: status.color }}>
+            {isProcessing && <span className="inline-block h-1.5 w-1.5 rounded-full bg-current animate-pulse mr-1" />}
+            {status.label}
+          </span>
+        </div>
+
+        {/* Title */}
+        <h3 className="text-base font-bold text-[#202124] mb-1 leading-snug">
+          {run.title ?? "Untitled run"}
+        </h3>
+        <p className="text-xs text-[#5F6368] mb-3">{formatHistoryDate(run.createdAt)}</p>
+
+        {/* Content */}
+        {isFailed ? (
+          <div className="flex items-center gap-2 text-xs text-[#C5221F]">
+            <span className="material-symbols-outlined text-[14px]">warning</span>
+            {preview || "Run failed. Please try again."}
+          </div>
+        ) : isProcessing ? (
+          <div className="space-y-2">
+            <div className="h-2 w-full rounded-full bg-[#E8F0FE] overflow-hidden">
+              <div className="h-full rounded-full bg-[#1A73E8] animate-pulse" style={{ width: "60%" }} />
+            </div>
+            <p className="text-xs text-[#5F6368] italic">Analyzing…</p>
+          </div>
+        ) : showKeyPoints ? (
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#9AA0A6]">Key Points</p>
+            <ul className="space-y-1.5">
+              {keyPoints.map((point, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-[#5F6368]">
+                  <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-[#6C3FF5]" />
+                  <span className="line-clamp-2">{point}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : showActionItems ? (
+          <div className="space-y-2">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#9AA0A6]">
+              Action Items
+              <span className="ml-1.5 rounded-full bg-[#EDE9FE] px-1.5 py-0.5 text-[#6C3FF5]">{actionItems.length}</span>
+            </p>
+            <ul className="space-y-1.5">
+              {actionItems.map((item, i) => (
+                <li key={i} className="flex items-start gap-2 text-xs text-[#5F6368]">
+                  <span className="material-symbols-outlined text-[#6C3FF5] text-[13px] mt-0.5">radio_button_unchecked</span>
+                  <span className="line-clamp-2">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : showSummary ? (
+          <p className="text-xs text-[#5F6368] leading-relaxed line-clamp-4 italic">&ldquo;{summaryText.slice(0, 200)}{summaryText.length > 200 ? "…" : ""}&rdquo;</p>
+        ) : (
+          <p className="text-xs text-[#9AA0A6] italic">No preview available.</p>
+        )}
+      </div>
+
+      {/* Card footer */}
+      <div className="border-t border-[#DADCE0] px-5 py-3 flex items-center justify-between bg-[#F8F9FA]">
+        {isFailed ? (
+          <button type="button" className="text-xs font-semibold text-[#C5221F] hover:underline">
+            Retry Run
+          </button>
+        ) : isProcessing ? (
+          <span className="text-xs text-[#5F6368]">Processing…</span>
+        ) : (
+          <Link href={`/dashboard/history/${run.id}` as Route}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#6C3FF5] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#5B2FE0] transition-colors">
+            {run.tool.slug === "task-generator" ? "Open Tasks" :
+             run.tool.slug === "document-analyzer" ? "View Analysis" :
+             run.tool.slug === "meeting-summarizer" ? "View Summary" :
+             "View Results"}
+          </Link>
+        )}
+        <button type="button" className="rounded-lg p-1.5 text-[#9AA0A6] hover:bg-[#F1F3F4] hover:text-[#5F6368] transition-colors">
+          <span className="material-symbols-outlined text-[18px]">more_vert</span>
+        </button>
+      </div>
+    </div>
   );
 }
 
-function ToolChip({ slug, name }: { slug: string; name: string }) {
-  const colors = TOOL_COLORS[slug] ?? { bg: "bg-slate-50", text: "text-slate-600", ring: "ring-slate-200" };
-  const icon = TOOL_ICONS[slug] ?? <Zap className="h-4 w-4" />;
+// ─── Empty card placeholder ───────────────────────────────────────────────────
+function EmptyRunCard() {
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${colors.bg} ${colors.text} ${colors.ring}`}>
-      {icon} {name}
-    </span>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#DADCE0] bg-[#F8F9FA] p-8 text-center min-h-[360px]">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F3F4] mb-3">
+        <Plus className="h-6 w-6 text-[#9AA0A6]" />
+      </div>
+      <p className="text-sm font-semibold text-[#5F6368]">Start a new run</p>
+      <p className="text-xs text-[#9AA0A6] mt-1">Your AI processing history will appear here.</p>
+    </div>
   );
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function HistoryPage() {
   const apiFetch = useApiFetch();
   const isAuthReady = useIsAuthReady();
@@ -94,25 +226,24 @@ export default function HistoryPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(true);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
+  const [runTypeFilter, setRunTypeFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [timeFilter, setTimeFilter] = useState("30d");
 
   useEffect(() => {
     if (!isAuthReady) return;
     let isMounted = true;
     async function loadRuns() {
-      setIsLoading(true);
-      setUpgradeRequired(false);
+      setIsLoading(true); setUpgradeRequired(false);
       try {
         const response = await apiFetch("/api/ai-runs", { cache: "no-store" });
-        const payload = (await response.json()) as
-          | { success: true; runs: HistoryRun[] }
-          | { success: false; message: string };
+        const payload = await response.json() as { success: true; runs: HistoryRun[] } | { success: false; message: string };
         if (!isMounted) return;
         if (!response.ok || !payload.success) {
           if (response.status === 403) { setUpgradeRequired(true); setLoadError(null); return; }
           setLoadError("message" in payload ? payload.message : "Failed to load run history.");
           return;
         }
-        setUpgradeRequired(false);
         setRuns(payload.runs);
       } catch (error) {
         if (isMounted) setLoadError(error instanceof Error ? error.message : "Failed to load run history.");
@@ -124,121 +255,154 @@ export default function HistoryPage() {
     return () => { isMounted = false; };
   }, [isAuthReady]);
 
-  const totalPages = Math.max(Math.ceil(runs.length / ITEMS_PER_PAGE), 1);
+  const filteredRuns = useMemo(() => {
+    let result = runs;
+    if (runTypeFilter !== "all") result = result.filter(r => r.tool.slug === runTypeFilter);
+    if (statusFilter !== "all") result = result.filter(r => r.status === statusFilter);
+    if (timeFilter !== "all") {
+      const days = timeFilter === "7d" ? 7 : timeFilter === "30d" ? 30 : 90;
+      const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - days);
+      result = result.filter(r => new Date(r.createdAt) >= cutoff);
+    }
+    return result;
+  }, [runs, runTypeFilter, statusFilter, timeFilter]);
+
+  const totalPages = Math.max(Math.ceil(filteredRuns.length / ITEMS_PER_PAGE), 1);
   const paginatedRuns = useMemo(
-    () => runs.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
-    [currentPage, runs]
+    () => filteredRuns.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE),
+    [currentPage, filteredRuns]
   );
+
+  // Pad to 6 cards with empty placeholder
+  const displayCards = [...paginatedRuns];
+  if (displayCards.length < ITEMS_PER_PAGE && displayCards.length > 0) {
+    displayCards.push(...Array(ITEMS_PER_PAGE - displayCards.length).fill(null));
+  }
+
+  const uniqueTools = [...new Set(runs.map(r => r.tool.slug))];
 
   return (
     <div className="space-y-5">
-
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-6 py-5 shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#f5f3ff] ring-1 ring-[#ede9fe]">
-            <History className="h-5 w-5 text-[#6c63ff]" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-slate-900">AI Run History</h1>
-            <p className="mt-0.5 text-sm text-slate-500">Track every summarizer, generator, and analyzer run across your account.</p>
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-[22px] font-semibold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>History</h1>
+          <p className="text-sm text-[#5F6368] mt-0.5">Track every AI run across your account</p>
         </div>
-        {runs.length > 0 && (
-          <div className="shrink-0 rounded-xl bg-[#f5f3ff] px-3.5 py-2 text-center">
-            <p className="text-lg font-bold text-[#6c63ff]">{runs.length}</p>
-            <p className="text-[10px] font-semibold text-[#9b8fff]">total runs</p>
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-4 py-2 text-sm font-medium text-[#5F6368] hover:bg-[#F8F9FA] transition-colors">
+            <Download className="h-4 w-4" />
+            Export History
+          </button>
+        </div>
       </div>
 
-      {/* ── Content ── */}
+      {/* Filter bar — Stitch style */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Run Type */}
+        <div className="flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-3 py-2 text-sm text-[#5F6368]">
+          <span className="text-xs font-semibold text-[#202124]">Run Type:</span>
+          <select value={runTypeFilter} onChange={(e) => { setRunTypeFilter(e.target.value); setCurrentPage(1); }}
+            className="bg-transparent text-xs font-semibold text-[#6C3FF5] outline-none cursor-pointer">
+            <option value="all">All Tools</option>
+            {uniqueTools.map(slug => (
+              <option key={slug} value={slug}>{getToolConfig(slug).label}</option>
+            ))}
+          </select>
+          <span className="material-symbols-outlined text-[14px] text-[#9AA0A6]">expand_more</span>
+        </div>
+
+        {/* Status */}
+        <div className="flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-3 py-2 text-sm text-[#5F6368]">
+          <span className="text-xs font-semibold text-[#202124]">Status:</span>
+          <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
+            className="bg-transparent text-xs font-semibold text-[#6C3FF5] outline-none cursor-pointer">
+            <option value="all">Any Status</option>
+            <option value="completed">Completed</option>
+            <option value="failed">Failed</option>
+            <option value="processing">Processing</option>
+          </select>
+          <span className="material-symbols-outlined text-[14px] text-[#9AA0A6]">expand_more</span>
+        </div>
+
+        {/* Timeframe */}
+        <div className="flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-3 py-2 text-sm text-[#5F6368]">
+          <span className="text-xs font-semibold text-[#202124]">Timeframe:</span>
+          <select value={timeFilter} onChange={(e) => { setTimeFilter(e.target.value); setCurrentPage(1); }}
+            className="bg-transparent text-xs font-semibold text-[#6C3FF5] outline-none cursor-pointer">
+            <option value="7d">Last 7 Days</option>
+            <option value="30d">Last 30 Days</option>
+            <option value="90d">Last 90 Days</option>
+            <option value="all">All Time</option>
+          </select>
+          <span className="material-symbols-outlined text-[14px] text-[#9AA0A6]">calendar_today</span>
+        </div>
+
+        <div className="ml-auto">
+          <button type="button" className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#6C3FF5] hover:underline">
+            <Download className="h-4 w-4" />
+            Export History
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
       {isLoading ? (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+            <div key={i} className="h-52 animate-pulse rounded-xl bg-white border border-[#DADCE0]" />
           ))}
         </div>
       ) : upgradeRequired ? (
-        <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 p-8">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-amber-600">Locked Feature</p>
-          <h2 className="mt-2 text-xl font-bold text-slate-900">History requires Pro or Elite</h2>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-amber-700">
-            Upgrade to unlock run history for meetings and workflow runs. Free users keep unlimited access to the three generator tools.
-          </p>
-          <div className="mt-5 flex flex-wrap gap-3">
+          <h2 className="text-lg font-bold text-[#202124]">History requires Pro or Elite</h2>
+          <p className="text-sm text-amber-700">Upgrade to unlock run history for meetings and workflow runs.</p>
+          <div className="flex gap-2">
             <Button asChild><Link href="/dashboard/billing">View plans <ArrowRight className="h-4 w-4" /></Link></Button>
             <Button asChild variant="secondary"><Link href="/dashboard/tools">Keep using tools</Link></Button>
           </div>
         </div>
       ) : loadError ? (
-        <ResultState icon="error" title="Unable to load history" description={loadError} className="border-none p-0 shadow-none" />
-      ) : runs.length === 0 ? (
-        <EmptyState
-          icon={History}
-          title="No workflow history yet"
-          description="Completed Meeting Summarizer runs will appear here immediately, and future tools can reuse the same history structure."
-        />
-      ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          {/* Table header */}
-          <div className="hidden border-b border-slate-100 bg-slate-50/80 px-6 py-3 md:grid md:grid-cols-[190px_minmax(0,1fr)_140px_140px]">
-            {["Tool", "Title & Preview", "Created", "Status"].map((col) => (
-              <p key={col} className="text-xs font-semibold uppercase tracking-widest text-slate-400">{col}</p>
-            ))}
-          </div>
-
-          {/* Rows */}
-          <div className="divide-y divide-slate-50">
-            {paginatedRuns.map((run) => {
-              const preview = formatPreview(run);
-              return (
-                <Link
-                  key={run.id}
-                  href={`/dashboard/history/${run.id}` as Route}
-                  className="group flex flex-col gap-3 px-6 py-5 transition-colors hover:bg-[#faf9ff] md:grid md:grid-cols-[190px_minmax(0,1fr)_140px_140px] md:items-start"
-                >
-                  {/* Tool */}
-                  <div className="pt-0.5">
-                    <ToolChip slug={run.tool.slug} name={run.tool.name} />
-                  </div>
-
-                  {/* Title + preview */}
-                  <div className="min-w-0 space-y-1.5">
-                    <p className="text-sm font-semibold text-slate-900 group-hover:text-[#6c63ff] transition-colors leading-snug">
-                      {run.title ?? "Untitled run"}
-                    </p>
-                    <p className="line-clamp-2 text-xs leading-relaxed text-slate-500">{preview}</p>
-                  </div>
-
-                  {/* Date */}
-                  <p className="pt-0.5 text-xs text-slate-500">{formatHistoryDate(run.createdAt)}</p>
-
-                  {/* Status + arrow */}
-                  <div className="flex items-center justify-between gap-2 pt-0.5">
-                    <StatusBadge status={run.status} />
-                    <ArrowRight className="h-3.5 w-3.5 text-slate-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-[#6c63ff]" />
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="border-t border-slate-100 px-6 py-4">
-              <Pagination
-                currentPage={currentPage}
-                totalPages={totalPages}
-                totalItems={runs.length}
-                pageSize={ITEMS_PER_PAGE}
-                itemLabel="runs"
-                onPageChange={setCurrentPage}
-              />
-            </div>
-          )}
+        <div className="rounded-xl border border-[#FCE8E6] bg-[#FCE8E6] p-4 flex items-center justify-between gap-4">
+          <p className="text-sm text-[#C5221F]">{loadError}</p>
         </div>
+      ) : filteredRuns.length === 0 ? (
+        <EmptyState icon={History} title="No runs found"
+          description="Completed AI runs will appear here. Try adjusting your filters." />
+      ) : (
+        <>
+          {/* 3-column card grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayCards.map((run, i) =>
+              run ? <RunCard key={run.id} run={run} /> : <EmptyRunCard key={`empty-${i}`} />
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-[#5F6368]">
+              Showing {Math.min((currentPage - 1) * ITEMS_PER_PAGE + 1, filteredRuns.length)}–{Math.min(currentPage * ITEMS_PER_PAGE, filteredRuns.length)} of {filteredRuns.length} results
+            </p>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredRuns.length}
+              pageSize={ITEMS_PER_PAGE}
+              itemLabel="runs"
+              onPageChange={setCurrentPage}
+            />
+          </div>
+        </>
       )}
+
+      {/* FAB */}
+      <div className="fixed bottom-8 right-8 z-50">
+        <Link href="/dashboard/tools"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-[#6C3FF5] text-white shadow-xl hover:bg-[#5B2FE0] hover:scale-105 active:scale-95 transition-all">
+          <Plus className="h-6 w-6" />
+        </Link>
+      </div>
     </div>
   );
 }

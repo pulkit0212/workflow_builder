@@ -251,7 +251,7 @@ export function ShareToWorkspaceButton({
       <button
         type="button"
         onClick={handleShare}
-        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:border-[#6c63ff]/40 hover:bg-[#faf9ff] hover:text-[#6c63ff] transition-all"
+        className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 hover:border-[#6C3FF5]/40 hover:bg-[#faf9ff] hover:text-[#6C3FF5] transition-all"
       >
         <Share2 className="h-4 w-4" />
         Share to Workspace
@@ -263,8 +263,8 @@ export function ShareToWorkspaceButton({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl space-y-4">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6c63ff]/10">
-                <Share2 className="h-5 w-5 text-[#6c63ff]" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6C3FF5]/10">
+                <Share2 className="h-5 w-5 text-[#6C3FF5]" />
               </div>
               <div>
                 <p className="text-sm font-bold text-slate-900">Share to Workspace</p>
@@ -279,7 +279,7 @@ export function ShareToWorkspaceButton({
               <select
                 value={selectedWorkspaceId}
                 onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6c63ff]/40"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#6C3FF5]/40"
               >
                 {allWorkspaces?.map((ws) => (
                   <option key={ws.id} value={ws.id}>
@@ -305,7 +305,7 @@ export function ShareToWorkspaceButton({
                 type="button"
                 onClick={handleConfirm}
                 disabled={isPending || !selectedWorkspaceId}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#6c63ff] py-2.5 text-sm font-semibold text-white hover:bg-[#5b52e0] disabled:opacity-50 transition-colors"
+                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#6C3FF5] py-2.5 text-sm font-semibold text-white hover:bg-[#5b52e0] disabled:opacity-50 transition-colors"
               >
                 {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
                 Share

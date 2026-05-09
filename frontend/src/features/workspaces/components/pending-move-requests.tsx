@@ -117,7 +117,7 @@ export function PendingMoveRequests({ workspaceId }: PendingMoveRequestsProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
-        <Loader2 className="h-5 w-5 animate-spin text-[#6c63ff]" />
+        <Loader2 className="h-5 w-5 animate-spin text-[#6C3FF5]" />
       </div>
     );
   }

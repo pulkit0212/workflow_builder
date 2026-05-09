@@ -1,20 +1,23 @@
-import { Breadcrumbs } from "@/components/shared/breadcrumbs";
 import { ToolPageShell } from "@/components/tools/tool-page-shell";
 import { toolRegistry } from "@/lib/ai/tool-registry";
 import { EmailGeneratorWorkspace } from "@/features/tools/email-generator/components/email-generator-workspace";
 
 export default function EmailGeneratorPage() {
   return (
-    <div className="space-y-4">
-      <Breadcrumbs
-        items={[
-          { label: "Tools", href: "/dashboard/tools" },
-          { label: "Email Generator" }
-        ]}
-      />
-      <ToolPageShell tool={toolRegistry["email-generator"]}>
-        <EmailGeneratorWorkspace />
-      </ToolPageShell>
-    </div>
+    <ToolPageShell
+      tool={toolRegistry["email-generator"]}
+      ctaButton={
+        <button
+          form="email-generator-form"
+          type="submit"
+          className="inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-[#5B2FE0] transition-colors"
+        >
+          <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+          Generate Email
+        </button>
+      }
+    >
+      <EmailGeneratorWorkspace />
+    </ToolPageShell>
   );
 }

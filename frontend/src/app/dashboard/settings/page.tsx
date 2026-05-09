@@ -1,26 +1,13 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClerk, useSession, useUser } from "@clerk/nextjs";
 import {
-  Bell,
-  Check,
-  Crown,
-  Gauge,
-  Link2,
-  Lock,
-  Pencil,
-  Trash2,
-  User,
-  X,
+  Check, Crown, Lock, Pencil, Trash2, X,
+  Download, Star, Calendar, Globe, ChevronRight, AlertTriangle,
 } from "lucide-react";
-import { SectionHeader } from "@/components/shared/section-header";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
+import { useApiFetch } from "@/hooks/useApiFetch";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,13 +112,13 @@ type ActiveTab = "profile" | "account" | "subscription" | "preferences" | "integ
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
 
-const tabs: Array<{ id: ActiveTab; label: string; icon: typeof User }> = [
-  { id: "profile", label: "Profile", icon: User },
-  { id: "account", label: "Account", icon: Lock },
-  { id: "subscription", label: "Subscription", icon: Crown },
-  { id: "preferences", label: "Preferences", icon: Bell },
-  { id: "integrations", label: "Integrations", icon: Link2 },
-  { id: "usage", label: "Usage & Limits", icon: Gauge },
+const tabs: Array<{ id: ActiveTab; label: string; icon: string }> = [
+  { id: "profile",       label: "Profile",       icon: "person" },
+  { id: "account",       label: "Account",       icon: "lock" },
+  { id: "subscription",  label: "Subscription",  icon: "credit_card" },
+  { id: "preferences",   label: "Preferences",   icon: "tune" },
+  { id: "integrations",  label: "Integrations",  icon: "link" },
+  { id: "usage",         label: "Usage & Limits", icon: "speed" },
 ];
 
 const defaultPreferences: PreferencesState = {
@@ -198,9 +185,9 @@ function planBadgeVariant(plan: PlanId) {
 }
 
 function progressColor(usage: number) {
-  if (usage >= 90) return "bg-[#dc2626]";
-  if (usage >= 75) return "bg-[#f59e0b]";
-  return "bg-[#6c63ff]";
+  if (usage >= 90) return "bg-[#EA4335]";
+  if (usage >= 75) return "bg-[#B06000]";
+  return "bg-[#6C3FF5]";
 }
 
 // ─── Shared UI components ─────────────────────────────────────────────────────
@@ -222,37 +209,28 @@ function Toggle({
       disabled={disabled}
       onClick={() => { if (!disabled) onChange(!checked); }}
       className={cn(
-        "relative inline-flex h-8 w-14 items-center rounded-full border transition",
-        checked ? "border-[#6c63ff] bg-[#6c63ff]" : "border-[#d1d5db] bg-[#e5e7eb]",
+        "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
+        checked ? "bg-[#6C3FF5]" : "bg-[#DADCE0]",
         disabled && "cursor-not-allowed opacity-50"
       )}
     >
       <span
         className={cn(
-          "inline-block h-6 w-6 rounded-full bg-white shadow-sm transition",
-          checked ? "translate-x-7" : "translate-x-1"
+          "inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-6" : "translate-x-1"
         )}
       />
     </button>
   );
 }
 
-function ProgressBar({ value, colorClass = "bg-[#6c63ff]" }: { value: number; colorClass?: string }) {
+function ProgressBar({ value, colorClass = "bg-[#6C3FF5]" }: { value: number; colorClass?: string }) {
   return (
-    <div className="h-2 w-full rounded-full bg-[#ede9fe]">
-      <div className={cn("h-2 rounded-full transition-all", colorClass)} style={{ width: `${Math.min(100, value)}%` }} />
-    </div>
-  );
-}
-
-function InfoRow({ label, description, control }: { label: string; description: string; control: ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 rounded-2xl border border-[#e5e7eb] bg-white px-4 py-4">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-[#111827]">{label}</p>
-        <p className="mt-1 text-sm leading-6 text-[#6b7280]">{description}</p>
-      </div>
-      <div className="shrink-0">{control}</div>
+    <div className="h-2 w-full rounded-full bg-[#EDE9FE]">
+      <div
+        className={cn("h-2 rounded-full transition-all", colorClass)}
+        style={{ width: `${Math.min(100, value)}%` }}
+      />
     </div>
   );
 }
@@ -260,13 +238,15 @@ function InfoRow({ label, description, control }: { label: string; description: 
 function Toast({ toast }: { toast: ToastState | null }) {
   if (!toast) return null;
   const tone =
-    toast.type === "success" ? "border-[#bbf7d0] bg-[#f0fdf4] text-[#166534]"
-    : toast.type === "error" ? "border-[#fecaca] bg-[#fef2f2] text-[#991b1b]"
-    : toast.type === "warning" ? "border-[#fde68a] bg-[#fefce8] text-[#92400e]"
-    : "border-[#bfdbfe] bg-[#eff6ff] text-[#1d4ed8]";
+    toast.type === "success" ? "border-[#E6F4EA] bg-[#E6F4EA] text-[#137333]"
+    : toast.type === "error" ? "border-[#FCE8E6] bg-[#FCE8E6] text-[#C5221F]"
+    : toast.type === "warning" ? "border-[#FEF7E0] bg-[#FEF7E0] text-[#B06000]"
+    : "border-[#EDE9FE] bg-[#EDE9FE] text-[#6C3FF5]";
   return (
     <div className="fixed bottom-6 right-6 z-50 max-w-sm">
-      <div className={cn("rounded-2xl border px-4 py-3 shadow-lg", tone)}>{toast.message}</div>
+      <div className={cn("rounded-xl border px-4 py-3 shadow-lg text-sm font-medium", tone)}>
+        {toast.message}
+      </div>
     </div>
   );
 }
@@ -304,31 +284,35 @@ function ConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl border border-[#DADCE0]">
         <div className="flex items-start justify-between gap-4">
-          <h2 className="text-base font-semibold text-[#111827]">{title}</h2>
-          <button type="button" onClick={onCancel} className="text-[#9ca3af] hover:text-[#374151]">
+          <h2 className="text-base font-semibold text-[#202124]">{title}</h2>
+          <button type="button" onClick={onCancel} className="text-[#9AA0A6] hover:text-[#5F6368]">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <p className="mt-3 text-sm leading-6 text-[#6b7280]">{description}</p>
+        <p className="mt-3 text-sm leading-6 text-[#5F6368]">{description}</p>
         {requireTyping ? (
           <div className="mt-4">
-            <p className="mb-2 text-xs font-medium text-[#374151]">
-              Type <span className="font-bold text-[#111827]">{requireTyping}</span> to confirm
+            <p className="mb-2 text-xs font-medium text-[#5F6368]">
+              Type <span className="font-bold text-[#202124]">{requireTyping}</span> to confirm
             </p>
             <input
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder={requireTyping}
-              className="w-full rounded-xl border border-[#e5e7eb] px-4 py-3 text-sm outline-none focus:border-[#6c63ff]"
+              className="w-full rounded-xl border border-[#DADCE0] px-4 py-3 text-sm outline-none focus:border-[#6C3FF5]"
             />
           </div>
         ) : null}
         <div className="mt-6 flex justify-end gap-3">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-[#DADCE0] px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition"
+          >
             Cancel
-          </Button>
+          </button>
           <button
             type="button"
             disabled={!canConfirm}
@@ -336,8 +320,8 @@ function ConfirmModal({
             className={cn(
               "rounded-xl px-4 py-2 text-sm font-semibold transition",
               destructive
-                ? "bg-[#dc2626] text-white hover:bg-[#b91c1c] disabled:opacity-50"
-                : "bg-[#6c63ff] text-white hover:bg-[#5b52e0] disabled:opacity-50"
+                ? "bg-[#EA4335] text-white hover:bg-[#C5221F] disabled:opacity-50"
+                : "bg-[#6C3FF5] text-white hover:bg-[#5B2FE0] disabled:opacity-50"
             )}
           >
             {confirmLabel}
@@ -345,6 +329,48 @@ function ConfirmModal({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Chip selector ────────────────────────────────────────────────────────────
+
+function ChipSelector<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: T[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((opt) => (
+        <button
+          key={opt}
+          type="button"
+          onClick={() => onChange(opt)}
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-semibold transition",
+            value === opt
+              ? "border-[#6C3FF5] bg-[#EDE9FE] text-[#6C3FF5]"
+              : "border-[#DADCE0] bg-white text-[#5F6368] hover:bg-[#F8F9FA]"
+          )}
+        >
+          {opt}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ─── Material Symbol icon ─────────────────────────────────────────────────────
+
+function MSIcon({ name, className }: { name: string; className?: string }) {
+  return (
+    <span className={cn("material-symbols-outlined select-none", className)} aria-hidden="true">
+      {name}
+    </span>
   );
 }
 
@@ -398,7 +424,7 @@ export default function SettingsPage() {
   const trialDaysLeft = subscription?.trialDaysLeft ?? 0;
   const isTrialActive = Boolean(subscription?.plan === "trial" && trialEndsAt && trialEndsAt.getTime() > Date.now());
   const currentPlan = subscription?.plan ?? "free";
-  const currentPlanLabel = currentPlan === "trial" ? "Trial" : currentPlan.toUpperCase();
+  const currentPlanLabel = currentPlan === "trial" ? "Trial" : currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1);
   const meetingsLimit = subscription?.limits?.meetingsPerMonth ?? 0;
   const meetingsUsed = subscription?.meetingsUsedThisMonth ?? 0;
   const meetingUsagePercent = subscription
@@ -630,28 +656,34 @@ export default function SettingsPage() {
     }
   }
 
+  // ─── Plan badge pill ─────────────────────────────────────────────────────────
+
+  const PlanPill = () => (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#6C3FF5] to-[#5B2FE0] px-3 py-1 text-xs font-semibold text-white">
+      <Star className="h-3 w-3 fill-white" />
+      {currentPlanLabel} Plan
+    </span>
+  );
+
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-8">
+    <div className="min-h-screen bg-[#F8F9FA]">
       {/* Page header */}
-      <div className="rounded-2xl border border-[#e5e7eb] bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[#111827]">Settings</h1>
-            <p className="mt-1 text-sm text-[#6b7280]">Manage your profile, plan, preferences, and more.</p>
-          </div>
-          <Badge variant={planBadgeVariant(currentPlan)}>{currentPlanLabel}</Badge>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="font-['Work_Sans',sans-serif] text-[22px] font-bold text-[#202124]">Settings</h1>
+          <p className="mt-0.5 text-sm text-[#5F6368]">Manage your profile, plan, preferences, and more.</p>
         </div>
+        <PlanPill />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-[minmax(220px,22%)_minmax(0,1fr)]">
-        {/* Sidebar */}
-        <aside className="md:sticky md:top-6 md:h-fit">
-          <div className="hidden rounded-2xl border border-[#e5e7eb] bg-white p-2 md:block">
-            <nav className="space-y-1">
+      <div className="flex gap-6 items-start">
+        {/* ── Left Sidebar ── */}
+        <aside className="sticky top-6 hidden w-[220px] shrink-0 md:block">
+          <div className="rounded-xl border border-[#DADCE0] bg-white p-2 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <nav className="space-y-0.5">
               {tabs.map((tab) => {
-                const Icon = tab.icon;
                 const isActive = activeTab === tab.id;
                 return (
                   <button
@@ -659,711 +691,936 @@ export default function SettingsPage() {
                     type="button"
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-xl border-l-4 px-4 py-3 text-left text-sm font-medium transition",
+                      "flex w-full items-center gap-3 rounded-lg border-l-4 px-3 py-2.5 text-left text-sm transition",
                       isActive
-                        ? "border-l-[#6c63ff] bg-[#f5f3ff] text-[#6c63ff]"
-                        : "border-l-transparent text-[#374151] hover:bg-[#f9fafb]"
+                        ? "border-l-[#6C3FF5] bg-[#EDE9FE] font-semibold text-[#6C3FF5]"
+                        : "border-l-transparent font-normal text-[#5F6368] hover:bg-[#F8F9FA]"
                     )}
                   >
-                    <Icon className={cn("h-4 w-4 shrink-0", isActive ? "text-[#6c63ff]" : "text-[#6b7280]")} />
+                    <MSIcon
+                      name={tab.icon}
+                      className={cn(
+                        "text-[20px] leading-none",
+                        isActive ? "text-[#6C3FF5]" : "text-[#9AA0A6]"
+                      )}
+                    />
                     {tab.label}
                   </button>
                 );
               })}
             </nav>
           </div>
-
-          {/* Mobile tabs */}
-          <div className="flex gap-2 overflow-x-auto rounded-2xl border border-[#e5e7eb] bg-white p-2 md:hidden">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition",
-                    isActive
-                      ? "border-[#6c63ff] bg-[#f5f3ff] text-[#6c63ff]"
-                      : "border-[#e5e7eb] bg-white text-[#374151] hover:bg-[#f9fafb]"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
         </aside>
 
-        {/* Content */}
-        <div className="min-w-0 space-y-6">
+        {/* Mobile tab strip */}
+        <div className="mb-4 flex gap-2 overflow-x-auto md:hidden">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition",
+                  isActive
+                    ? "border-[#6C3FF5] bg-[#EDE9FE] text-[#6C3FF5]"
+                    : "border-[#DADCE0] bg-white text-[#5F6368] hover:bg-[#F8F9FA]"
+                )}
+              >
+                <MSIcon name={tab.icon} className="text-[18px] leading-none" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── Main content ── */}
+        <div className="min-w-0 flex-1 space-y-5">
           {isLoading ? (
-            <Card className="p-6">
-              <div className="flex items-center gap-3 text-sm text-[#6b7280]">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-[#6c63ff]" />
+            <div className="rounded-xl border border-[#DADCE0] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+              <div className="flex items-center gap-3 text-sm text-[#5F6368]">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#6C3FF5]" />
                 Loading settings…
               </div>
-            </Card>
+            </div>
           ) : null}
 
-          {/* ── Profile tab ── */}
+          {/* ══════════════════════════════════════════════════════════════════
+              PROFILE TAB
+          ══════════════════════════════════════════════════════════════════ */}
           {activeTab === "profile" ? (
-            <section className="space-y-6">
-              <SectionHeader title="Profile" description="Manage your public profile and display name." />
-              <Card className="p-6">
-                <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-                  {/* Avatar */}
-                  <div className="flex flex-col items-center gap-4 rounded-2xl border border-[#ede9fe] bg-[#f5f3ff] p-6 text-center">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-[#6c63ff] to-[#8b5cf6] text-2xl font-bold text-white shadow-lg">
-                      {getInitials(displayName)}
-                    </div>
-                    <div>
-                      <p className="text-sm font-semibold text-[#111827]">{displayName}</p>
-                      <p className="mt-1 text-xs text-[#6b7280]">Account avatar</p>
-                    </div>
+            <section className="space-y-4">
+              {/* Profile card with avatar */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-6 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center gap-5">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6C3FF5] to-[#8b5cf6] text-2xl font-bold text-white shadow-md">
+                    {getInitials(displayName)}
                   </div>
+                  <div>
+                    <p className="text-lg font-semibold text-[#202124]">{displayName}</p>
+                    <p className="mt-0.5 text-xs text-[#9AA0A6]">Account avatar</p>
+                  </div>
+                </div>
+              </div>
 
-                  {/* Fields */}
-                  <div className="space-y-4">
-                    {/* Full name */}
-                    <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                      <p className="text-sm font-semibold text-[#111827]">Full Name</p>
+              {/* Full Name card */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9AA0A6]">Full Name</p>
+                    {isEditingName ? (
                       <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                         <input
                           value={nameDraft}
-                          readOnly={!isEditingName}
                           onChange={(e) => setNameDraft(e.target.value)}
-                          className={cn(
-                            "w-full rounded-xl border px-4 py-3 text-sm outline-none transition",
-                            isEditingName
-                              ? "border-[#c4b5fd] bg-white text-[#111827] focus:border-[#6c63ff]"
-                              : "border-[#e5e7eb] bg-[#f9fafb] text-[#111827]"
-                          )}
+                          className="w-full rounded-xl border border-[#6C3FF5] bg-white px-4 py-2.5 text-sm text-[#202124] outline-none focus:ring-2 focus:ring-[#EDE9FE]"
                           placeholder="Enter your name"
+                          autoFocus
                         />
                         <div className="flex gap-2">
-                          {isEditingName ? (
-                            <>
-                              <Button type="button" onClick={() => void saveName()} disabled={isSavingName}>
-                                {isSavingName ? "Saving…" : "Save"}
-                              </Button>
-                              <Button type="button" variant="outline" onClick={cancelNameEdit}>Cancel</Button>
-                            </>
-                          ) : (
-                            <Button type="button" variant="outline" onClick={() => setIsEditingName(true)}>
-                              <Pencil className="h-4 w-4" />
-                              Edit
-                            </Button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={() => void saveName()}
+                            disabled={isSavingName}
+                            className="rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] disabled:opacity-50 transition"
+                          >
+                            {isSavingName ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelNameEdit}
+                            className="rounded-xl border border-[#DADCE0] px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition"
+                          >
+                            Cancel
+                          </button>
                         </div>
                       </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {/* Email */}
-                      <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-[#111827]">Email Address</p>
-                            <p className="mt-2 break-all text-sm text-[#6b7280]">{emailAddress}</p>
-                            <p className="mt-1 text-xs text-[#9ca3af]">Managed by your auth provider.</p>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <Badge variant="available">Verified ✓</Badge>
-                            <Lock className="h-4 w-4 text-[#9ca3af]" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Member since + timezone */}
-                      <div className="space-y-4">
-                        <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                          <p className="text-sm font-semibold text-[#111827]">Member Since</p>
-                          <p className="mt-2 text-sm text-[#6b7280]">{memberSince}</p>
-                        </div>
-                        <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                          <p className="text-sm font-semibold text-[#111827]">Timezone</p>
-                          <p className="mt-2 text-sm text-[#6b7280]">{timezone}</p>
-                          <p className="mt-1 text-xs text-[#9ca3af]">Detected from your browser.</p>
-                        </div>
-                      </div>
-                    </div>
+                    ) : (
+                      <p className="mt-2 text-base font-medium text-[#202124]">{displayName}</p>
+                    )}
                   </div>
-                </div>
-              </Card>
-            </section>
-          ) : null}
-
-          {/* ── Account tab ── */}
-          {activeTab === "account" ? (
-            <section className="space-y-6">
-              <SectionHeader title="Account" description="Manage your account security and connected services." />
-              <Card className="divide-y divide-slate-100 p-0 overflow-hidden">
-                {/* Password */}
-                <div className="p-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-[#111827]">Password</p>
-                      <p className="mt-1 text-sm tracking-[0.2em] text-[#6b7280]">••••••••••••</p>
-                      <p className="mt-1 text-xs text-[#9ca3af]">Managed by Clerk secure authentication.</p>
-                    </div>
-                    <Button type="button" variant="outline" onClick={() => void openPasswordFlow()}>
-                      Change Password
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Connected accounts */}
-                <div className="p-5">
-                  <p className="text-sm font-semibold text-[#111827]">Connected Accounts</p>
-                  <div className="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f0fe] text-sm font-bold text-[#4285f4]">G</div>
-                      <div>
-                        <p className="text-sm font-medium text-[#111827]">Google Account</p>
-                        <p className="text-xs text-[#6b7280]">{emailAddress}</p>
-                      </div>
-                    </div>
-                    <Badge variant="available">Connected ✓</Badge>
-                  </div>
-                </div>
-
-                {/* Active sessions */}
-                <div className="p-5">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold text-[#111827]">Active Sessions</p>
-                      <p className="mt-1 text-sm text-[#6b7280]">Sign out of other devices without affecting this session.</p>
-                    </div>
-                    <Button type="button" variant="outline" onClick={() => void signOutOtherSessions()}>
-                      Sign out other devices
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Danger zone */}
-                <div className="p-5">
-                  <p className="mb-4 text-sm font-semibold text-[#b91c1c]">Danger Zone</p>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#fecaca] bg-[#fff5f5] px-4 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-[#111827]">Delete all meeting data</p>
-                        <p className="mt-1 text-xs text-[#6b7280]">Permanently removes all transcripts, summaries, and action items.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsDeleteDataOpen(true)}
-                        className="flex items-center gap-2 rounded-xl border border-[#dc2626] px-4 py-2 text-sm font-semibold text-[#dc2626] transition hover:bg-[#fef2f2]"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete Data
-                      </button>
-                    </div>
-
-                    <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#fecaca] bg-[#fff5f5] px-4 py-4">
-                      <div>
-                        <p className="text-sm font-medium text-[#111827]">Delete account</p>
-                        <p className="mt-1 text-xs text-[#6b7280]">Permanently deletes your account and all associated data. This cannot be undone.</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsDeleteAccountOpen(true)}
-                        className="flex items-center gap-2 rounded-xl bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Delete Account
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </Card>
-            </section>
-          ) : null}
-
-          {/* ── Subscription tab ── */}
-          {activeTab === "subscription" ? (
-            <section className="space-y-6">
-              <SectionHeader title="Subscription" description="Manage your plan and billing details." />
-              <Card className="space-y-6 p-6">
-                {/* Current plan */}
-                <div className="rounded-2xl border border-[#ede9fe] bg-[#f5f3ff] p-6">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Current Plan</p>
-                      <h3 className="mt-2 text-3xl font-bold text-[#111827]">{currentPlanLabel}</h3>
-                      <p className="mt-1 text-sm text-[#6b7280]">
-                        {isTrialActive
-                          ? "Free trial active — explore all features."
-                          : currentPlan === "free"
-                          ? "Free plan — upgrade to unlock more."
-                          : currentPlan === "pro"
-                          ? "Pro plan is active."
-                          : "Elite plan is active."}
-                      </p>
-                    </div>
-                    <Badge variant={planBadgeVariant(currentPlan)}>{currentPlanLabel}</Badge>
-                  </div>
-
-                  {isTrialActive ? (
-                    <div className="mt-5 space-y-2">
-                      <div className="flex items-center justify-between text-sm text-[#4b5563]">
-                        <span>{trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} remaining</span>
-                        <span>Expires {formatDate(trialEndsAt)}</span>
-                      </div>
-                      <ProgressBar value={trialProgress} colorClass={trialDaysLeft < 7 ? "bg-[#f59e0b]" : "bg-[#6c63ff]"} />
-                    </div>
-                  ) : null}
-
-                  {(currentPlan === "pro" || currentPlan === "elite") ? (
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-xl bg-white px-4 py-3">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-[#6b7280]">Next billing</p>
-                        <p className="mt-1 text-sm font-medium text-[#111827]">{formatDate(planEndsAt)}</p>
-                      </div>
-                      <div className="rounded-xl bg-white px-4 py-3">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-[#6b7280]">Amount</p>
-                        <p className="mt-1 text-sm font-medium text-[#111827]">
-                          {currentPlan === "pro" ? "₹99/month" : "₹199/month"}
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Usage meters */}
-                <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Meetings this month</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{meetingsUsed}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      {subscription?.limits.unlimited ? "Unlimited" : `of ${meetingsLimit} allowed`}
-                    </p>
-                    <div className="mt-3">
-                      <ProgressBar value={subscription?.limits.unlimited ? 100 : meetingUsagePercent} colorClass={progressColor(meetingUsagePercent)} />
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Action Items</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.actionItemsCreated ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">extracted all-time</p>
-                    <div className="mt-3">
-                      <ProgressBar value={Math.min(100, (usageStats?.actionItemsCreated ?? 0) * 5)} />
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Documents Analyzed</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.documentsAnalyzed ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">uploaded files</p>
-                    <div className="mt-3">
-                      <ProgressBar value={Math.min(100, (usageStats?.documentsAnalyzed ?? 0) * 10)} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Upgrade cards */}
-                {canUpgradeToPro || canUpgradeToElite ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {canUpgradeToPro ? (
-                      <Card className="space-y-4 border-[#c7d2fe] bg-gradient-to-b from-white to-[#f5f3ff] p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h4 className="text-xl font-bold text-[#111827]">Pro</h4>
-                            <p className="mt-1 text-sm text-[#6b7280]">10 meetings/month + all AI features</p>
-                          </div>
-                          <Badge variant="pending">Popular</Badge>
-                        </div>
-                        <p className="text-3xl font-bold text-[#111827]">₹99<span className="text-base font-normal text-[#6b7280]">/mo</span></p>
-                        <Button asChild className="w-full"><a href="/dashboard/billing">Upgrade to Pro</a></Button>
-                      </Card>
-                    ) : null}
-                    {canUpgradeToElite ? (
-                      <Card className="space-y-4 border-[#ddd6fe] bg-gradient-to-b from-white to-[#f5f3ff] p-5">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h4 className="text-xl font-bold text-[#111827]">Elite</h4>
-                            <p className="mt-1 text-sm text-[#6b7280]">Unlimited meetings + priority support</p>
-                          </div>
-                          <Badge variant="accent">Best Value</Badge>
-                        </div>
-                        <p className="text-3xl font-bold text-[#111827]">₹199<span className="text-base font-normal text-[#6b7280]">/mo</span></p>
-                        <Button asChild className="w-full"><a href="/dashboard/billing">Upgrade to Elite</a></Button>
-                      </Card>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                {/* Payment history */}
-                <div className="overflow-hidden rounded-2xl border border-[#e5e7eb]">
-                  <div className="border-b border-[#e5e7eb] px-5 py-4">
-                    <p className="text-sm font-semibold text-[#111827]">Payment History</p>
-                  </div>
-                  {payments.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full text-left text-sm">
-                        <thead className="bg-[#f9fafb] text-[#6b7280]">
-                          <tr>
-                            <th className="px-5 py-3 font-semibold">Date</th>
-                            <th className="px-5 py-3 font-semibold">Plan</th>
-                            <th className="px-5 py-3 font-semibold">Amount</th>
-                            <th className="px-5 py-3 font-semibold">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#f3f4f6]">
-                          {payments.map((p) => (
-                            <tr key={p.id} className="bg-white hover:bg-[#fafafa]">
-                              <td className="px-5 py-3 text-[#374151]">{formatDate(p.date)}</td>
-                              <td className="px-5 py-3 font-medium text-[#111827]">{p.plan}</td>
-                              <td className="px-5 py-3 text-[#374151]">{formatCurrency(p.amount / 100)}</td>
-                              <td className="px-5 py-3">
-                                <Badge variant={p.status === "paid" ? "available" : "pending"}>{p.status}</Badge>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <p className="px-5 py-6 text-sm text-[#6b7280]">No payments yet.</p>
+                  {!isEditingName && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingName(true)}
+                      className="flex items-center gap-1.5 rounded-xl border border-[#DADCE0] px-3 py-1.5 text-xs font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      Edit
+                    </button>
                   )}
                 </div>
-              </Card>
+              </div>
+
+              {/* Email Address card */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9AA0A6]">Email Address</p>
+                    <p className="mt-2 break-all text-base font-medium text-[#202124]">{emailAddress}</p>
+                    <p className="mt-1 text-xs text-[#9AA0A6]">Managed by your auth provider.</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-1 text-[11px] font-semibold text-[#137333]">
+                    <Check className="h-3 w-3" />
+                    VERIFIED
+                  </span>
+                </div>
+              </div>
+
+              {/* Member Since card */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9AA0A6]">Member Since</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-[#9AA0A6]" />
+                  <p className="text-base font-medium text-[#202124]">{memberSince}</p>
+                </div>
+              </div>
+
+              {/* Timezone card */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-widest text-[#9AA0A6]">Timezone</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-[#9AA0A6]" />
+                      <p className="text-base font-medium text-[#202124]">{timezone}</p>
+                    </div>
+                    <p className="mt-1 text-xs text-[#9AA0A6]">Detected from your browser.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-xl border border-[#DADCE0] px-3 py-1.5 text-xs font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition"
+                  >
+                    Update
+                  </button>
+                </div>
+              </div>
             </section>
           ) : null}
 
-          {/* ── Preferences tab ── */}
-          {activeTab === "preferences" ? (
-            <section className="space-y-6">
-              <SectionHeader title="Preferences" description="Customize how Artivaa works for you. Changes are saved when you click Save." />
-              <Card className="space-y-6 p-6">
-                {/* Email notifications */}
-                <div>
-                  <p className="mb-3 text-sm font-semibold text-[#111827]">Email Notifications</p>
-                  <div className="space-y-3">
-                    <InfoRow
-                      label="Meeting Summary"
-                      description="Receive an email when your meeting summary is ready."
-                      control={
-                        <Toggle
-                          checked={preferences.meetingSummaryEmail}
-                          onChange={(v) => setPreferences((p) => ({ ...p, meetingSummaryEmail: v }))}
-                        />
-                      }
-                    />
-                    <InfoRow
-                      label="Action Items"
-                      description="Get emailed your action items after each meeting."
-                      control={
-                        <Toggle
-                          checked={preferences.actionItemsEmail}
-                          onChange={(v) => setPreferences((p) => ({ ...p, actionItemsEmail: v }))}
-                        />
-                      }
-                    />
-                    <InfoRow
-                      label="Weekly Digest"
-                      description="A weekly roundup of all your meetings and insights."
-                      control={
-                        <Toggle
-                          checked={preferences.weeklyDigest}
-                          onChange={(v) => setPreferences((p) => ({ ...p, weeklyDigest: v }))}
-                        />
-                      }
-                    />
-                    <InfoRow
-                      label="Product Updates"
-                      description="New features, improvements, and announcements."
-                      control={
-                        <Toggle
-                          checked={preferences.productUpdates}
-                          onChange={(v) => setPreferences((p) => ({ ...p, productUpdates: v }))}
-                        />
-                      }
-                    />
+          {/* ══════════════════════════════════════════════════════════════════
+              ACCOUNT TAB
+          ══════════════════════════════════════════════════════════════════ */}
+          {activeTab === "account" ? (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="font-['Work_Sans',sans-serif] text-lg font-bold text-[#202124]">Account</h2>
+              </div>
+
+              {/* Password */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#202124]">Password</p>
+                    <p className="mt-1 text-sm tracking-[0.2em] text-[#5F6368]">••••••••••••</p>
+                    <p className="mt-1 text-xs text-[#9AA0A6]">Managed by Clerk secure authentication.</p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => void openPasswordFlow()}
+                    className="rounded-xl border border-[#DADCE0] px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition"
+                  >
+                    Change Password
+                  </button>
                 </div>
+              </div>
 
-                {/* AI output settings */}
-                <div>
-                  <p className="mb-3 text-sm font-semibold text-[#111827]">AI Output Settings</p>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {/* Default email tone */}
-                    <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                      <p className="text-sm font-semibold text-[#111827]">Default Email Tone</p>
-                      <p className="mt-1 text-xs text-[#9ca3af]">Applied when generating follow-up emails.</p>
-                      <div className="mt-4 space-y-3">
-                        {(["Professional", "Friendly", "Formal", "Concise"] as const).map((tone) => (
-                          <label key={tone} className="flex cursor-pointer items-center gap-3 text-sm text-[#374151]">
-                            <input
-                              type="radio"
-                              name="defaultTone"
-                              checked={preferences.defaultTone === tone}
-                              onChange={() => setPreferences((p) => ({ ...p, defaultTone: tone }))}
-                              className="h-4 w-4 accent-[#6c63ff]"
-                            />
-                            {tone}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Summary length */}
-                    <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                      <p className="text-sm font-semibold text-[#111827]">Summary Length</p>
-                      <p className="mt-1 text-xs text-[#9ca3af]">Controls how detailed AI summaries are.</p>
-                      <div className="mt-4 space-y-3">
-                        {[
-                          { id: "brief" as const, label: "Brief", desc: "2–3 sentences" },
-                          { id: "standard" as const, label: "Standard", desc: "1 paragraph" },
-                          { id: "detailed" as const, label: "Detailed", desc: "Full breakdown" },
-                        ].map((opt) => (
-                          <label key={opt.id} className="flex cursor-pointer items-center gap-3 text-sm text-[#374151]">
-                            <input
-                              type="radio"
-                              name="summaryLength"
-                              checked={preferences.summaryLength === opt.id}
-                              onChange={() => setPreferences((p) => ({ ...p, summaryLength: opt.id }))}
-                              className="h-4 w-4 accent-[#6c63ff]"
-                            />
-                            <span>{opt.label} <span className="text-[#9ca3af]">— {opt.desc}</span></span>
-                          </label>
-                        ))}
-                      </div>
+              {/* Connected accounts */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <p className="text-sm font-semibold text-[#202124]">Connected Accounts</p>
+                <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f0fe] text-sm font-bold text-[#4285f4]">G</div>
+                    <div>
+                      <p className="text-sm font-medium text-[#202124]">Google Account</p>
+                      <p className="text-xs text-[#5F6368]">{emailAddress}</p>
                     </div>
                   </div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-1 text-[11px] font-semibold text-[#137333]">
+                    <Check className="h-3 w-3" />
+                    Connected
+                  </span>
+                </div>
+              </div>
 
-                  {/* Language */}
-                  <div className="mt-4 rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Language</p>
-                    <p className="mt-1 text-xs text-[#9ca3af]">Affects AI output language for summaries and emails.</p>
-                    <select
-                      value={preferences.language}
-                      onChange={(e) => setPreferences((p) => ({ ...p, language: e.target.value as PreferencesState["language"] }))}
-                      className="mt-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#111827] outline-none focus:border-[#6c63ff]"
+              {/* Active sessions */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[#202124]">Active Sessions</p>
+                    <p className="mt-1 text-sm text-[#5F6368]">Sign out of other devices without affecting this session.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void signOutOtherSessions()}
+                    className="rounded-xl border border-[#DADCE0] px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition whitespace-nowrap"
+                  >
+                    Sign out other devices
+                  </button>
+                </div>
+              </div>
+
+              {/* Danger zone */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <p className="mb-4 text-sm font-semibold text-[#EA4335]">Danger Zone</p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-[#FCE8E6] bg-[#FCE8E6]/30 px-4 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-[#202124]">Delete all meeting data</p>
+                      <p className="mt-1 text-xs text-[#5F6368]">Permanently removes all transcripts, summaries, and action items.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteDataOpen(true)}
+                      className="flex items-center gap-2 rounded-xl border border-[#EA4335] px-4 py-2 text-sm font-semibold text-[#EA4335] transition hover:bg-[#FCE8E6] whitespace-nowrap"
                     >
-                      <option value="English">English</option>
-                      <option value="Hindi">Hindi</option>
-                    </select>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Data
+                    </button>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-[#FCE8E6] bg-[#FCE8E6]/30 px-4 py-4">
+                    <div>
+                      <p className="text-sm font-medium text-[#202124]">Delete account</p>
+                      <p className="mt-1 text-xs text-[#5F6368]">Permanently deletes your account and all associated data. This cannot be undone.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsDeleteAccountOpen(true)}
+                      className="flex items-center gap-2 rounded-xl bg-[#EA4335] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#C5221F] whitespace-nowrap"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete Account
+                    </button>
                   </div>
                 </div>
+              </div>
+            </section>
+          ) : null}
 
-                {/* Notetaker display name */}
-                <div>
-                  <p className="mb-3 text-sm font-semibold text-[#111827]">Notetaker Display Name</p>
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-xs text-[#9ca3af]">This name appears in the participants list when the AI joins your meeting.</p>
-                    <input
-                      value={preferences.botDisplayName}
-                      onChange={(e) => setPreferences((p) => ({ ...p, botDisplayName: e.target.value }))}
-                      className="mt-3 w-full rounded-xl border border-[#e5e7eb] bg-white px-4 py-3 text-sm text-[#111827] outline-none focus:border-[#6c63ff]"
-                      placeholder="Artiva Notetaker"
-                    />
+          {/* ══════════════════════════════════════════════════════════════════
+              SUBSCRIPTION TAB
+          ══════════════════════════════════════════════════════════════════ */}
+          {activeTab === "subscription" ? (
+            <section className="space-y-5">
+              {/* Header row */}
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="font-['Work_Sans',sans-serif] text-lg font-bold text-[#202124]">Subscription</h2>
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition"
+                >
+                  <Download className="h-4 w-4" />
+                  Download Statement
+                </button>
+              </div>
+
+              {/* Active plan banner */}
+              <div className={cn(
+                "rounded-xl border p-6 shadow-[0_1px_2px_rgba(0,0,0,0.05)]",
+                currentPlan === "elite" ? "border-[#EDE9FE] bg-gradient-to-r from-[#EDE9FE] to-[#f5f3ff]"
+                : currentPlan === "pro" ? "border-[#DBEAFE] bg-gradient-to-r from-[#DBEAFE] to-[#eff6ff]"
+                : isTrialActive ? "border-[#FEF7E0] bg-gradient-to-r from-[#FEF7E0] to-[#fffdf5]"
+                : "border-[#DADCE0] bg-[#F8F9FA]"
+              )}>
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      {currentPlan === "elite" && <span className="material-symbols-outlined text-[#6C3FF5] text-[20px]">workspace_premium</span>}
+                      {currentPlan === "pro" && <span className="material-symbols-outlined text-[#2563EB] text-[20px]">verified</span>}
+                      {currentPlan === "free" && <span className="material-symbols-outlined text-[#5F6368] text-[20px]">person</span>}
+                      {isTrialActive && <span className="material-symbols-outlined text-[#B06000] text-[20px]">hourglass_top</span>}
+                      <h3 className="text-xl font-bold text-[#202124]">{currentPlanLabel} Plan is active</h3>
+                    </div>
+
+                    {/* Dynamic per-plan description */}
+                    {currentPlan === "elite" && (
+                      <div className="space-y-3">
+                        <p className="text-sm text-[#5F6368]">You&apos;re on our most powerful plan. Enjoy unlimited meetings, all AI features, and priority support.</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {[
+                            { icon: "all_inclusive", label: "Unlimited meetings" },
+                            { icon: "smart_toy", label: "AI Notetaker" },
+                            { icon: "summarize", label: "Auto summaries" },
+                            { icon: "task_alt", label: "Action items" },
+                            { icon: "share", label: "Auto-share integrations" },
+                            { icon: "support_agent", label: "Priority support" },
+                          ].map((f) => (
+                            <div key={f.label} className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2">
+                              <span className="material-symbols-outlined text-[#6C3FF5] text-[16px]">{f.icon}</span>
+                              <span className="text-xs font-medium text-[#202124]">{f.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {subscription?.planEndsAt && (
+                          <p className="text-xs text-[#5F6368]">
+                            <span className="material-symbols-outlined text-[14px] align-middle mr-1">calendar_today</span>
+                            Renews on {formatDate(planEndsAt)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {currentPlan === "pro" && (
+                      <div className="space-y-3">
+                        <p className="text-sm text-[#5F6368]">You&apos;re on the Pro plan — 10 meetings/month with full AI capabilities and priority support.</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {[
+                            { icon: "videocam", label: "10 meetings/month" },
+                            { icon: "smart_toy", label: "AI Notetaker" },
+                            { icon: "summarize", label: "Auto summaries" },
+                            { icon: "task_alt", label: "Action items" },
+                            { icon: "history", label: "Meeting history" },
+                            { icon: "support_agent", label: "Priority support" },
+                          ].map((f) => (
+                            <div key={f.label} className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2">
+                              <span className="material-symbols-outlined text-[#2563EB] text-[16px]">{f.icon}</span>
+                              <span className="text-xs font-medium text-[#202124]">{f.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {subscription?.planEndsAt && (
+                          <p className="text-xs text-[#5F6368]">
+                            <span className="material-symbols-outlined text-[14px] align-middle mr-1">calendar_today</span>
+                            Renews on {formatDate(planEndsAt)}
+                          </p>
+                        )}
+                        <a href="/dashboard/billing" className="inline-flex items-center gap-1.5 rounded-lg bg-[#6C3FF5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5B2FE0] transition">
+                          <span className="material-symbols-outlined text-[14px]">upgrade</span>
+                          Upgrade to Elite for unlimited meetings
+                        </a>
+                      </div>
+                    )}
+
+                    {currentPlan === "free" && !isTrialActive && (
+                      <div className="space-y-3">
+                        <p className="text-sm text-[#5F6368]">You&apos;re on the Free plan. Upgrade to unlock the AI Notetaker, transcription, and meeting history.</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {[
+                            { icon: "check_circle", label: "3 meetings/month", enabled: true },
+                            { icon: "check_circle", label: "Email generator", enabled: true },
+                            { icon: "check_circle", label: "Task generator", enabled: true },
+                            { icon: "lock", label: "AI Notetaker", enabled: false },
+                            { icon: "lock", label: "Transcription", enabled: false },
+                            { icon: "lock", label: "Meeting history", enabled: false },
+                          ].map((f) => (
+                            <div key={f.label} className={cn("flex items-center gap-2 rounded-lg px-3 py-2", f.enabled ? "bg-[#E6F4EA]" : "bg-[#F1F3F4]")}>
+                              <span className={cn("material-symbols-outlined text-[16px]", f.enabled ? "text-[#34A853]" : "text-[#9AA0A6]")}>{f.icon}</span>
+                              <span className={cn("text-xs font-medium", f.enabled ? "text-[#202124]" : "text-[#9AA0A6]")}>{f.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <a href="/dashboard/billing" className="inline-flex items-center gap-1.5 rounded-lg bg-[#6C3FF5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5B2FE0] transition">
+                          <span className="material-symbols-outlined text-[14px]">upgrade</span>
+                          Upgrade to Pro — ₹99/month
+                        </a>
+                      </div>
+                    )}
+
+                    {isTrialActive && (
+                      <div className="space-y-3">
+                        <p className="text-sm text-[#5F6368]">You&apos;re on a free trial with full access to all features. Your trial ends in {trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"}.</p>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-xs text-[#5F6368]">
+                            <span>{trialDaysLeft} day{trialDaysLeft === 1 ? "" : "s"} remaining</span>
+                            <span>Expires {formatDate(trialEndsAt)}</span>
+                          </div>
+                          <ProgressBar value={trialProgress} colorClass={trialDaysLeft < 7 ? "bg-[#B06000]" : "bg-[#6C3FF5]"} />
+                        </div>
+                        <a href="/dashboard/billing" className="inline-flex items-center gap-1.5 rounded-lg bg-[#6C3FF5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5B2FE0] transition">
+                          <span className="material-symbols-outlined text-[14px]">upgrade</span>
+                          Upgrade before trial ends
+                        </a>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 rounded-xl border border-[#DADCE0] bg-white p-4 text-center min-w-[160px]">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-[#9AA0A6]">Meetings Used</p>
+                    <p className="mt-1 text-3xl font-bold text-[#202124]">
+                      {meetingsUsed}
+                      <span className="text-lg font-normal text-[#9AA0A6]"> / {subscription?.limits.unlimited ? "∞" : meetingsLimit}</span>
+                    </p>
+                    <div className="mt-2">
+                      <ProgressBar value={subscription?.limits.unlimited ? 0 : meetingUsagePercent} colorClass={progressColor(meetingUsagePercent)} />
+                    </div>
+                    <p className="mt-1.5 text-xs text-[#5F6368]">
+                      {subscription?.limits.unlimited
+                        ? "Unlimited"
+                        : `${Math.max(0, meetingsLimit - meetingsUsed)} remaining`}
+                    </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Auto-share */}
-                <div>
-                  <p className="mb-1 text-sm font-semibold text-[#111827]">Auto-share after Summary</p>
-                  <p className="mb-3 text-xs text-[#9ca3af]">Automatically send the summary to selected destinations as soon as it&apos;s generated. Only enabled integrations will receive it.</p>
-                  <div className="space-y-3">
-                    {([
-                      { key: "autoShareSlack" as const,  label: "Slack",  icon: "💬", desc: "Post summary + action items to your channel" },
-                      { key: "autoShareGmail" as const,  label: "Gmail",  icon: "📧", desc: "Email summary to configured recipients" },
-                      { key: "autoShareNotion" as const, label: "Notion", icon: "📝", desc: "Create a Notion page with full summary" },
-                      { key: "autoShareJira" as const,   label: "Jira",   icon: "🎯", desc: "Create tickets from action items" },
-                    ]).map((item) => (
-                      <InfoRow
-                        key={item.key}
-                        label={`${item.icon} ${item.label}`}
-                        description={item.desc}
-                        control={
-                          <Toggle
-                            checked={preferences[item.key]}
-                            onChange={(v) => setPreferences((p) => ({ ...p, [item.key]: v }))}
-                          />
-                        }
-                      />
+              {/* Plan cards */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                {[
+                  {
+                    id: "free" as PlanId,
+                    name: "Free",
+                    desc: "Get started with basic features",
+                    price: "₹0",
+                    period: "/mo",
+                    features: ["3 meetings/month", "Basic transcription", "AI summaries", "Email support"],
+                    cta: "Downgrade",
+                    ctaHref: "/dashboard/billing",
+                  },
+                  {
+                    id: "pro" as PlanId,
+                    name: "Pro",
+                    desc: "For professionals and small teams",
+                    price: "₹99",
+                    period: "/mo",
+                    features: ["10 meetings/month", "Full transcription", "AI summaries + action items", "Priority support"],
+                    cta: "Upgrade to Pro",
+                    ctaHref: "/dashboard/billing",
+                  },
+                  {
+                    id: "elite" as PlanId,
+                    name: "Elite",
+                    desc: "Unlimited power for power users",
+                    price: "₹199",
+                    period: "/mo",
+                    features: ["Unlimited meetings", "All AI features", "Auto-share integrations", "Dedicated support"],
+                    cta: "Upgrade to Elite",
+                    ctaHref: "/dashboard/billing",
+                  },
+                ].map((plan) => {
+                  const isCurrent = currentPlan === plan.id;
+                  return (
+                    <div
+                      key={plan.id}
+                      className={cn(
+                        "relative rounded-xl border bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition",
+                        isCurrent ? "border-[#6C3FF5]" : "border-[#DADCE0]"
+                      )}
+                    >
+                      {isCurrent && (
+                        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                          <span className="rounded-full bg-[#6C3FF5] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white">
+                            Current Plan
+                          </span>
+                        </div>
+                      )}
+                      <h4 className="text-base font-bold text-[#202124]">{plan.name}</h4>
+                      <p className="mt-0.5 text-xs text-[#5F6368]">{plan.desc}</p>
+                      <p className="mt-3 text-2xl font-bold text-[#202124]">
+                        {plan.price}
+                        <span className="text-sm font-normal text-[#9AA0A6]">{plan.period}</span>
+                      </p>
+                      <ul className="mt-4 space-y-2">
+                        {plan.features.map((f) => (
+                          <li key={f} className="flex items-center gap-2 text-xs text-[#5F6368]">
+                            <Check className="h-3.5 w-3.5 shrink-0 text-[#34A853]" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                      <a
+                        href={plan.ctaHref}
+                        className={cn(
+                          "mt-5 flex w-full items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition",
+                          isCurrent
+                            ? "border border-[#6C3FF5] text-[#6C3FF5] hover:bg-[#EDE9FE]"
+                            : "bg-[#6C3FF5] text-white hover:bg-[#5B2FE0]"
+                        )}
+                      >
+                        {isCurrent ? "Current Plan" : plan.cta}
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Payment history table */}
+              <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="border-b border-[#DADCE0] px-5 py-4">
+                  <p className="text-sm font-semibold text-[#202124]">Payment History</p>
+                </div>
+                {payments.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-[#F8F9FA]">
+                        <tr>
+                          {["Date", "Plan", "Amount", "Status", "Invoice"].map((h) => (
+                            <th key={h} className="px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#F8F9FA]">
+                        {payments.map((p) => (
+                          <tr key={p.id} className="bg-white hover:bg-[#F8F9FA]">
+                            <td className="px-5 py-3 text-[#5F6368]">{formatDate(p.date)}</td>
+                            <td className="px-5 py-3 font-medium text-[#202124]">{p.plan}</td>
+                            <td className="px-5 py-3 text-[#5F6368]">{formatCurrency(p.amount / 100)}</td>
+                            <td className="px-5 py-3">
+                              {p.status === "paid" ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[11px] font-semibold text-[#137333]">
+                                  <Check className="h-3 w-3" />
+                                  PAID
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full bg-[#FEF7E0] px-2.5 py-0.5 text-[11px] font-semibold text-[#B06000]">
+                                  {p.status}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3">
+                              {p.invoice ? (
+                                <a
+                                  href={p.invoice}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-[#6C3FF5] hover:text-[#5B2FE0] text-xs font-medium"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                  Invoice
+                                </a>
+                              ) : (
+                                <span className="text-xs text-[#9AA0A6]">—</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="px-5 py-6 text-sm text-[#9AA0A6]">No payments yet.</p>
+                )}
+              </div>
+            </section>
+          ) : null}
+
+          {/* ══════════════════════════════════════════════════════════════════
+              PREFERENCES TAB
+          ══════════════════════════════════════════════════════════════════ */}
+          {activeTab === "preferences" ? (
+            <section className="space-y-5 pb-24">
+              {/* Header */}
+              <div className="flex items-center gap-3">
+                <h2 className="font-['Work_Sans',sans-serif] text-lg font-bold text-[#202124]">Preferences</h2>
+              </div>
+
+              {/* Two-column: Email Notifications + AI Behavior */}
+              <div className="grid gap-5 lg:grid-cols-2">
+                {/* Email Notifications card */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="mb-4 text-sm font-semibold text-[#202124]">Email Notifications</p>
+                  <div className="space-y-4">
+                    {[
+                      { key: "meetingSummaryEmail" as const, label: "Meeting Summary", desc: "Receive an email when your meeting summary is ready." },
+                      { key: "actionItemsEmail" as const, label: "Action Items", desc: "Get emailed your action items after each meeting." },
+                      { key: "weeklyDigest" as const, label: "Weekly Digest", desc: "A weekly roundup of all your meetings and insights." },
+                      { key: "productUpdates" as const, label: "Product Updates", desc: "New features, improvements, and announcements." },
+                    ].map((item) => (
+                      <div key={item.key} className="flex items-start justify-between gap-4">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[#202124]">{item.label}</p>
+                          <p className="mt-0.5 text-xs text-[#9AA0A6]">{item.desc}</p>
+                        </div>
+                        <Toggle
+                          checked={preferences[item.key]}
+                          onChange={(v) => setPreferences((p) => ({ ...p, [item.key]: v }))}
+                        />
+                      </div>
                     ))}
                   </div>
                 </div>
 
-                <Button
-                  type="button"
-                  className="w-full"
-                  disabled={!prefsChanged || isSavingPrefs}
-                  onClick={() => void savePreferences()}
-                >
-                  {isSavingPrefs ? "Saving…" : prefsChanged ? "Save Preferences" : "Preferences Saved"}
-                </Button>
-              </Card>
+                {/* AI Behavior card */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="mb-4 text-sm font-semibold text-[#202124]">AI Behavior</p>
+                  <div className="space-y-5">
+                    {/* Preferred Email Tone */}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Preferred Email Tone</p>
+                      <ChipSelector
+                        options={["Professional", "Friendly", "Concise", "Formal"] as const}
+                        value={preferences.defaultTone}
+                        onChange={(v) => setPreferences((p) => ({ ...p, defaultTone: v }))}
+                      />
+                    </div>
+                    {/* Summary Length */}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Summary Length</p>
+                      <ChipSelector
+                        options={["brief", "standard", "detailed"] as const}
+                        value={preferences.summaryLength}
+                        onChange={(v) => setPreferences((p) => ({ ...p, summaryLength: v }))}
+                      />
+                    </div>
+                    {/* Primary Language */}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Primary Language</p>
+                      <ChipSelector
+                        options={["English", "Hindi"] as const}
+                        value={preferences.language}
+                        onChange={(v) => setPreferences((p) => ({ ...p, language: v }))}
+                      />
+                    </div>
+                    {/* Bot display name */}
+                    <div>
+                      <p className="mb-2 text-xs font-semibold text-[#5F6368]">Notetaker Display Name</p>
+                      <input
+                        value={preferences.botDisplayName}
+                        onChange={(e) => setPreferences((p) => ({ ...p, botDisplayName: e.target.value }))}
+                        className="w-full rounded-xl border border-[#DADCE0] bg-white px-3 py-2 text-sm text-[#202124] outline-none focus:border-[#6C3FF5]"
+                        placeholder="Artiva Notetaker"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Auto-share Integrations card */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <p className="mb-1 text-sm font-semibold text-[#202124]">Auto-share Integrations</p>
+                <p className="mb-5 text-xs text-[#9AA0A6]">Automatically send the summary to selected destinations as soon as it&apos;s generated.</p>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {([
+                    { key: "autoShareSlack" as const,  label: "Slack",  emoji: "💬", desc: "Post to your channel" },
+                    { key: "autoShareGmail" as const,  label: "Gmail",  emoji: "📧", desc: "Email to recipients" },
+                    { key: "autoShareNotion" as const, label: "Notion", emoji: "📝", desc: "Create a Notion page" },
+                    { key: "autoShareJira" as const,   label: "Jira",   emoji: "🎯", desc: "Create tickets" },
+                  ]).map((item) => (
+                    <div
+                      key={item.key}
+                      className={cn(
+                        "flex flex-col items-center rounded-xl border p-4 text-center transition",
+                        preferences[item.key] ? "border-[#6C3FF5] bg-[#EDE9FE]/30" : "border-[#DADCE0] bg-[#F8F9FA]"
+                      )}
+                    >
+                      <span className="text-2xl">{item.emoji}</span>
+                      <p className="mt-2 text-sm font-semibold text-[#202124]">{item.label}</p>
+                      <p className="mt-0.5 text-xs text-[#9AA0A6]">{item.desc}</p>
+                      <div className="mt-3">
+                        <Toggle
+                          checked={preferences[item.key]}
+                          onChange={(v) => setPreferences((p) => ({ ...p, [item.key]: v }))}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </section>
           ) : null}
 
-          {/* ── Integrations tab ── */}
+          {/* ══════════════════════════════════════════════════════════════════
+              INTEGRATIONS TAB
+          ══════════════════════════════════════════════════════════════════ */}
           {activeTab === "integrations" ? (
-            <section className="space-y-6">
-              <SectionHeader
-                title="Integrations"
-                description="Connect Artivaa with your favourite tools for automatic meeting follow-up."
-              />
-              <Card className="divide-y divide-slate-100 p-0 overflow-hidden">
+            <section className="space-y-4">
+              <div className="flex items-center gap-3">
+                <h2 className="font-['Work_Sans',sans-serif] text-lg font-bold text-[#202124]">Integrations</h2>
+              </div>
+
+              <div className="rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden divide-y divide-[#F8F9FA]">
                 {/* Google Calendar */}
                 <div className="p-5">
                   <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e8f0fe] text-sm font-bold text-[#4285f4]">G</div>
                       <div>
-                        <p className="text-sm font-semibold text-[#111827]">Google Calendar</p>
-                        <p className="text-xs text-[#6b7280]">Auto-detect and join scheduled meetings.</p>
+                        <p className="text-sm font-semibold text-[#202124]">Google Calendar</p>
+                        <p className="text-xs text-[#5F6368]">Auto-detect and join scheduled meetings.</p>
                       </div>
                     </div>
-                    <Badge variant="available">Connected ✓</Badge>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-1 text-[11px] font-semibold text-[#137333]">
+                      <Check className="h-3 w-3" />
+                      Connected
+                    </span>
                   </div>
                 </div>
 
-                {/* All integrations link */}
                 <div className="p-5">
-                  <p className="text-sm text-[#6b7280]">
+                  <p className="text-sm text-[#5F6368]">
                     Configure Slack, Gmail, Notion, Jira, and more to run automatically after meetings complete.
                   </p>
                   <div className="mt-4">
-                    <Button asChild>
-                      <a href="/dashboard/integrations">Open Integrations</a>
-                    </Button>
+                    <a
+                      href="/dashboard/integrations"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition"
+                    >
+                      Open Integrations
+                      <ChevronRight className="h-4 w-4" />
+                    </a>
                   </div>
                 </div>
-              </Card>
+              </div>
             </section>
           ) : null}
 
-          {/* ── Usage & Limits tab ── */}
+          {/* ══════════════════════════════════════════════════════════════════
+              USAGE & LIMITS TAB
+          ══════════════════════════════════════════════════════════════════ */}
           {activeTab === "usage" ? (
-            <section className="space-y-6">
-              <SectionHeader title="Usage & Limits" description="Monitor your Artivaa usage and feature availability." />
-              <Card className="space-y-6 p-6">
-                {/* Stats grid */}
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {/* Meetings this month */}
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Meetings This Month</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.meetingsThisMonth ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">
-                      {subscription?.limits.unlimited
-                        ? "Unlimited available"
-                        : `of ${meetingsLimit} allowed`}
+            <section className="space-y-5">
+              {/* Header */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <h2 className="font-['Work_Sans',sans-serif] text-lg font-bold text-[#202124]">Usage &amp; Limits</h2>
+                </div>
+                <a
+                  href="/dashboard/billing"
+                  className="flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition"
+                >
+                  <Crown className="h-4 w-4" />
+                  Upgrade Plan
+                </a>
+              </div>
+
+              {/* Stats grid 2×3 */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Meetings This Month */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Meetings This Month</p>
+                  <p className="mt-2 text-3xl font-bold text-[#202124]">{usageStats?.meetingsThisMonth ?? 0}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#EA4335]">
+                    Limit {subscription?.limits.unlimited ? "∞" : meetingsLimit}
+                  </p>
+                  <div className="mt-3">
+                    <ProgressBar
+                      value={subscription?.limits.unlimited ? 0 : meetingUsagePercent}
+                      colorClass={progressColor(meetingUsagePercent)}
+                    />
+                  </div>
+                </div>
+
+                {/* Meetings All Time */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Meetings All Time</p>
+                  <p className="mt-2 text-3xl font-bold text-[#202124]">{usageStats?.meetingsAllTime ?? 0}</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">total recorded</p>
+                </div>
+
+                {/* Transcripts */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Transcripts</p>
+                  <p className="mt-2 text-3xl font-bold text-[#202124]">{usageStats?.transcriptsGenerated ?? 0}</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">auto-generated</p>
+                  <div className="mt-3">
+                    <ProgressBar value={Math.min(100, (usageStats?.transcriptsGenerated ?? 0) * 10)} />
+                  </div>
+                </div>
+
+                {/* Action Items */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Action Items</p>
+                  <p className="mt-2 text-3xl font-bold text-[#202124]">{usageStats?.actionItemsCreated ?? 0}</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">extracted by AI</p>
+                  <div className="mt-3">
+                    <ProgressBar value={Math.min(100, (usageStats?.actionItemsCreated ?? 0) * 5)} />
+                  </div>
+                </div>
+
+                {/* Documents Analyzed */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Documents Analyzed</p>
+                  <p className="mt-2 text-3xl font-bold text-[#202124]">{usageStats?.documentsAnalyzed ?? 0}</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">uploaded files</p>
+                  <div className="mt-3">
+                    <ProgressBar value={Math.min(100, (usageStats?.documentsAnalyzed ?? 0) * 10)} />
+                  </div>
+                </div>
+
+                {/* Member Since */}
+                <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Member Since</p>
+                  <p className="mt-2 text-xl font-bold text-[#202124]">{memberSince}</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">account created</p>
+                </div>
+              </div>
+
+              {/* Usage Monitor card */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <p className="text-sm font-semibold text-[#202124]">Usage Monitor</p>
+                {meetingUsagePercent >= 75 && !subscription?.limits.unlimited && (
+                  <div className="mt-3 flex items-start gap-2 rounded-xl bg-[#FEF7E0] px-4 py-3">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#B06000]" />
+                    <p className="text-xs text-[#B06000]">
+                      You&apos;ve used {meetingUsagePercent}% of your monthly meeting limit. Consider upgrading your plan.
                     </p>
-                    <div className="mt-3">
-                      <ProgressBar
-                        value={subscription?.limits.unlimited ? 100 : meetingUsagePercent}
-                        colorClass={progressColor(meetingUsagePercent)}
-                      />
-                    </div>
                   </div>
-
-                  {/* All-time meetings */}
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">All-Time Meetings</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.meetingsAllTime ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">total recorded</p>
+                )}
+                <div className="mt-4 space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium text-[#202124]">Meetings usage</span>
+                    <span className="font-semibold text-[#202124]">
+                      {meetingsUsed} / {subscription?.limits.unlimited ? "∞" : meetingsLimit} meetings
+                    </span>
                   </div>
-
-                  {/* Transcripts */}
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Transcripts Generated</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.transcriptsGenerated ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">auto-generated</p>
-                    <div className="mt-3">
-                      <ProgressBar value={Math.min(100, (usageStats?.transcriptsGenerated ?? 0) * 10)} />
-                    </div>
-                  </div>
-
-                  {/* Action items */}
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Action Items Created</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.actionItemsCreated ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">extracted by AI</p>
-                    <div className="mt-3">
-                      <ProgressBar value={Math.min(100, (usageStats?.actionItemsCreated ?? 0) * 5)} />
-                    </div>
-                  </div>
-
-                  {/* Documents */}
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Documents Analyzed</p>
-                    <p className="mt-3 text-3xl font-bold text-[#111827]">{usageStats?.documentsAnalyzed ?? 0}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">uploaded files</p>
-                    <div className="mt-3">
-                      <ProgressBar value={Math.min(100, (usageStats?.documentsAnalyzed ?? 0) * 10)} />
-                    </div>
-                  </div>
-
-                  {/* Member since */}
-                  <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5">
-                    <p className="text-sm font-semibold text-[#111827]">Member Since</p>
-                    <p className="mt-3 text-lg font-bold text-[#111827]">{memberSince}</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">account created</p>
-                  </div>
+                  <ProgressBar
+                    value={subscription?.limits.unlimited ? 0 : meetingUsagePercent}
+                    colorClass={progressColor(meetingUsagePercent)}
+                  />
+                  {subscription?.planEndsAt && (
+                    <p className="text-xs text-[#9AA0A6]">Resets on {formatDate(planEndsAt)}</p>
+                  )}
                 </div>
+              </div>
 
-                {/* Feature availability table */}
-                <div className="overflow-hidden rounded-2xl border border-[#e5e7eb]">
-                  <div className="border-b border-[#e5e7eb] px-5 py-4">
-                    <p className="text-sm font-semibold text-[#111827]">Feature Availability</p>
-                    <p className="mt-1 text-xs text-[#9ca3af]">What&apos;s enabled on your current plan.</p>
-                  </div>
-                  <div className="divide-y divide-[#f3f4f6]">
-                    {[
-                      { label: "Meeting Bot", key: "meetingBot" as const },
-                      { label: "Transcription", key: "transcription" as const },
-                      { label: "AI Summary", key: "summary" as const },
-                      { label: "Action Items", key: "actionItems" as const },
-                      { label: "Meeting History", key: "history" as const },
-                    ].map((feature) => {
-                      const enabled = subscription?.limits[feature.key] ?? false;
-                      return (
-                        <div key={feature.key} className="flex items-center justify-between px-5 py-3">
-                          <p className="text-sm text-[#374151]">{feature.label}</p>
-                          {enabled ? (
-                            <span className="flex items-center gap-1 text-xs font-medium text-[#16a34a]">
-                              <Check className="h-4 w-4" /> Enabled
-                            </span>
-                          ) : (
-                            <span className="text-xs font-medium text-[#9ca3af]">Not available</span>
-                          )}
+              {/* Feature Entitlements */}
+              <div className="rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
+                <div className="border-b border-[#DADCE0] px-5 py-4">
+                  <p className="text-sm font-semibold text-[#202124]">Feature Entitlements</p>
+                  <p className="mt-0.5 text-xs text-[#9AA0A6]">What&apos;s enabled on your current plan.</p>
+                </div>
+                <div className="divide-y divide-[#F8F9FA]">
+                  {[
+                    { label: "Meeting Bot",      key: "meetingBot" as const,      icon: "smart_toy",    desc: "AI bot joins your meetings automatically" },
+                    { label: "Transcription",    key: "transcription" as const,   icon: "transcribe",   desc: "Real-time speech-to-text transcription" },
+                    { label: "AI Summary",       key: "summary" as const,         icon: "summarize",    desc: "Automatic meeting summaries" },
+                    { label: "Action Items",     key: "actionItems" as const,     icon: "task_alt",     desc: "AI-extracted tasks and follow-ups" },
+                    { label: "Meeting History",  key: "history" as const,         icon: "history",      desc: "Access past meetings and recordings" },
+                  ].map((feature) => {
+                    const enabled = subscription?.limits[feature.key] ?? false;
+                    return (
+                      <div key={feature.key} className="flex items-center gap-4 px-5 py-4">
+                        <div className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full",
+                          enabled ? "bg-[#EDE9FE]" : "bg-[#F8F9FA]"
+                        )}>
+                          <MSIcon
+                            name={feature.icon}
+                            className={cn("text-[18px] leading-none", enabled ? "text-[#6C3FF5]" : "text-[#9AA0A6]")}
+                          />
                         </div>
-                      );
-                    })}
-                    <div className="flex items-center justify-between px-5 py-3">
-                      <p className="text-sm text-[#374151]">Meetings per month</p>
-                      <p className="text-sm font-semibold text-[#111827]">
-                        {subscription?.limits.unlimited ? "Unlimited" : meetingsLimit}
-                      </p>
-                    </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[#202124]">{feature.label}</p>
+                          <p className="text-xs text-[#9AA0A6]">{feature.desc}</p>
+                        </div>
+                        {enabled ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-[11px] font-semibold text-[#137333]">
+                            <Check className="h-3 w-3" />
+                            Enabled
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-[#F8F9FA] px-2.5 py-0.5 text-[11px] font-semibold text-[#9AA0A6]">
+                            Pro Plan Only
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between px-5 py-4">
+                    <p className="text-sm font-medium text-[#202124]">Meetings per month</p>
+                    <p className="text-sm font-semibold text-[#202124]">
+                      {subscription?.limits.unlimited ? "Unlimited" : meetingsLimit}
+                    </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Delete data */}
-                <div className="flex items-center justify-between gap-4 rounded-2xl border border-[#fecaca] bg-[#fff5f5] px-5 py-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[#b91c1c]">Delete All Meeting Data</p>
-                    <p className="mt-1 text-xs text-[#6b7280]">Permanently removes all transcripts, summaries, and action items.</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsDeleteDataOpen(true)}
-                    className="flex items-center gap-2 rounded-xl border border-[#dc2626] px-4 py-2 text-sm font-semibold text-[#dc2626] transition hover:bg-[#fef2f2]"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete Data
-                  </button>
+              {/* Delete data */}
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-[#FCE8E6] bg-[#FCE8E6]/30 px-5 py-4">
+                <div>
+                  <p className="text-sm font-semibold text-[#EA4335]">Delete All Meeting Data</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">Permanently removes all transcripts, summaries, and action items.</p>
                 </div>
-              </Card>
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteDataOpen(true)}
+                  className="flex items-center gap-2 rounded-xl border border-[#EA4335] px-4 py-2 text-sm font-semibold text-[#EA4335] transition hover:bg-[#FCE8E6] whitespace-nowrap"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete Data
+                </button>
+              </div>
             </section>
           ) : null}
+
+        </div>{/* end main content */}
+      </div>{/* end flex layout */}
+
+      {/* ── Sticky save bar (Preferences) ── */}
+      {activeTab === "preferences" && prefsChanged ? (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#DADCE0] bg-white px-6 py-3 shadow-[0_-1px_4px_rgba(0,0,0,0.08)]">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-4">
+            <p className="text-sm text-[#5F6368]">You have unsaved changes…</p>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPreferences(savedPreferences)}
+                className="rounded-xl border border-[#DADCE0] px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition"
+              >
+                Reset to Defaults
+              </button>
+              <button
+                type="button"
+                disabled={isSavingPrefs}
+                onClick={() => void savePreferences()}
+                className="rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] disabled:opacity-50 transition"
+              >
+                {isSavingPrefs ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* Modals */}
       <ConfirmModal

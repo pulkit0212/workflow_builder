@@ -321,21 +321,18 @@ export function TaskGeneratorWorkspace() {
       {/* ── Left panel ── */}
       <div className="space-y-4">
 
-        {/* Mode toggle — segmented control */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/* Input mode segmented control */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Input Mode</p>
+          </div>
           <div className="flex">
             {INPUT_MODES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setMode(item.id)}
+              <button key={item.id} type="button" onClick={() => setMode(item.id)}
                 className={cn(
                   "flex-1 py-3 text-xs font-semibold transition-all",
-                  mode === item.id
-                    ? "bg-[#6c63ff] text-white"
-                    : "text-slate-500 hover:bg-slate-50"
-                )}
-              >
+                  mode === item.id ? "bg-[#6C3FF5] text-white" : "text-[#5F6368] hover:bg-[#F8F9FA]"
+                )}>
                 {item.label}
               </button>
             ))}
@@ -344,59 +341,46 @@ export function TaskGeneratorWorkspace() {
 
         {/* Meeting selector — only when mode === "meeting" */}
         {mode === "meeting" && (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-              <p className="text-sm font-bold text-slate-900">Select a meeting</p>
-              <p className="mt-0.5 text-xs text-slate-400">Pick a completed meeting to load its context</p>
+          <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-3">
+              <p className="text-sm font-semibold text-[#202124]">Select a meeting</p>
+              <p className="mt-0.5 text-xs text-[#5F6368]">Pick a completed meeting to load its context</p>
             </div>
             <div className="p-3">
               <div className="relative mb-3">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9AA0A6]" />
+                <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Search completed meetings..."
-                  className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 text-sm text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-                />
+                  className="h-9 w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] pl-8 pr-3 text-sm text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]" />
               </div>
               {isLoadingMeetings ? (
-                <div className="space-y-2">
-                  {[0, 1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse rounded-xl bg-slate-100" />)}
-                </div>
+                <div className="space-y-2">{[0,1,2,3].map((i) => <div key={i} className="h-14 animate-pulse rounded-lg bg-[#F1F3F4]" />)}</div>
               ) : meetings.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f5f3ff]">
-                    <CheckSquare className="h-6 w-6 text-[#6c63ff]" />
+                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[#EDE9FE]">
+                    <CheckSquare className="h-6 w-6 text-[#6C3FF5]" />
                   </div>
-                  <p className="text-sm font-semibold text-slate-700">No completed meetings</p>
-                  <p className="mt-1 text-xs text-slate-400">Complete a meeting to load its context here</p>
+                  <p className="text-sm font-semibold text-[#202124]">No completed meetings</p>
+                  <p className="mt-1 text-xs text-[#5F6368]">Complete a meeting to load its context here</p>
                 </div>
               ) : (
-                <div className="max-h-[280px] space-y-1.5 overflow-y-auto pr-0.5">
+                <div className="max-h-[280px] space-y-1 overflow-y-auto pr-0.5">
                   {meetings.map((meeting) => {
                     const selected = meeting.id === selectedMeetingId;
                     return (
-                      <button
-                        key={meeting.id}
-                        type="button"
-                        onClick={() => applyMeetingInput(meeting)}
+                      <button key={meeting.id} type="button" onClick={() => applyMeetingInput(meeting)}
                         className={cn(
-                          "flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-all",
-                          selected
-                            ? "border-[#6c63ff] bg-[#f5f3ff] shadow-sm"
-                            : "border-transparent hover:border-slate-200 hover:bg-slate-50"
-                        )}
-                      >
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6c63ff] text-xs font-bold text-white">
+                          "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all",
+                          selected ? "border-[#6C3FF5] bg-[#EDE9FE]" : "border-transparent hover:border-[#DADCE0] hover:bg-[#F8F9FA]"
+                        )}>
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#6C3FF5] text-xs font-bold text-white">
                           {meeting.title.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "M"}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className={cn("truncate text-sm font-semibold", selected ? "text-[#6c63ff]" : "text-slate-900")}>
-                            {meeting.title}
-                          </p>
-                          <p className="text-xs text-slate-400">{formatMeetingDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
+                          <p className={cn("truncate text-sm font-semibold", selected ? "text-[#6C3FF5]" : "text-[#202124]")}>{meeting.title}</p>
+                          <p className="text-xs text-[#5F6368]">{formatMeetingDate(meeting.scheduledStartTime ?? meeting.createdAt)}</p>
                         </div>
-                        {selected && <Check className="h-4 w-4 shrink-0 text-[#6c63ff]" />}
+                        {selected && <Check className="h-4 w-4 shrink-0 text-[#6C3FF5]" />}
                       </button>
                     );
                   })}
@@ -406,155 +390,115 @@ export function TaskGeneratorWorkspace() {
           </div>
         )}
 
-        {/* Task input */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">
-              {mode === "meeting" ? "Meeting context" : "Task input"}
-            </p>
-            <p className="mt-0.5 text-xs text-slate-400">
-              {mode === "voice"
-                ? "Works great with Google Voice transcripts"
-                : mode === "meeting"
-                  ? "Loads summary or transcript from a completed meeting"
-                  : "The messier the better — Artivaa will structure it"}
-            </p>
+        {/* Input Content */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="border-b border-[#DADCE0] bg-[#F8F9FA] px-4 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Input Content</p>
           </div>
           <div className="p-3">
-            <textarea
-              id="task-input"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              rows={12}
-              className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+            <textarea id="task-input" value={input} onChange={(e) => setInput(e.target.value)} rows={10}
+              className="w-full resize-none rounded-lg border border-[#DADCE0] bg-[#F8F9FA] p-3 text-sm leading-6 text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]"
               placeholder={
-                mode === "voice"
-                  ? `Paste your voice-to-text transcript here...\n\nExample:\nokay so um we need to uh get the proposal done\nby thursday sarah is handling that and then\nmike needs to review it before we send`
-                  : mode === "meeting"
-                    ? "Select a completed meeting to load transcript or summary here..."
-                    : `Paste anything here - rough notes, brain dump,\nWhatsApp messages, bullet points...\n\nExample:\nneed to call john about the contract asap\npriya should finish the homepage design by friday\nsomeone needs to fix the login bug - critical`
-              }
-            />
-            <p className="mt-1.5 text-right text-xs text-slate-400">{input.length.toLocaleString()} characters</p>
+                mode === "voice" ? "Paste your voice-to-text transcript here..."
+                  : mode === "meeting" ? "Select a completed meeting to load transcript or summary here..."
+                  : "Paste your unformatted meeting notes, brain dumps, or scattered to-do items here..."
+              } />
+            <p className="mt-1.5 text-right text-xs text-[#9AA0A6]">{input.length.toLocaleString()} / 2,000 characters</p>
           </div>
         </div>
 
         {/* Settings */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-            <p className="text-sm font-bold text-slate-900">Settings</p>
-            <p className="mt-0.5 text-xs text-slate-400">Customize how tasks are generated</p>
-          </div>
-          <div className="space-y-4 p-3">
-
-            {/* Team members */}
+        <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="space-y-4 p-4">
+            {/* Assign Team Members */}
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="team-members">
-                Team members (optional)
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]" htmlFor="team-members">
+                Assign Team Members
               </label>
               <div className="relative">
-                <Users className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <input
-                  id="team-members"
-                  value={teamMembers}
-                  onChange={(e) => setTeamMembers(e.target.value)}
-                  placeholder="e.g. Rahul, Priya, David, Sarah"
-                  className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 pl-8 pr-3 text-sm text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-                />
+                <Users className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#9AA0A6]" />
+                <input id="team-members" value={teamMembers} onChange={(e) => setTeamMembers(e.target.value)}
+                  placeholder="e.g. Sarah J., Mike T., Add..."
+                  className="h-9 w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] pl-8 pr-3 text-sm text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20 placeholder:text-[#9AA0A6]" />
               </div>
-              <p className="text-xs text-slate-400">Helps assign tasks to the right people</p>
             </div>
 
-            {/* Date reference */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-slate-600" htmlFor="date-context">
-                Date reference
-              </label>
-              <input
-                id="date-context"
-                value={dateContext}
-                onChange={(e) => setDateContext(e.target.value)}
-                placeholder={`Today is ${formatCurrentDate()}`}
-                className="h-9 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
-              />
-              <p className="text-xs text-slate-400">Helps interpret relative dates like "Friday" or "next week"</p>
+            {/* Date Reference + Priority Focus */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]" htmlFor="date-context">Date Reference</label>
+                <input id="date-context" type="date" value={dateContext.replace(/^Today is /, "")}
+                  onChange={(e) => setDateContext(e.target.value || `Today is ${formatCurrentDate()}`)}
+                  className="h-9 w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] px-3 text-sm text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20" />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Priority Focus</label>
+                <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value as OutputFormat)}
+                  className="h-9 w-full rounded-lg border border-[#DADCE0] bg-[#F8F9FA] px-3 text-sm text-[#202124] outline-none transition focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20">
+                  <option value="detailed">Standard</option>
+                  <option value="simple">Simple</option>
+                  <option value="jira">Jira</option>
+                </select>
+              </div>
             </div>
 
             {/* Output format chips */}
             <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-slate-600">Output format</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Output Format</p>
               <div className="flex gap-1.5">
                 {OUTPUT_FORMATS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setOutputFormat(item.id)}
+                  <button key={item.id} type="button" onClick={() => setOutputFormat(item.id)}
                     className={cn(
-                      "flex-1 rounded-xl border px-2 py-2 text-center text-xs font-semibold transition-all",
-                      outputFormat === item.id
-                        ? "border-[#6c63ff] bg-[#f5f3ff] text-[#6c63ff]"
-                        : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-                    )}
-                  >
+                      "flex-1 rounded-lg border px-2 py-2 text-center text-xs font-semibold transition-all",
+                      outputFormat === item.id ? "border-[#6C3FF5] bg-[#6C3FF5] text-white" : "border-[#DADCE0] text-[#5F6368] hover:border-[#6C3FF5]/40"
+                    )}>
                     {item.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Auto-priority toggle */}
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-              <input
-                type="checkbox"
-                checked={autoPriority}
-                onChange={(e) => setAutoPriority(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-[#6c63ff] focus:ring-[#6c63ff]"
-              />
+            {/* Auto-priority */}
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[#DADCE0] bg-[#F8F9FA] p-3">
+              <input type="checkbox" checked={autoPriority} onChange={(e) => setAutoPriority(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-[#DADCE0] text-[#6C3FF5] focus:ring-[#6C3FF5]" />
               <div>
-                <span className="block text-sm font-semibold text-slate-900">Auto-detect priority</span>
-                <p className="mt-0.5 text-xs text-slate-400">Artivaa will infer urgency from language used</p>
+                <span className="block text-sm font-semibold text-[#202124]">Auto-detect priority</span>
+                <p className="mt-0.5 text-xs text-[#5F6368]">Artivaa will infer urgency from language used</p>
               </div>
             </label>
           </div>
         </div>
 
         {error && (
-          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+          <div className="rounded-lg border border-[#FCE8E6] bg-[#FCE8E6] px-4 py-3 text-sm text-[#C5221F]">{error}</div>
         )}
 
-        <button
-          type="button"
-          disabled={!canGenerate}
-          onClick={() => void handleGenerate()}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6c63ff] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
-        >
-          {isGenerating ? (
-            <><LoadingSpinner size="sm" /> Structuring your tasks…</>
-          ) : (
-            <><Wand2 className="h-4 w-4" /> Generate Tasks</>
-          )}
+        <button type="button" disabled={!canGenerate} onClick={() => void handleGenerate()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#6C3FF5] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#5B2FE0] disabled:opacity-50 shadow-sm">
+          {isGenerating ? <><LoadingSpinner size="sm" /> Structuring your tasks…</> : <><Wand2 className="h-4 w-4" /> Generate Tasks</>}
         </button>
       </div>
 
       {/* ── Right panel ── */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
         {isGenerating ? (
           <div className="flex h-full flex-col">
-            <div className="flex items-center gap-3 border-b border-[#ede9fe] bg-[#f5f3ff] px-5 py-4">
+            <div className="flex items-center gap-3 border-b border-[#EDE9FE] bg-[#F5F3FF] px-5 py-4">
               <LoadingSpinner />
               <div>
-                <p className="text-sm font-semibold text-[#6c63ff]">Artivaa is reading your notes…</p>
-                <p className="text-xs text-[#9b8fff]">Extracting and structuring tasks</p>
+                <p className="text-sm font-semibold text-[#6C3FF5]">Artivaa is reading your notes…</p>
+                <p className="text-xs text-[#9AA0A6]">Extracting and structuring tasks</p>
               </div>
             </div>
             <div className="space-y-3 p-5">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="overflow-hidden rounded-xl border border-slate-100">
-                  <div className="h-10 animate-pulse bg-slate-50" />
+                <div key={i} className="overflow-hidden rounded-xl border border-[#DADCE0]">
+                  <div className="h-10 animate-pulse bg-[#F8F9FA]" />
                   <div className="space-y-2 p-4">
-                    <div className="h-4 w-3/4 animate-pulse rounded-full bg-slate-100" />
-                    <div className="h-4 w-full animate-pulse rounded-full bg-slate-100" />
-                    <div className="h-3 w-1/2 animate-pulse rounded-full bg-slate-100" />
+                    <div className="h-4 w-3/4 animate-pulse rounded-full bg-[#F1F3F4]" />
+                    <div className="h-4 w-full animate-pulse rounded-full bg-[#F1F3F4]" />
+                    <div className="h-3 w-1/2 animate-pulse rounded-full bg-[#F1F3F4]" />
                   </div>
                 </div>
               ))}
@@ -563,7 +507,7 @@ export function TaskGeneratorWorkspace() {
         ) : tasks.length === 0 ? (
           <div className="flex min-h-[500px] flex-col items-center justify-center gap-4 p-8 text-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#f5f3ff]">
-              <Sparkles className="h-8 w-8 text-[#6c63ff]" />
+              <Sparkles className="h-8 w-8 text-[#6C3FF5]" />
             </div>
             <div>
               <p className="text-base font-bold text-slate-900">Your structured tasks will appear here</p>
@@ -602,7 +546,7 @@ export function TaskGeneratorWorkspace() {
                   type="button"
                   onClick={() => void handleSaveAll()}
                   disabled={isSaving || tasks.length === 0}
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
                 >
                   {isSaving ? <LoadingSpinner size="sm" /> : null}
                   {hasSaved ? "✓ Saved" : "Save All"}
@@ -648,40 +592,40 @@ export function TaskGeneratorWorkspace() {
                             <button
                               type="button"
                               onClick={() => updateTask(task.id, { completed: !task.completed })}
-                              className="mt-0.5 text-slate-400 transition hover:text-[#6c63ff]"
+                              className="mt-0.5 text-slate-400 transition hover:text-[#6C3FF5]"
                             >
-                              {task.completed ? <CheckSquare className="h-5 w-5 text-[#6c63ff]" /> : <Square className="h-5 w-5" />}
+                              {task.completed ? <CheckSquare className="h-5 w-5 text-[#6C3FF5]" /> : <Square className="h-5 w-5" />}
                             </button>
                             <div className="flex-1 space-y-2">
                               <input
                                 value={task.task}
                                 onChange={(e) => updateTask(task.id, { task: e.target.value })}
-                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20"
                               />
                               <textarea
                                 value={task.notes}
                                 onChange={(e) => updateTask(task.id, { notes: e.target.value })}
                                 rows={2}
                                 placeholder="Notes"
-                                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20"
                               />
                               <div className="grid gap-2 md:grid-cols-3">
                                 <input
                                   value={task.owner}
                                   onChange={(e) => updateTask(task.id, { owner: e.target.value })}
                                   placeholder="Owner"
-                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20"
                                 />
                                 <input
                                   value={task.due_date}
                                   onChange={(e) => updateTask(task.id, { due_date: e.target.value })}
                                   placeholder="Due date"
-                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20"
                                 />
                                 <select
                                   value={task.priority}
                                   onChange={(e) => updateTask(task.id, { priority: e.target.value as Priority })}
-                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6c63ff] focus:bg-white focus:ring-2 focus:ring-[#6c63ff]/20"
+                                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none focus:border-[#6C3FF5] focus:bg-white focus:ring-2 focus:ring-[#6C3FF5]/20"
                                 >
                                   <option value="High">High</option>
                                   <option value="Medium">Medium</option>
@@ -701,7 +645,7 @@ export function TaskGeneratorWorkspace() {
                             <button
                               type="button"
                               onClick={() => setEditingId(null)}
-                              className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
+                              className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
                             >
                               <Check className="h-3.5 w-3.5" /> Save
                             </button>
@@ -731,8 +675,8 @@ export function TaskGeneratorWorkspace() {
                                 <div className={cn(
                                   "flex h-4 w-4 items-center justify-center rounded border transition",
                                   !isMyTask ? "border-slate-200 bg-slate-100"
-                                    : isSelected ? "border-[#6c63ff] bg-[#6c63ff]"
-                                    : "border-slate-300 bg-white hover:border-[#6c63ff]"
+                                    : isSelected ? "border-[#6C3FF5] bg-[#6C3FF5]"
+                                    : "border-slate-300 bg-white hover:border-[#6C3FF5]"
                                 )}>
                                   {isSelected && isMyTask && (
                                     <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
@@ -743,14 +687,14 @@ export function TaskGeneratorWorkspace() {
                               </button>
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f5f3ff] text-[10px] font-bold text-[#6c63ff]">
+                                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#f5f3ff] text-[10px] font-bold text-[#6C3FF5]">
                                     {index + 1}
                                   </span>
                                   <p className={cn("text-sm font-medium text-slate-900 leading-snug", task.completed && "text-slate-400 line-through")}>
                                     {task.task}
                                   </p>
                                   {isMyTask && (
-                                    <span className="rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6c63ff]">You</span>
+                                    <span className="rounded-full bg-[#f5f3ff] px-1.5 py-0.5 text-[10px] font-semibold text-[#6C3FF5]">You</span>
                                   )}
                                 </div>
                                 {task.notes && (
@@ -801,7 +745,7 @@ export function TaskGeneratorWorkspace() {
                 type="button"
                 onClick={() => void handleSaveAll()}
                 disabled={isSaving || selectedTaskIds.size === 0}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
               >
                 {isSaving ? <LoadingSpinner size="sm" /> : null}
                 {hasSaved ? "✓ Saved" : selectedTaskIds.size === 0 ? "No tasks selected" : `Save ${selectedTaskIds.size} task${selectedTaskIds.size !== 1 ? "s" : ""} to Action Items`}

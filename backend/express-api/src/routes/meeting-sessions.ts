@@ -7,7 +7,7 @@ export const meetingSessionsRouter = Router();
 
 // ── Auto-share helper ─────────────────────────────────────────────────────────
 
-async function triggerAutoShare(userId: string, meetingId: string, row: Record<string, unknown>) {
+export async function triggerAutoShare(userId: string, meetingId: string, row: Record<string, unknown>) {
   // 1. Fetch user's auto-share preferences
   const prefResult = await pool.query(
     `SELECT auto_share_targets FROM user_preferences WHERE user_id = $1 LIMIT 1`,

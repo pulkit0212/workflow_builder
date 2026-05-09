@@ -103,7 +103,7 @@ export function SharePanel({ runId, output, onClose }: SharePanelProps) {
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#f5f3ff]">
-              <Send className="h-4 w-4 text-[#6c63ff]" />
+              <Send className="h-4 w-4 text-[#6C3FF5]" />
             </div>
             <div>
               <p className="text-sm font-bold text-slate-900">Share Summary</p>
@@ -123,7 +123,7 @@ export function SharePanel({ runId, output, onClose }: SharePanelProps) {
           ) : integrations.length === 0 ? (
             <div className="py-8 text-center space-y-3">
               <p className="text-sm text-slate-500">No integrations connected yet.</p>
-              <a href="/dashboard/integrations" className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5b52e0] transition">
+              <a href="/dashboard/integrations" className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5b52e0] transition">
                 <ExternalLink className="h-3.5 w-3.5" /> Connect integrations
               </a>
             </div>
@@ -168,7 +168,7 @@ export function SharePanel({ runId, output, onClose }: SharePanelProps) {
                           {!allDone && (
                             <div className={cn(
                               "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
-                              isSelected ? "border-[#6c63ff] bg-[#6c63ff]" : "border-slate-300 bg-white"
+                              isSelected ? "border-[#6C3FF5] bg-[#6C3FF5]" : "border-slate-300 bg-white"
                             )}>
                               {isSelected && (
                                 <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
@@ -205,14 +205,14 @@ export function SharePanel({ runId, output, onClose }: SharePanelProps) {
               <div className="flex items-center justify-between gap-3 pt-1">
                 {!allDone ? (
                   <>
-                    <a href="/dashboard/integrations" className="flex items-center gap-1 text-xs text-slate-400 hover:text-[#6c63ff] transition-colors">
+                    <a href="/dashboard/integrations" className="flex items-center gap-1 text-xs text-slate-400 hover:text-[#6C3FF5] transition-colors">
                       <ExternalLink className="h-3 w-3" /> Manage
                     </a>
                     <button
                       type="button"
                       onClick={() => void handleShare()}
                       disabled={selected.size === 0 || isSharing}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[#6c63ff] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
                     >
                       {isSharing ? <><Loader2 className="h-4 w-4 animate-spin" /> Sharing…</> : <><Send className="h-4 w-4" /> Share to {selected.size}</>}
                     </button>

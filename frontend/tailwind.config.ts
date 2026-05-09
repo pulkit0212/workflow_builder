@@ -13,8 +13,10 @@ const config: Config = {
     },
     extend: {
       fontFamily: {
-        sans: ["var(--font-sans)", "sans-serif"],
-        display: ["var(--font-display)", "sans-serif"]
+        sans: ["Inter", "var(--font-inter)", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        display: ["Work Sans", "sans-serif"],
+        "work-sans": ["Work Sans", "sans-serif"],
+        inter: ["Inter", "sans-serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -23,8 +25,10 @@ const config: Config = {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))"
+          DEFAULT: "#6C3FF5",
+          dark: "#1557B0",
+          light: "#E8F0FE",
+          foreground: "#FFFFFF"
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -41,7 +45,22 @@ const config: Config = {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))"
-        }
+        },
+        // Google Play Console palette
+        "gpc-blue":        "#6C3FF5",
+        "gpc-blue-dark":   "#5B2FE0",
+        "gpc-blue-light":  "#EDE9FE",
+        "gpc-green":       "#34A853",
+        "gpc-green-light": "#E6F4EA",
+        "gpc-red":         "#EA4335",
+        "gpc-red-light":   "#FCE8E6",
+        "gpc-yellow":      "#FBBC04",
+        "gpc-yellow-light":"#FEF7E0",
+        "gpc-text":        "#202124",
+        "gpc-text-2":      "#5F6368",
+        "gpc-border":      "#DADCE0",
+        "gpc-bg":          "#F8F9FA",
+        "gpc-surface":     "#FFFFFF",
       },
       borderRadius: {
         xl: "1rem",
@@ -49,12 +68,10 @@ const config: Config = {
         "3xl": "2rem"
       },
       boxShadow: {
+        card: "0 1px 2px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.08)",
+        "card-hover": "0 4px 12px rgba(0,0,0,0.12)",
         soft: "0 24px 80px rgba(15, 23, 42, 0.12)"
       },
-      backgroundImage: {
-        "hero-grid":
-          "linear-gradient(to right, rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.12) 1px, transparent 1px)"
-      }
     }
   },
   plugins: []

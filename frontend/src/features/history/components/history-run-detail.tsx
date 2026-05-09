@@ -104,7 +104,7 @@ function ShareModal({
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#f5f3ff]">
-              <Send className="h-4 w-4 text-[#6c63ff]" />
+              <Send className="h-4 w-4 text-[#6C3FF5]" />
             </div>
             <div>
               <p className="text-sm font-bold text-slate-900">Share Summary</p>
@@ -124,7 +124,7 @@ function ShareModal({
           ) : integrations.length === 0 ? (
             <div className="py-8 text-center space-y-3">
               <p className="text-sm text-slate-500">No integrations connected yet.</p>
-              <a href="/dashboard/integrations" className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5b52e0] transition">
+              <a href="/dashboard/integrations" className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5b52e0] transition">
                 <ExternalLink className="h-3.5 w-3.5" /> Connect integrations
               </a>
             </div>
@@ -170,7 +170,7 @@ function ShareModal({
                           {!allDone && (
                             <div className={cn(
                               "flex h-4 w-4 shrink-0 items-center justify-center rounded border transition",
-                              isSelected ? "border-[#6c63ff] bg-[#6c63ff]" : "border-slate-300 bg-white"
+                              isSelected ? "border-[#6C3FF5] bg-[#6C3FF5]" : "border-slate-300 bg-white"
                             )}>
                               {isSelected && (
                                 <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 10 8">
@@ -207,14 +207,14 @@ function ShareModal({
               <div className="flex items-center justify-between gap-3 pt-1">
                 {!allDone ? (
                   <>
-                    <a href="/dashboard/integrations" className="flex items-center gap-1 text-xs text-slate-400 hover:text-[#6c63ff] transition-colors">
+                    <a href="/dashboard/integrations" className="flex items-center gap-1 text-xs text-slate-400 hover:text-[#6C3FF5] transition-colors">
                       <ExternalLink className="h-3 w-3" /> Manage
                     </a>
                     <button
                       type="button"
                       onClick={() => void handleShare()}
                       disabled={selected.size === 0 || isSharing}
-                      className="inline-flex items-center gap-2 rounded-xl bg-[#6c63ff] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#6C3FF5] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#5b52e0] disabled:opacity-50"
                     >
                       {isSharing ? <><Loader2 className="h-4 w-4 animate-spin" /> Sharing…</> : <><Send className="h-4 w-4" /> Share to {selected.size}</>}
                     </button>
@@ -265,7 +265,7 @@ function Section({ icon, title, accent = "purple", children }: {
   children: React.ReactNode;
 }) {
   const map = {
-    purple: { bg: "bg-[#f5f3ff]", text: "text-[#6c63ff]", border: "border-[#ede9fe]" },
+    purple: { bg: "bg-[#f5f3ff]", text: "text-[#6C3FF5]", border: "border-[#ede9fe]" },
     blue:   { bg: "bg-blue-50",   text: "text-blue-600",   border: "border-blue-100" },
     green:  { bg: "bg-emerald-50",text: "text-emerald-600",border: "border-emerald-100" },
     amber:  { bg: "bg-amber-50",  text: "text-amber-600",  border: "border-amber-100" },
@@ -312,8 +312,8 @@ function PriorityBadge({ priority }: { priority: string }) {
 function ActionItemRow({ item }: { item: { task: string; owner?: string; due_date?: string; priority?: string } }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 transition-colors hover:bg-[#faf9ff]">
-      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6c63ff]/10">
-        <CheckSquare className="h-3 w-3 text-[#6c63ff]" />
+      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6C3FF5]/10">
+        <CheckSquare className="h-3 w-3 text-[#6C3FF5]" />
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-slate-900">{item.task}</p>
@@ -337,7 +337,7 @@ function MeetingSummarizerOutput({ output }: { output: Record<string, unknown> }
   return (
     <div className="space-y-4">
       {summary && <Section icon={<FileText className="h-4 w-4" />} title="Summary" accent="purple"><p className="text-sm leading-relaxed text-slate-600 whitespace-pre-wrap">{summary}</p></Section>}
-      {keyPoints.length > 0 && <Section icon={<Lightbulb className="h-4 w-4" />} title="Key Points" accent="blue"><BulletList items={keyPoints} dotColor="bg-[#6c63ff]" /></Section>}
+      {keyPoints.length > 0 && <Section icon={<Lightbulb className="h-4 w-4" />} title="Key Points" accent="blue"><BulletList items={keyPoints} dotColor="bg-[#6C3FF5]" /></Section>}
       {actionItems.length > 0 && (
         <Section icon={<CheckSquare className="h-4 w-4" />} title={`Action Items (${actionItems.length})`} accent="green">
           <div className="space-y-2">{actionItems.map((item, i) => <ActionItemRow key={i} item={item} />)}</div>
@@ -370,7 +370,7 @@ function TaskGeneratorOutput({ output }: { output: Record<string, unknown> }) {
         <div className="space-y-2">
           {tasks.map((task, i) => (
             <div key={i} className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-4 py-3 hover:bg-[#faf9ff]">
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6c63ff]/10 text-[10px] font-bold text-[#6c63ff]">{i + 1}</span>
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#6C3FF5]/10 text-[10px] font-bold text-[#6C3FF5]">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-slate-900">{task.task}</p>
                 {(task.owner ?? task.due_date) && <p className="mt-0.5 text-xs text-slate-400">{[task.owner, task.due_date].filter(Boolean).join(" · ")}</p>}
@@ -394,7 +394,7 @@ function DocumentAnalyzerOutput({ output }: { output: Record<string, unknown> })
   return (
     <div className="space-y-4">
       {summary && <Section icon={<FileText className="h-4 w-4" />} title="Summary" accent="purple"><p className="text-sm leading-relaxed text-slate-600">{summary}</p></Section>}
-      {keyPoints.length > 0 && <Section icon={<Lightbulb className="h-4 w-4" />} title="Key Points" accent="blue"><BulletList items={keyPoints} dotColor="bg-[#6c63ff]" /></Section>}
+      {keyPoints.length > 0 && <Section icon={<Lightbulb className="h-4 w-4" />} title="Key Points" accent="blue"><BulletList items={keyPoints} dotColor="bg-[#6C3FF5]" /></Section>}
       {actionItems.length > 0 && <Section icon={<CheckSquare className="h-4 w-4" />} title={`Action Items (${actionItems.length})`} accent="green"><div className="space-y-2">{actionItems.map((item, i) => <ActionItemRow key={i} item={item} />)}</div></Section>}
       {decisions.length > 0 && <Section icon={<TrendingUp className="h-4 w-4" />} title="Decisions" accent="amber"><BulletList items={decisions} dotColor="bg-emerald-500" /></Section>}
       {risks.length > 0 && <Section icon={<ShieldAlert className="h-4 w-4" />} title="Risks & Blockers" accent="red"><BulletList items={risks} dotColor="bg-red-400" /></Section>}
@@ -493,7 +493,7 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
         {/* Top bar: tool name + back */}
         <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-5 py-3">
           <div className="flex items-center gap-2">
-            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#f5f3ff] text-[#6c63ff]">
+            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#f5f3ff] text-[#6C3FF5]">
               {TOOL_ICONS[run.tool.slug] ?? <FileText className="h-3.5 w-3.5" />}
             </span>
             <span className="text-xs font-semibold uppercase tracking-widest text-slate-400">{run.tool.name}</span>
@@ -538,7 +538,7 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
               <button
                 type="button"
                 onClick={() => setShareOpen(true)}
-                className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
               >
                 <Send className="h-3.5 w-3.5" /> Share
               </button>

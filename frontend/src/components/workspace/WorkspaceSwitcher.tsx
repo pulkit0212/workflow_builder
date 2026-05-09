@@ -1,36 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 
-export function WorkspaceSwitcher(): JSX.Element {
+export function WorkspaceSwitcher(): React.ReactElement {
   const router = useRouter();
-  const { workspaces, activeWorkspace, activeWorkspaceId, switchToWorkspace, switchToPersonal } =
-    useWorkspaceContext();
+  const { workspaces, activeWorkspace, activeWorkspaceId, switchToWorkspace, switchToPersonal } = useWorkspaceContext();
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Detect fetch errors surfaced by the context (workspaces empty after mount)
-  // The context itself handles the fetch; we just reflect its state.
-  // If workspaces failed to load, the context keeps an empty list — we show an error.
-  const [fetchAttempted, setFetchAttempted] = useState(false);
-  useEffect(() => {
-    // Give the context one tick to populate workspaces before showing an error
-    const timer = setTimeout(() => setFetchAttempted(true), 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Close dropdown when clicking outside (Req 2.8)
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setOpen(false);
       }
     }
@@ -39,13 +22,11 @@ export function WorkspaceSwitcher(): JSX.Element {
   }, []);
 
   function handleSelectWorkspace(id: string) {
-    setError(null);
     switchToWorkspace(id);
     setOpen(false);
   }
 
   function handleSelectPersonal() {
-    setError(null);
     switchToPersonal();
     setOpen(false);
   }
@@ -55,54 +36,53 @@ export function WorkspaceSwitcher(): JSX.Element {
     router.push("/dashboard/workspace");
   }
 
-  // Active label: workspace name or "Personal" (Req 2.1)
   const activeLabel = activeWorkspace?.name ?? "Personal";
 
   return (
-    <div ref={containerRef} className="relative mb-4">
+    <div ref={containerRef} className="relative">
+      {/* Trigger */}
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className={cn(
-          "flex w-full items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-white/10"
-        )}
+        className="flex w-full items-center gap-3 p-2 rounded-lg bg-[#F1F3F4] cursor-pointer border border-[#DADCE0] hover:bg-[#E8EAED] transition-colors"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="truncate">{activeLabel}</span>
-        <ChevronDown
-          className={cn(
-            "h-4 w-4 shrink-0 text-slate-400 transition-transform",
-            open && "rotate-180"
-          )}
-        />
+        <div className="w-8 h-8 rounded bg-[#6C3FF5] flex items-center justify-center text-white shrink-0">
+          <span className="material-symbols-outlined text-lg">workspace_premium</span>
+        </div>
+        <div className="overflow-hidden flex-1 text-left">
+          <h1 className="text-sm font-bold text-[#6C3FF5] truncate">Artivaa AI</h1>
+          <p className="text-[10px] text-[#5F6368] font-medium uppercase tracking-wider truncate">{activeLabel}</p>
+        </div>
+        <span className="material-symbols-outlined text-[#5F6368] shrink-0">unfold_more</span>
       </button>
 
+      {/* Dropdown */}
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-white/10 bg-[#1a1a2e] shadow-lg"
+          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-lg"
         >
-          {/* Inline error state (Req 2.7) */}
-          {error && (
-            <div className="px-3 py-2 text-sm text-red-400">{error}</div>
-          )}
-
-          {/* Personal option — always first (Req 2.3) */}
+          {/* Personal option */}
           <button
             type="button"
             role="option"
             aria-selected={activeWorkspaceId === null}
             onClick={handleSelectPersonal}
             className={cn(
-              "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#e2e8f0] transition-colors hover:bg-white/10",
-              activeWorkspaceId === null && "bg-[#6c63ff]/20 text-white"
+              "flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-[#F1F3F4]",
+              activeWorkspaceId === null ? "bg-[#EDE9FE] text-[#6C3FF5] font-semibold" : "text-[#202124]"
             )}
           >
-            <span className="truncate">Personal</span>
+            <span className="material-symbols-outlined text-[18px]">person</span>
+            <span>Personal</span>
+            {activeWorkspaceId === null && (
+              <span className="material-symbols-outlined text-[16px] ml-auto">check</span>
+            )}
           </button>
 
-          {/* Workspace list (Req 2.2) */}
+          {/* Workspace list */}
           {workspaces.map((workspace) => (
             <button
               key={workspace.id}
@@ -111,24 +91,28 @@ export function WorkspaceSwitcher(): JSX.Element {
               aria-selected={workspace.id === activeWorkspaceId}
               onClick={() => handleSelectWorkspace(workspace.id)}
               className={cn(
-                "flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#e2e8f0] transition-colors hover:bg-white/10",
-                workspace.id === activeWorkspaceId && "bg-[#6c63ff]/20 text-white"
+                "flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition-colors hover:bg-[#F1F3F4]",
+                workspace.id === activeWorkspaceId ? "bg-[#EDE9FE] text-[#6C3FF5] font-semibold" : "text-[#202124]"
               )}
             >
+              <span className="material-symbols-outlined text-[18px]">group</span>
               <span className="truncate">{workspace.name}</span>
+              {workspace.id === activeWorkspaceId && (
+                <span className="material-symbols-outlined text-[16px] ml-auto">check</span>
+              )}
             </button>
           ))}
 
-          <div className="h-px bg-white/10" />
+          <div className="h-px bg-[#DADCE0]" />
 
-          {/* Create workspace — navigates to /dashboard/workspace (Req 2.6) */}
+          {/* Create workspace */}
           <button
             type="button"
             onClick={handleCreateNew}
-            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm text-[#6C3FF5] transition-colors hover:bg-[#EDE9FE]"
           >
-            <Plus className="h-4 w-4 shrink-0" />
-            <span>+ Create new workspace</span>
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            <span>Create workspace</span>
           </button>
         </div>
       )}

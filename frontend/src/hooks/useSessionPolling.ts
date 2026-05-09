@@ -32,7 +32,12 @@ export function useSessionPolling(meetingId: string | null) {
       try {
         const response = await apiFetch(`/api/meetings/${meetingId}/status`, { cache: "no-store" });
         if (!response.ok) {
-          // Treat non-ok as an error for backoff purposes
+          // Stop polling on auth errors — user needs to re-authenticate
+          if (response.status === 401 || response.status === 403) {
+            stoppedRef.current = true;
+            return;
+          }
+          // Treat other non-ok as an error for backoff purposes
           consecutiveErrors.current += 1;
           currentInterval.current = Math.min(currentInterval.current * 2, MAX_INTERVAL);
         } else {

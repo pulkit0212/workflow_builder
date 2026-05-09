@@ -8,8 +8,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-[#6c63ff] text-white shadow-sm hover:bg-[#5b52ee]",
-        secondary: "border border-[#6c63ff] bg-white text-[#6c63ff] hover:bg-[#f5f3ff]",
+        default: "bg-[#6C3FF5] text-white shadow-sm hover:bg-[#5b52ee]",
+        secondary: "border border-[#6C3FF5] bg-white text-[#6C3FF5] hover:bg-[#f5f3ff]",
         ghost: "bg-transparent text-[#6b7280] hover:bg-[#f9fafb]",
         outline: "border border-[#d1d5db] bg-white text-[#374151] hover:bg-[#f9fafb]",
         danger: "bg-[#dc2626] text-white hover:bg-[#b91c1c]"

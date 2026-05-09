@@ -134,7 +134,7 @@ export function InviteMembersCard({ workspaceId }: InviteMembersCardProps) {
       {/* Invite form */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-          <UserPlus className="h-4 w-4 text-[#6c63ff]" />
+          <UserPlus className="h-4 w-4 text-[#6C3FF5]" />
           Invite Members
         </h3>
         <form onSubmit={handleSubmit} className="relative flex gap-2">
@@ -147,7 +147,7 @@ export function InviteMembersCard({ workspaceId }: InviteMembersCardProps) {
               onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
               placeholder="Enter email address"
               disabled={sending}
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#6c63ff]/40"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#6C3FF5]/40"
             />
             {showSuggestions && suggestions.length > 0 && (
               <ul className="absolute z-10 top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
@@ -172,7 +172,7 @@ export function InviteMembersCard({ workspaceId }: InviteMembersCardProps) {
           <button
             type="submit"
             disabled={sending || !email.trim()}
-            className="inline-flex h-9 items-center rounded-xl bg-[#6c63ff] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#5b52e0] disabled:opacity-50"
+            className="inline-flex h-9 items-center rounded-xl bg-[#6C3FF5] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#5b52e0] disabled:opacity-50"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Invite"}
           </button>

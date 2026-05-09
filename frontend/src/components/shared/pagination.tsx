@@ -76,7 +76,7 @@ export function Pagination({
                 className={cn(
                   "inline-flex h-10 min-w-10 items-center justify-center rounded-lg border px-3 text-sm font-medium transition-colors",
                   page === currentPage
-                    ? "border-transparent bg-[#6c63ff] text-white"
+                    ? "border-transparent bg-[#6C3FF5] text-white"
                     : "border-[#d1d5db] bg-white text-[#6b7280] hover:bg-[#f9fafb] hover:text-[#111827]"
                 )}
               >

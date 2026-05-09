@@ -14,10 +14,10 @@ function getBaseUrl(): string {
  */
 export function createApiFetch(
   getToken: () => Promise<string | null>
-): (path: string, init?: RequestInit & { workspaceId?: string }) => Promise<Response> {
+): (path: string, init?: RequestInit & { workspaceId?: string | null }) => Promise<Response> {
   return async function (
     path: string,
-    init?: RequestInit & { workspaceId?: string }
+    init?: RequestInit & { workspaceId?: string | null }
   ): Promise<Response> {
     const token = await getToken();
     const headers = new Headers(init?.headers);
@@ -25,6 +25,7 @@ export function createApiFetch(
     if (!headers.has("Content-Type") && !(init?.body instanceof FormData)) {
       headers.set("Content-Type", "application/json");
     }
+    // Only set header if workspaceId is a non-empty string
     if (init?.workspaceId) headers.set("x-workspace-id", init.workspaceId);
     const { workspaceId: _w, ...fetchInit } = init ?? {};
     return fetch(`${getBaseUrl()}${path}`, { ...fetchInit, headers });

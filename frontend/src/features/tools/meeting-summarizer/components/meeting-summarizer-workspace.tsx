@@ -9,7 +9,6 @@ import { ActionItemsCard } from "@/components/tools/action-items-card";
 import { KeyPointsCard } from "@/components/tools/key-points-card";
 import { ResultState } from "@/components/tools/result-state";
 import { SummaryCard } from "@/components/tools/summary-card";
-import { ToolPageShell } from "@/components/tools/tool-page-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -108,14 +107,14 @@ function AudioPlayer({ src }: { src: string }) {
       <button
         type="button"
         onClick={togglePlay}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6c63ff] text-white transition hover:bg-[#5b52e0]"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#6C3FF5] text-white transition hover:bg-[#5b52e0]"
       >
         {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5 translate-x-px" />}
       </button>
       <span className="w-10 shrink-0 text-xs tabular-nums text-slate-500">{fmt(currentTime)}</span>
       <div className="relative flex-1">
         <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
-          <div className="h-full rounded-full bg-[#6c63ff] transition-all" style={{ width: `${progress}%` }} />
+          <div className="h-full rounded-full bg-[#6C3FF5] transition-all" style={{ width: `${progress}%` }} />
         </div>
         <input
           type="range"
@@ -169,7 +168,6 @@ export function MeetingSummarizerWorkspace({
   defaultProvider,
   defaultTranscriptionProvider
 }: MeetingSummarizerWorkspaceProps) {
-  const tool = toolRegistry["meeting-summarizer"];
   const apiFetch = useApiFetch();
   const [latestRun, setLatestRun] = useState(initialRun);
   const [serverError, setServerError] = useState<InlineErrorState>(
@@ -601,93 +599,10 @@ export function MeetingSummarizerWorkspace({
 
   return (
     <>
-      <ToolPageShell
-        tool={tool}
-        aside={
-          <>
-            {isPending ? (
-              <MeetingSummarizerLoadingState
-                title={inputMode === "audio" && audioFlowState === "transcribing" ? "Generating transcript..." : "Generating summary..."}
-                description={
-                  inputMode === "audio" && audioFlowState === "transcribing"
-                    ? "Converting the recording into an editable transcript for review."
-                    : "Analyzing the transcript, extracting decisions, and structuring next steps."
-                }
-              />
-            ) : latestRun?.outputJson ? (
-              <>
-                <Card className="p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-950">{latestRun.title || "Meeting Summary"}</p>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Generated {formatMeetingRunTimestamp(latestRun.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="available">Saved</Badge>
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600 sm:grid-cols-2">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Generated At</p>
-                      <p className="mt-1 font-medium text-slate-900">{formatMeetingRunTimestamp(latestRun.createdAt)}</p>
-                    </div>
-                  </div>
-                  {typeof latestRun.inputJson?.transcript === "string" ? (
-                    <div className="mt-4 rounded-[1.4rem] border border-slate-200 bg-slate-50/80 p-4">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Transcript</p>
-                      <div className="mt-3 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                        {latestRun.inputJson.transcript}
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="mt-4 border-t border-slate-100 pt-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <Button type="button" variant="secondary" onClick={resetWorkspace}>
-                        New Summary
-                      </Button>
-                      <Button asChild type="button" variant="ghost">
-                        <Link href="/dashboard/history">View History</Link>
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-                <SummaryCard
-                  summary={latestRun.outputJson.summary}
-                  actions={
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Button type="button" variant="secondary" size="sm" onClick={handleCopySummary}>
-                        <Clipboard className="h-4 w-4" />
-                        Copy Summary
-                      </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={handleDownloadNotes}>
-                        <Download className="h-4 w-4" />
-                        Download Notes
-                      </Button>
-                    </div>
-                  }
-                />
-                <KeyPointsCard items={latestRun.outputJson.key_points} />
-                <ActionItemsCard items={latestRun.outputJson.action_items} />
-              </>
-            ) : serverError ? (
-              <ResultState
-                icon="error"
-                title={serverError.isQuotaError ? "AI service quota exceeded" : "Generation failed"}
-                description={serverError.message}
-              />
-            ) : (
-              <ResultState
-                title="Results appear here"
-                description="Generate a summary to see structured output for the meeting, including key points and action items."
-              />
-            )}
-          </>
-        }
-      >
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+        {/* Left: input form */}
         <Card className="p-6">
-          <form className="space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
+          <form id="meeting-summarizer-form" className="space-y-6" onSubmit={form.handleSubmit(onSubmit)}>
             <div className="grid gap-3 rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-2">
               {[
                 {
@@ -718,7 +633,7 @@ export function MeetingSummarizerWorkspace({
                     }
                   >
                     <div className="flex items-start gap-3">
-                      <div className={isSelected ? "rounded-2xl bg-[#f5f3ff] p-3 text-[#6c63ff]" : "rounded-2xl bg-white p-3 text-slate-500"}>
+                      <div className={isSelected ? "rounded-2xl bg-[#f5f3ff] p-3 text-[#6C3FF5]" : "rounded-2xl bg-white p-3 text-slate-500"}>
                         <Icon className="h-5 w-5" />
                       </div>
                       <div className="space-y-1">
@@ -928,7 +843,7 @@ export function MeetingSummarizerWorkspace({
             {audioNotice ? (
               <div className="rounded-3xl border border-[#ede9fe] bg-[#f5f3ff] px-4 py-4 text-sm text-[#4c1d95]">
                 <div className="flex items-start gap-3">
-                  <FileAudio2 className="mt-0.5 h-4 w-4 shrink-0 text-[#6c63ff]" />
+                  <FileAudio2 className="mt-0.5 h-4 w-4 shrink-0 text-[#6C3FF5]" />
                   <div className="space-y-1">
                     <p className="font-medium">
                       {audioFlowState === "transcript_ready_for_review" || audioFlowState === "completed"
@@ -963,8 +878,8 @@ export function MeetingSummarizerWorkspace({
               </div>
             ) : null}
 
-            <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-col gap-2 text-sm text-slate-500 sm:flex-row sm:items-center sm:gap-4">
+            <div className="flex flex-col gap-3 border-t border-[#DADCE0] pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-col gap-2 text-sm text-[#5F6368] sm:flex-row sm:items-center sm:gap-4">
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4" />
                   {inputMode === "transcript"
@@ -998,16 +913,83 @@ export function MeetingSummarizerWorkspace({
             </div>
           </form>
         </Card>
-      </ToolPageShell>
+
+        {/* Right: output panel */}
+        <div className="space-y-4">
+          {isPending ? (
+            <MeetingSummarizerLoadingState
+              title={inputMode === "audio" && audioFlowState === "transcribing" ? "Generating transcript..." : "Generating summary..."}
+              description={
+                inputMode === "audio" && audioFlowState === "transcribing"
+                  ? "Converting the recording into an editable transcript for review."
+                  : "Analyzing the transcript, extracting decisions, and structuring next steps."
+              }
+            />
+          ) : latestRun?.outputJson ? (
+            <>
+              <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#202124]">{latestRun.title || "Meeting Summary"}</p>
+                    <p className="mt-1 text-xs text-[#5F6368]">Generated {formatMeetingRunTimestamp(latestRun.createdAt)}</p>
+                  </div>
+                  <Badge variant="available">Saved</Badge>
+                </div>
+                {typeof latestRun.inputJson?.transcript === "string" ? (
+                  <div className="mt-4 rounded-xl border border-[#DADCE0] bg-[#F8F9FA] p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-[#5F6368]">Transcript</p>
+                    <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap text-sm leading-7 text-[#374151]">
+                      {latestRun.inputJson.transcript}
+                    </div>
+                  </div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[#DADCE0] pt-4">
+                  <Button type="button" variant="secondary" onClick={resetWorkspace}>New Summary</Button>
+                  <Button asChild type="button" variant="ghost">
+                    <Link href="/dashboard/history">View History</Link>
+                  </Button>
+                </div>
+              </div>
+              <SummaryCard
+                summary={latestRun.outputJson.summary}
+                actions={
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button type="button" variant="secondary" size="sm" onClick={handleCopySummary}>
+                      <Clipboard className="h-4 w-4" /> Copy Summary
+                    </Button>
+                    <Button type="button" variant="ghost" size="sm" onClick={handleDownloadNotes}>
+                      <Download className="h-4 w-4" /> Download Notes
+                    </Button>
+                  </div>
+                }
+              />
+              <KeyPointsCard items={latestRun.outputJson.key_points} />
+              <ActionItemsCard items={latestRun.outputJson.action_items} />
+            </>
+          ) : serverError ? (
+            <ResultState
+              icon="error"
+              title={serverError.isQuotaError ? "AI service quota exceeded" : "Generation failed"}
+              description={serverError.message}
+            />
+          ) : (
+            <ResultState
+              title="Results appear here"
+              description="Generate a summary to see structured output for the meeting, including key points and action items."
+            />
+          )}
+        </div>
+      </div>
+
       {copyToastVisible ? (
-        <div className="fixed bottom-6 right-6 z-50 rounded-full border border-emerald-200 bg-white px-4 py-3 text-sm font-medium text-emerald-700 shadow-soft">
+        <div className="fixed bottom-6 right-6 z-50 rounded-full border border-[#E6F4EA] bg-white px-4 py-3 text-sm font-medium text-[#137333] shadow-lg">
           Summary copied to clipboard
         </div>
       ) : null}
       {providerToastVisible ? (
-        <div className="fixed bottom-6 right-6 z-50 rounded-[1.4rem] border border-amber-200 bg-white px-4 py-3 text-sm shadow-soft">
-          <p className="font-medium text-slate-900">OpenAI temporarily unavailable</p>
-          <p className="mt-1 text-slate-600">OpenAI support will be enabled soon. Please use Gemini for now.</p>
+        <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-[#FEF7E0] bg-white px-4 py-3 text-sm shadow-lg">
+          <p className="font-medium text-[#202124]">OpenAI temporarily unavailable</p>
+          <p className="mt-1 text-[#5F6368]">OpenAI support will be enabled soon. Please use Gemini for now.</p>
         </div>
       ) : null}
     </>

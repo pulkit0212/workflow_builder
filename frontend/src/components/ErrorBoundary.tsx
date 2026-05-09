@@ -54,7 +54,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               window.location.reload();
             }}
             style={{
-              background: "#6c63ff",
+              background: "#6C3FF5",
               color: "white",
               border: "none",
               padding: "8px 20px",

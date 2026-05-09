@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       targets: ShareTarget[];
       title: string;
       summary: string;
-      actionItems: Array<{ task: string; owner?: string; dueDate?: string; deadline?: string; priority?: string }>;
+      actionItems: Array<{ task: string; owner?: string; assignee?: string; dueDate?: string; deadline?: string; priority?: string }>;
       transcript: string | null;
     };
 
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       summary,
       action_items: actionItems.map((i) => ({
         task: i.task,
-        owner: i.owner ?? "Unassigned",
+        owner: (i as Record<string, unknown>).assignee as string ?? i.owner ?? "Unassigned",
         due_date: i.dueDate ?? i.deadline ?? "Not specified",
         priority: i.priority ?? "Medium",
       })),

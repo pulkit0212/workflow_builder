@@ -3,9 +3,7 @@
 import Script from "next/script";
 import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
-import { ArrowRight, Check, Clock3, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { ArrowRight, Check, Download, Sparkles, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { planDefinitions } from "@/lib/subscription";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
@@ -41,17 +39,17 @@ type SubscriptionResponse = {
 };
 
 const featureRows = [
-  { feature: "Email Generator", free: true, pro: true, elite: true },
-  { feature: "Task Generator", free: true, pro: true, elite: true },
-  { feature: "Document Analyzer", free: true, pro: true, elite: true },
-  { feature: "Meeting Bot", free: false, pro: true, elite: true },
-  { feature: "Transcription", free: false, pro: true, elite: true },
-  { feature: "Auto Summary", free: false, pro: true, elite: true },
-  { feature: "Action Items", free: false, pro: true, elite: true },
-  { feature: "Meeting History", free: false, pro: true, elite: true },
-  { feature: "Meetings/month", free: "3", pro: "10", elite: "∞" },
-  { feature: "Priority Support", free: false, pro: false, elite: true },
-  { feature: "Team Workspace", free: false, pro: false, elite: "Soon" }
+  { feature: "Email Generator",  free: true,  pro: true,  elite: true  },
+  { feature: "Task Generator",   free: true,  pro: true,  elite: true  },
+  { feature: "Document Analyzer",free: true,  pro: true,  elite: true  },
+  { feature: "Meeting Bot",      free: false, pro: true,  elite: true  },
+  { feature: "Transcription",    free: false, pro: true,  elite: true  },
+  { feature: "Auto Summary",     free: false, pro: true,  elite: true  },
+  { feature: "Action Items",     free: false, pro: true,  elite: true  },
+  { feature: "Meeting History",  free: false, pro: true,  elite: true  },
+  { feature: "Meetings/month",   free: "3",   pro: "10",  elite: "∞"   },
+  { feature: "Priority Support", free: false, pro: false, elite: true  },
+  { feature: "Team Workspace",   free: false, pro: false, elite: "Soon"},
 ] as const;
 
 function formatCurrency(value: number) {
@@ -65,10 +63,14 @@ function formatDate(value: string | null) {
   return date.toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function FeatureValue({ value }: { value: boolean | string }) {
-  if (value === true) return <Check className="h-4 w-4 text-emerald-500" />;
-  if (value === false) return <span className="text-slate-300">—</span>;
-  return <span className="text-xs font-semibold text-slate-500">{value}</span>;
+function FeatureValue({ value, highlight }: { value: boolean | string; highlight?: boolean }) {
+  if (value === true) return (
+    <span className="flex justify-center">
+      <Check className={cn("h-4 w-4", highlight ? "text-[#6C3FF5]" : "text-[#34A853]")} />
+    </span>
+  );
+  if (value === false) return <span className="flex justify-center text-[#DADCE0]">—</span>;
+  return <span className={cn("flex justify-center text-xs font-semibold", highlight ? "text-[#6C3FF5]" : "text-[#5F6368]")}>{value}</span>;
 }
 
 export default function BillingPage() {
@@ -84,8 +86,7 @@ export default function BillingPage() {
     if (!isAuthReady) return;
     let isMounted = true;
     async function load() {
-      setIsLoading(true);
-      setError(null);
+      setIsLoading(true); setError(null);
       try {
         const res = await apiFetch("/api/subscription", { cache: "no-store" });
         const payload = await res.json() as SubscriptionResponse | { success?: false; message?: string };
@@ -120,14 +121,14 @@ export default function BillingPage() {
       setActivePlan(plan);
       const res = await apiFetch("/api/payment/create-order", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan })
+        body: JSON.stringify({ plan }),
       });
       const data = await res.json() as { success: true; orderId: string; amount: number; currency: string; keyId: string } | { success?: false; message?: string };
       if (!("success" in data) || !data.success) {
         alert("Payment error: " + ("message" in data ? data.message : "Failed to create order"));
         setActivePlan(null); return;
       }
-      if (!(window as any).Razorpay) {
+      if (!(window as unknown as Record<string, unknown>).Razorpay) {
         await new Promise<void>((resolve) => {
           const s = document.createElement("script");
           s.src = "https://checkout.razorpay.com/v1/checkout.js";
@@ -135,22 +136,24 @@ export default function BillingPage() {
           document.body.appendChild(s);
         });
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rzp = new (window as any).Razorpay({
         key: data.keyId, amount: data.amount, currency: data.currency,
         name: "Artivaa", description: `${plan} Plan - Monthly`, order_id: data.orderId,
         handler: async (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
           const v = await apiFetch("/api/payment/verify", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...response, plan })
+            body: JSON.stringify({ ...response, plan }),
           });
           const vd = await v.json() as { success?: boolean; message?: string };
           if (vd.success) { alert(`🎉 You are now on ${plan} plan.`); window.location.reload(); }
           else alert("Verification failed: " + vd.message);
         },
         prefill: { name: user?.fullName || "", email: user?.primaryEmailAddress?.emailAddress || "" },
-        theme: { color: "#6c63ff" },
-        modal: { ondismiss: () => setActivePlan(null) }
+        theme: { color: "#6C3FF5" },
+        modal: { ondismiss: () => setActivePlan(null) },
       });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       rzp.on("payment.failed", (r: any) => { alert("Payment failed: " + r.error.description); setActivePlan(null); });
       rzp.open();
     } catch (e) {
@@ -160,42 +163,46 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="afterInteractive" />
 
       {/* Page header */}
       <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Billing</p>
-        <h1 className="mt-1 text-2xl font-bold text-slate-900">Choose your Artivaa plan</h1>
-        <p className="mt-1 text-sm text-slate-400">Free keeps the writing tools open. Pro unlocks meeting intelligence. Elite adds unlimited meetings.</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-[#6C3FF5]">Billing</p>
+        <h1 className="mt-1 text-[22px] font-bold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>
+          Choose your Artivaa plan
+        </h1>
+        <p className="mt-1 text-sm text-[#5F6368]">
+          Free keeps the writing tools open. Pro unlocks meeting intelligence. Elite adds unlimited meetings.
+        </p>
       </div>
 
       {isLoading ? (
         <div className="grid gap-4 xl:grid-cols-3">
-          {[0, 1, 2].map((i) => <div key={i} className="h-64 animate-pulse rounded-2xl bg-slate-100" />)}
+          {[0, 1, 2].map((i) => <div key={i} className="h-64 animate-pulse rounded-xl bg-white border border-[#DADCE0]" />)}
         </div>
       ) : error ? (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-          <p className="text-sm font-semibold text-red-700">Unable to load billing data</p>
-          <p className="mt-1 text-sm text-red-500">{error}</p>
+        <div className="rounded-xl border border-[#FCE8E6] bg-[#FCE8E6] p-5">
+          <p className="text-sm font-semibold text-[#C5221F]">Unable to load billing data</p>
+          <p className="mt-1 text-sm text-[#C5221F]">{error}</p>
         </div>
       ) : subscription ? (
-        <div className="space-y-8">
+        <div className="space-y-6">
 
           {/* Active plan banner */}
-          <div className="rounded-2xl border border-[#6c63ff]/20 bg-gradient-to-br from-[#faf9ff] to-white p-6 shadow-sm">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-              <div className="space-y-1.5">
+          <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="inline-flex items-center rounded-full bg-[#6c63ff]/10 px-2.5 py-0.5 text-xs font-semibold text-[#6c63ff] ring-1 ring-[#6c63ff]/20">
+                  <span className="inline-flex items-center rounded-full bg-[#EDE9FE] px-2.5 py-0.5 text-xs font-semibold text-[#6C3FF5]">
                     {currentPlanDef.name}
                   </span>
-                  <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <span className="inline-flex items-center rounded-full bg-[#E6F4EA] px-2.5 py-0.5 text-xs font-semibold text-[#137333]">
                     {subscription.status}
                   </span>
                 </div>
-                <h2 className="text-xl font-bold text-slate-900">{currentPlanDef.name} plan is active</h2>
-                <p className="text-sm text-slate-400">
+                <h2 className="text-lg font-bold text-[#202124]">{currentPlanDef.name} plan is active</h2>
+                <p className="text-sm text-[#5F6368]">
                   {currentPlan === "trial"
                     ? `${subscription.trialDaysLeft} days left in your free trial.`
                     : currentPlan === "free"
@@ -205,14 +212,14 @@ export default function BillingPage() {
                         : "Your subscription is active."}
                 </p>
               </div>
-              <div className="flex min-w-[200px] flex-col gap-1 rounded-2xl border border-slate-100 bg-white px-5 py-4 shadow-sm">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
-                  <ShieldCheck className="h-3.5 w-3.5 text-[#6c63ff]" />
+              <div className="flex shrink-0 flex-col gap-1 rounded-xl border border-[#DADCE0] bg-[#F8F9FA] px-5 py-4 min-w-[200px]">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-[#5F6368]">
+                  <span className="material-symbols-outlined text-[#6C3FF5] text-[16px]">videocam</span>
                   Meetings used this month
                 </div>
                 <div className="flex items-end justify-between">
-                  <p className="text-3xl font-bold text-slate-900">{subscription.meetingsUsedThisMonth}</p>
-                  <p className="text-sm text-slate-400">/ {subscription.limits.unlimited ? "∞" : subscription.limits.meetingsPerMonth}</p>
+                  <p className="text-3xl font-bold text-[#202124]">{subscription.meetingsUsedThisMonth}</p>
+                  <p className="text-sm text-[#9AA0A6]">/ {subscription.limits.unlimited ? "∞" : subscription.limits.meetingsPerMonth}</p>
                 </div>
               </div>
             </div>
@@ -220,15 +227,15 @@ export default function BillingPage() {
 
           {/* Trial progress */}
           {subscription.plan === "trial" && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-              <div className="flex items-center gap-2 text-amber-700">
+            <div className="rounded-xl border border-[#FEF7E0] bg-[#FFFDF5] p-5">
+              <div className="flex items-center gap-2 text-[#B06000]">
                 <Sparkles className="h-4 w-4" />
                 <p className="text-sm font-semibold">Free Trial — full access until {formatDate(subscription.trialEndsAt)}</p>
               </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-amber-100">
-                <div className="h-full rounded-full bg-amber-400 transition-all" style={{ width: `${trialProgress}%` }} />
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#FEF7E0]">
+                <div className="h-full rounded-full bg-[#B06000] transition-all" style={{ width: `${trialProgress}%` }} />
               </div>
-              <p className="mt-1.5 text-xs text-amber-600">{trialProgress}% of trial elapsed</p>
+              <p className="mt-1.5 text-xs text-[#B06000]">{trialProgress}% of trial elapsed</p>
             </div>
           )}
 
@@ -243,53 +250,59 @@ export default function BillingPage() {
                 <div
                   key={planId}
                   className={cn(
-                    "group relative flex flex-col rounded-2xl border bg-white p-6 shadow-sm transition-all",
+                    "group relative flex flex-col rounded-xl border bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-all",
                     isCurrent
-                      ? "border-[#6c63ff]/40 bg-[#faf9ff] shadow-md shadow-[#6c63ff]/10"
-                      : "border-slate-200 hover:border-[#6c63ff]/40 hover:bg-[#faf9ff] hover:shadow-lg hover:shadow-[#6c63ff]/10"
+                      ? "border-[#6C3FF5] shadow-md shadow-[#6C3FF5]/10"
+                      : "border-[#DADCE0] hover:border-[#6C3FF5]/40 hover:shadow-md hover:shadow-[#6C3FF5]/10"
                   )}
                 >
                   {isPopular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <span className="rounded-full bg-amber-400 px-3 py-0.5 text-xs font-bold text-white shadow-sm">Most Popular</span>
+                      <span className="rounded-full bg-[#B06000] px-3 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
+                        Most Popular
+                      </span>
                     </div>
                   )}
 
                   {/* Header */}
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-lg font-bold text-slate-900">{plan.name}</h3>
+                    <div>
+                      <h3 className="text-base font-bold text-[#202124]">{plan.name}</h3>
+                      <p className="mt-0.5 text-xs text-[#5F6368]">{plan.description}</p>
+                    </div>
                     {isCurrent && (
-                      <span className="rounded-full bg-[#6c63ff]/10 px-2 py-0.5 text-[11px] font-semibold text-[#6c63ff] ring-1 ring-[#6c63ff]/20">Current</span>
+                      <span className="rounded-full bg-[#EDE9FE] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#6C3FF5]">
+                        Current
+                      </span>
                     )}
                   </div>
-                  <p className="mt-1 text-sm text-slate-400">{plan.description}</p>
 
                   {/* Price */}
                   <div className="mt-4 flex items-end gap-1">
-                    <span className="text-3xl font-bold text-slate-900">₹{plan.price}</span>
-                    <span className="mb-0.5 text-sm text-slate-400">/month</span>
+                    <span className="text-3xl font-bold text-[#202124]">₹{plan.price}</span>
+                    <span className="mb-0.5 text-sm text-[#9AA0A6]">/month</span>
                   </div>
 
                   {/* Features */}
-                  <ul className="mt-5 flex-1 space-y-2">
+                  <ul className="mt-4 flex-1 space-y-2">
                     {plan.features.map((f) => (
-                      <li key={f} className="flex items-center gap-2.5 text-sm text-slate-600">
-                        <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />
+                      <li key={f} className="flex items-center gap-2 text-sm text-[#5F6368]">
+                        <Check className="h-3.5 w-3.5 shrink-0 text-[#34A853]" />
                         {f}
                       </li>
                     ))}
                   </ul>
 
                   {/* CTA */}
-                  <div className="mt-6 border-t border-slate-100 pt-5">
+                  <div className="mt-5 border-t border-[#DADCE0] pt-4">
                     {isCurrent ? (
-                      <div className="flex h-10 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-400">
+                      <div className="flex h-10 items-center justify-center rounded-xl border border-[#6C3FF5] text-sm font-semibold text-[#6C3FF5]">
                         Current Plan
                       </div>
                     ) : planId === "free" ? (
                       <button
                         disabled
-                        className="flex h-10 w-full items-center justify-center rounded-xl border border-slate-200 text-sm font-semibold text-slate-400"
+                        className="flex h-10 w-full items-center justify-center rounded-xl border border-[#DADCE0] text-sm font-semibold text-[#9AA0A6]"
                       >
                         Downgrade
                       </button>
@@ -297,10 +310,7 @@ export default function BillingPage() {
                       <button
                         onClick={() => void handleUpgrade(planId)}
                         disabled={activePlan === planId}
-                        className={cn(
-                          "flex h-10 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-60",
-                          planId === "pro" ? "bg-[#6c63ff] hover:bg-[#5b52e0]" : "bg-slate-900 hover:bg-slate-800"
-                        )}
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#6C3FF5] text-sm font-semibold text-white transition hover:bg-[#5B2FE0] disabled:opacity-60"
                       >
                         {activePlan === planId ? "Opening checkout…" : `Upgrade to ${plan.name}`}
                         {activePlan !== planId && <ArrowRight className="h-4 w-4 opacity-0 transition-opacity group-hover:opacity-100" />}
@@ -313,93 +323,106 @@ export default function BillingPage() {
           </div>
 
           {/* Feature comparison */}
-          <Card className="overflow-hidden">
-            <div className="border-b border-slate-100 px-6 py-4">
-              <p className="text-sm font-semibold text-slate-800">Feature comparison</p>
+          <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <div className="border-b border-[#DADCE0] px-6 py-4">
+              <p className="text-sm font-semibold text-[#202124]">Feature comparison</p>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">Feature</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">Free</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-[#6c63ff]">Pro</th>
-                    <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500">Elite</th>
+                  <tr className="border-b border-[#DADCE0] bg-[#F8F9FA]">
+                    <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Feature</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Free</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wider text-[#6C3FF5]">Pro</th>
+                    <th className="px-6 py-3 text-center text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">Elite</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-[#F8F9FA]">
                   {featureRows.map((row) => (
-                    <tr key={row.feature} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3 text-sm font-medium text-slate-700">{row.feature}</td>
+                    <tr key={row.feature} className="hover:bg-[#F8F9FA] transition-colors">
+                      <td className="px-6 py-3 text-sm font-medium text-[#202124]">{row.feature}</td>
                       <td className="px-6 py-3"><FeatureValue value={row.free} /></td>
-                      <td className="px-6 py-3"><FeatureValue value={row.pro} /></td>
+                      <td className="px-6 py-3 bg-[#EDE9FE]/20"><FeatureValue value={row.pro} highlight /></td>
                       <td className="px-6 py-3"><FeatureValue value={row.elite} /></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </Card>
+          </div>
 
           {/* Payment history */}
-          <Card className="overflow-hidden">
-            <div className="border-b border-slate-100 px-6 py-4">
-              <p className="text-sm font-semibold text-slate-800">Payment history</p>
+          <div className="overflow-hidden rounded-xl border border-[#DADCE0] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <div className="border-b border-[#DADCE0] px-6 py-4">
+              <p className="text-sm font-semibold text-[#202124]">Payment history</p>
             </div>
             {subscription.payments.length === 0 ? (
-              <div className="px-6 py-8 text-center text-sm text-slate-400">No payment history yet.</div>
+              <div className="px-6 py-8 text-center text-sm text-[#9AA0A6]">No payment history yet.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50">
+                    <tr className="border-b border-[#DADCE0] bg-[#F8F9FA]">
                       {["Date", "Plan", "Amount", "Status", "Invoice"].map((h) => (
-                        <th key={h} className="px-6 py-3 text-left text-xs font-semibold text-slate-500">{h}</th>
+                        <th key={h} className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-[#9AA0A6]">{h}</th>
                       ))}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-50">
+                  <tbody className="divide-y divide-[#F8F9FA]">
                     {subscription.payments.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="px-6 py-3 text-slate-600">{formatDate(p.date)}</td>
-                        <td className="px-6 py-3 font-medium text-slate-800">{p.plan}</td>
-                        <td className="px-6 py-3 text-slate-600">{formatCurrency(p.amount / 100)}</td>
+                      <tr key={p.id} className="hover:bg-[#F8F9FA] transition-colors">
+                        <td className="px-6 py-3 text-[#5F6368]">{formatDate(p.date)}</td>
+                        <td className="px-6 py-3 font-medium text-[#202124]">{p.plan}</td>
+                        <td className="px-6 py-3 text-[#5F6368]">{formatCurrency(p.amount / 100)}</td>
                         <td className="px-6 py-3">
                           <span className={cn(
-                            "rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1",
+                            "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold",
                             p.status === "paid"
-                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                              : "bg-slate-100 text-slate-500 ring-slate-200"
-                          )}>{p.status}</span>
+                              ? "bg-[#E6F4EA] text-[#137333]"
+                              : "bg-[#F1F3F4] text-[#5F6368]"
+                          )}>
+                            {p.status === "paid" && <Check className="h-3 w-3" />}
+                            {p.status.toUpperCase()}
+                          </span>
                         </td>
-                        <td className="px-6 py-3 text-[#6c63ff]">{p.invoice}</td>
+                        <td className="px-6 py-3">
+                          {p.invoice ? (
+                            <a href={p.invoice} target="_blank" rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-[#6C3FF5] hover:text-[#5B2FE0] transition-colors">
+                              <Download className="h-3.5 w-3.5" />
+                              Invoice
+                            </a>
+                          ) : (
+                            <span className="text-xs text-[#9AA0A6]">—</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-          </Card>
+          </div>
 
         </div>
       ) : null}
 
       {/* Help footer */}
-      <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-          <Clock3 className="h-4 w-4 text-[#6c63ff]" />
+      <div className="rounded-xl border border-[#DADCE0] bg-white px-5 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <div className="flex items-center gap-2 text-sm font-semibold text-[#202124]">
+          <span className="material-symbols-outlined text-[#6C3FF5] text-[18px]">help_outline</span>
           Need help choosing?
         </div>
-        <p className="mt-1.5 text-sm text-slate-400">
+        <p className="mt-1.5 text-sm text-[#5F6368]">
           Free users keep unlimited access to the three core generators. Pro unlocks the AI Notetaker. Elite removes meeting caps.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <a href="/dashboard/meetings"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors">
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[#DADCE0] bg-white px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F8F9FA] transition-colors">
             View meetings <ArrowRight className="h-3.5 w-3.5" />
           </a>
           <a href="/dashboard/tools"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 transition-colors">
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#F8F9FA] px-4 py-2 text-sm font-semibold text-[#5F6368] hover:bg-[#F1F3F4] transition-colors">
             Explore tools <Zap className="h-3.5 w-3.5" />
           </a>
         </div>

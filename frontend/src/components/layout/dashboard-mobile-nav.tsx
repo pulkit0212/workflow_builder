@@ -45,7 +45,7 @@ export function DashboardMobileNav() {
             href={item.href}
             className={cn(
               "inline-flex shrink-0 items-center gap-2 rounded-full border border-[#e5e7eb] bg-white px-4 py-2 text-sm font-medium text-[#6b7280] transition-colors hover:bg-[#f9fafb] hover:text-[#111827]",
-              isActive && "border-transparent bg-[#6c63ff] text-white"
+              isActive && "border-transparent bg-[#6C3FF5] text-white"
             )}
           >
             <Icon className="h-4 w-4" />

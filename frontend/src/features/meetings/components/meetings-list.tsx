@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { Route } from "next";
 import Link from "next/link";
-import { CalendarDays, CalendarSync, LoaderCircle, Share2 } from "lucide-react";
+import { CalendarSync, LoaderCircle, Share2, Plus, Video } from "lucide-react";
 import { SkeletonList } from "@/components/SkeletonCard";
 import { fetchJoinedMeetings, fetchUnifiedCalendarFeed } from "@/features/meetings/api";
 import { CalendarMeetingRow } from "@/features/meetings/components/calendar-meeting-row";
@@ -15,10 +15,7 @@ import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
 
 function formatDateHeading(value: Date, prefix: string) {
-  return `${prefix} — ${value.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric"
-  }).toUpperCase()}`;
+  return `${prefix} — ${value.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase()}`;
 }
 
 function formatUpcomingLabel(date: Date) {
@@ -26,39 +23,26 @@ function formatUpcomingLabel(date: Date) {
   const tomorrow = new Date(now);
   tomorrow.setDate(now.getDate() + 1);
   tomorrow.setHours(0, 0, 0, 0);
-
   const target = new Date(date);
   target.setHours(0, 0, 0, 0);
-
-  if (target.getTime() === tomorrow.getTime()) {
-    return formatDateHeading(date, "TOMORROW");
-  }
-
-  return `${date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} — ${date
-    .toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric"
-    })
-    .toUpperCase()}`;
+  if (target.getTime() === tomorrow.getTime()) return formatDateHeading(date, "TOMORROW");
+  return `${date.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()} — ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase()}`;
 }
 
 function groupMeetingsByDate(meetings: UnifiedCalendarMeeting[]) {
   const groups = new Map<string, { date: Date; meetings: UnifiedCalendarMeeting[] }>();
-
   for (const meeting of meetings) {
     const date = new Date(meeting.startTime);
     const key = date.toDateString();
     const existing = groups.get(key);
-
-    if (existing) {
-      existing.meetings.push(meeting);
-    } else {
-      groups.set(key, { date, meetings: [meeting] });
-    }
+    if (existing) { existing.meetings.push(meeting); }
+    else { groups.set(key, { date, meetings: [meeting] }); }
   }
-
-  return Array.from(groups.values()).sort((left, right) => left.date.getTime() - right.date.getTime());
+  return Array.from(groups.values()).sort((a, b) => a.date.getTime() - b.date.getTime());
 }
+
+// ─── Filter tabs ──────────────────────────────────────────────────────────────
+type FilterTab = "All" | "Today" | "This Week" | "This Month";
 
 export function MeetingsList() {
   const searchParams = useSearchParams();
@@ -75,31 +59,22 @@ export function MeetingsList() {
   const [needsCalendarConnection, setNeedsCalendarConnection] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FilterTab>("All");
 
   async function loadMeetings(options?: { silent?: boolean }) {
     if (!options?.silent) setIsLoading(true);
     setError(null);
     try {
       if (activeWorkspaceId) {
-        // Workspace mode: fetch shared meetings only, no calendar
         const res = await apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`);
         const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
         setWorkspaceMeetings(data.meetings ?? []);
-        setTodayMeetings([]);
-        setUpcomingMeetings([]);
-        setSessions([]);
+        setTodayMeetings([]); setUpcomingMeetings([]); setSessions([]);
       } else {
-        // Personal mode: unified calendar feed
         const now = new Date();
-        const todayStart = new Date(now);
-        todayStart.setHours(0, 0, 0, 0);
-        const todayEnd = new Date(now);
-        todayEnd.setHours(23, 59, 59, 999);
-
-        const upcomingEnd = new Date(now);
-        upcomingEnd.setDate(now.getDate() + 7);
-        upcomingEnd.setHours(23, 59, 59, 999);
-
+        const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+        const upcomingEnd = new Date(now); upcomingEnd.setDate(now.getDate() + 7); upcomingEnd.setHours(23, 59, 59, 999);
         try {
           const [todayFeed, upcomingFeed, joined] = await Promise.all([
             fetchUnifiedCalendarFeed(todayStart, todayEnd),
@@ -111,16 +86,11 @@ export function MeetingsList() {
           setUpcomingMeetings(upcomingFeed.meetings);
           setSessions(joined);
         } catch (feedError) {
-          // If the feed fails with a calendar_auth_required-style error, show connect prompt
           const msg = feedError instanceof Error ? feedError.message : "";
           if (msg.includes("calendar_auth_required") || msg.includes("not connected")) {
             setNeedsCalendarConnection(true);
-            setTodayMeetings([]);
-            setUpcomingMeetings([]);
-            setSessions([]);
-          } else {
-            throw feedError;
-          }
+            setTodayMeetings([]); setUpcomingMeetings([]); setSessions([]);
+          } else { throw feedError; }
         }
       }
     } catch (loadError) {
@@ -136,47 +106,26 @@ export function MeetingsList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId, isAuthReady]);
 
-  // Fetch admin workspaces once for the share button
   useEffect(() => {
     if (activeWorkspaceId || !isAuthReady) return;
     apiFetch("/api/workspaces", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d: { workspaces?: { id: string; name: string; role: string }[] }) => {
-        setAdminWorkspaces(d.workspaces ?? []);
-      })
+      .then((d: { workspaces?: { id: string; name: string; role: string }[] }) => { setAdminWorkspaces(d.workspaces ?? []); })
       .catch(() => {});
   }, [activeWorkspaceId, isAuthReady]);
 
-  // Handle OAuth callback query params (e.g. ?google=connected or ?error=oauth_failed)
   useEffect(() => {
     const googleStatus = searchParams.get("google");
     const oauthError = searchParams.get("error");
-
     if (oauthError === "oauth_failed" || oauthError === "oauth_cancelled") {
       setActionError("Calendar connection failed. Please try again from the Integrations page.");
       return;
     }
-
     if (!googleStatus) return;
-
-    if (googleStatus === "connect_failed") {
-      setActionError("Calendar connection failed. Try again.");
-      setNeedsCalendarConnection(true);
-      return;
-    }
-
-    if (googleStatus === "missing_context") {
-      setActionError("Calendar connection context expired. Start the connection flow again.");
-      setNeedsCalendarConnection(true);
-      return;
-    }
-
-    if (googleStatus === "connected") {
-      setActionError(null);
-      setNeedsCalendarConnection(false);
-      void loadMeetings({ silent: true });
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (googleStatus === "connect_failed") { setActionError("Calendar connection failed. Try again."); setNeedsCalendarConnection(true); return; }
+    if (googleStatus === "missing_context") { setActionError("Calendar connection context expired. Start the connection flow again."); setNeedsCalendarConnection(true); return; }
+    if (googleStatus === "connected") { setActionError(null); setNeedsCalendarConnection(false); void loadMeetings({ silent: true }); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   function handleSyncCalendar() {
@@ -186,26 +135,22 @@ export function MeetingsList() {
 
   const groupedUpcoming = useMemo(() => groupMeetingsByDate(upcomingMeetings), [upcomingMeetings]);
 
-  if (isLoading) {
-    return <SkeletonList count={3} />;
-  }
+  if (isLoading) return <SkeletonList count={5} />;
 
-  // ── Workspace mode ──────────────────────────────────────────────────────────
+  // ── Workspace mode ────────────────────────────────────────────────────────
   if (activeWorkspaceId) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Meetings</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-900">{activeWorkspace?.name ?? "Workspace"} Meetings</h1>
-            <p className="mt-1 text-sm text-slate-400">Meetings shared to this workspace by the admin.</p>
+            <h1 className="text-[22px] font-semibold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>
+              Meetings
+            </h1>
+            <p className="text-sm text-[#5F6368] mt-0.5">{activeWorkspace?.name ?? "Workspace"} — shared meetings</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadMeetings({ silent: true })}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
-          >
+          <button type="button" onClick={() => void loadMeetings({ silent: true })}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-4 py-2 text-sm font-medium text-[#5F6368] hover:bg-[#F8F9FA] transition-colors">
             <CalendarSync className="h-4 w-4" />
             Refresh
           </button>
@@ -214,56 +159,36 @@ export function MeetingsList() {
         {error ? (
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
         ) : workspaceMeetings.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-20 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-              <Share2 className="h-7 w-7 text-slate-300" />
+          <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#DADCE0] bg-white py-20 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F3F4] mb-3">
+              <Share2 className="h-6 w-6 text-[#9AA0A6]" />
             </div>
-            <p className="mt-3 text-sm font-semibold text-slate-700">No meetings shared yet</p>
-            <p className="mt-1 text-xs text-slate-400">The workspace admin can share meetings from their personal space.</p>
+            <p className="text-sm font-semibold text-[#202124]">No meetings shared yet</p>
+            <p className="mt-1 text-xs text-[#5F6368]">The workspace admin can share meetings from their personal space.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {workspaceMeetings.map((meeting) => {
               const dateStr = meeting.scheduledStartTime
                 ? new Date(meeting.scheduledStartTime).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })
                 : new Date(meeting.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric" });
               const hasContent = !!(meeting.summary?.trim() || meeting.transcript?.trim());
               const isRecording = ["capturing", "processing", "summarizing", "waiting_for_join", "waiting_for_admission"].includes(meeting.status ?? "");
-
               return (
-                <Link
-                  key={meeting.id}
-                  href={`/dashboard/meetings/${meeting.id}` as Route}
-                  className="group flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:border-[#6c63ff]/40 hover:bg-[#faf9ff] hover:shadow-lg hover:shadow-[#6c63ff]/10 focus:outline-none focus:ring-2 focus:ring-[#6c63ff]/40"
-                >
-                  {/* Avatar */}
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#6c63ff] to-[#9b8fff] text-sm font-semibold text-white">
+                <Link key={meeting.id} href={`/dashboard/meetings/${meeting.id}` as Route}
+                  className="group flex items-center gap-4 rounded-xl border border-[#DADCE0] bg-white p-4 shadow-[0_1px_2px_rgba(0,0,0,0.05)] transition-all hover:border-[#6C3FF5]/40 hover:shadow-md">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#EDE9FE] text-sm font-bold text-[#6C3FF5]">
                     {(meeting.title ?? "M").charAt(0).toUpperCase()}
-                  </span>
-
-                  {/* Info */}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-sm font-bold text-slate-900">{meeting.title}</p>
-                      {hasContent && (
-                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
-                          Summary ready
-                        </span>
-                      )}
-                      {isRecording && (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-600 ring-1 ring-red-200">
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-                          Recording
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 text-xs text-slate-400">{dateStr}</p>
                   </div>
-
-                  {/* Hover hint */}
-                  <span className="shrink-0 text-xs font-semibold text-[#6c63ff] opacity-0 transition-opacity group-hover:opacity-100">
-                    View →
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-[#202124]">{meeting.title}</p>
+                    <p className="text-xs text-[#5F6368] mt-0.5">{dateStr}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {hasContent && <span className="rounded-full bg-[#E6F4EA] px-2 py-0.5 text-[11px] font-bold text-[#137333]">READY</span>}
+                    {isRecording && <span className="rounded-full bg-[#FCE8E6] px-2 py-0.5 text-[11px] font-bold text-[#C5221F]">RECORDING</span>}
+                    <span className="text-xs font-semibold text-[#6C3FF5] opacity-0 group-hover:opacity-100 transition-opacity">View →</span>
+                  </div>
                 </Link>
               );
             })}
@@ -273,33 +198,53 @@ export function MeetingsList() {
     );
   }
 
-  // ── Personal mode ────────────────────────────────────────────────────────────
+  // ── Personal mode ─────────────────────────────────────────────────────────
+  const tabs: FilterTab[] = ["All", "Today", "This Week", "This Month"];
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Meetings</p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Meetings</h1>
-          <p className="mt-1 text-sm text-slate-400">Your upcoming calendar sessions</p>
+    <div className="space-y-5">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <h1 className="text-[22px] font-semibold text-[#202124]" style={{ fontFamily: "'Work Sans', sans-serif" }}>
+          Meetings
+        </h1>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={handleSyncCalendar} disabled={isSyncing}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-4 py-2 text-sm font-medium text-[#5F6368] hover:bg-[#F8F9FA] transition-colors disabled:opacity-50">
+            {isSyncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarSync className="h-4 w-4" />}
+            Schedule New
+          </button>
+          <button type="button"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition-colors shadow-sm">
+            <Video className="h-4 w-4" />
+            Join with Code
+          </button>
         </div>
-        <button type="button" onClick={handleSyncCalendar} disabled={isSyncing}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50">
-          {isSyncing ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CalendarSync className="h-4 w-4" />}
-          Sync Calendar
-        </button>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex items-center gap-1 bg-[#F1F3F4] p-1 rounded-xl w-fit">
+        {tabs.map((tab) => (
+          <button key={tab} type="button" onClick={() => setActiveTab(tab)}
+            className={`px-5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === tab
+                ? "bg-white text-[#6C3FF5] shadow-sm"
+                : "text-[#5F6368] hover:text-[#202124]"
+            }`}>
+            {tab}
+          </button>
+        ))}
       </div>
 
       {needsCalendarConnection ? (
-        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-8 text-center space-y-3">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
-            <CalendarDays className="h-7 w-7 text-slate-400" />
+        <div className="rounded-xl border border-dashed border-[#DADCE0] bg-white p-10 text-center space-y-3">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F3F4]">
+            <CalendarSync className="h-6 w-6 text-[#9AA0A6]" />
           </div>
-          <p className="text-sm font-semibold text-slate-700">Connect a Calendar</p>
-          <p className="text-xs text-slate-400">Your upcoming sessions will appear here automatically once a calendar is connected.</p>
-          <Link
-            href="/dashboard/integrations"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#6c63ff] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#5b52e0] transition-colors"
-          >
+          <p className="text-sm font-semibold text-[#202124]">Connect a Calendar</p>
+          <p className="text-xs text-[#5F6368]">Your upcoming sessions will appear here automatically once a calendar is connected.</p>
+          <Link href="/dashboard/integrations"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-[#6C3FF5] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition-colors">
             Connect Calendar
           </Link>
           {actionError && <p className="text-xs text-red-600">{actionError}</p>}
@@ -308,64 +253,73 @@ export function MeetingsList() {
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 flex items-center justify-between gap-4">
           <p className="text-sm text-red-700">{error}</p>
           <button type="button" onClick={handleSyncCalendar} disabled={isSyncing}
-            className="rounded-xl border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors">
+            className="rounded-lg border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 transition-colors">
             Retry
           </button>
         </div>
       ) : (
-        <>
-          <section className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">
-              Today — {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-            </p>
-            {todayMeetings.length > 0 ? (
-              <div className="space-y-3">
-                {todayMeetings.map((meeting) => (
-                  <CalendarMeetingRow
-                    key={meeting.id}
-                    meeting={meeting}
-                    session={findSessionForMeeting(meeting, sessions)}
-                    adminWorkspaces={adminWorkspaces}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
-                <CalendarDays className="h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-sm font-medium text-slate-600">No meetings scheduled today</p>
-                <p className="mt-0.5 text-xs text-slate-400">Your calendar meetings will appear here.</p>
-              </div>
-            )}
-          </section>
+        <div className="space-y-2">
+          {/* Today meetings */}
+          {(activeTab === "All" || activeTab === "Today") && todayMeetings.length > 0 && (
+            <>
+              <p className="text-[11px] font-bold uppercase tracking-widest text-[#5F6368] px-1 pt-2">
+                Today — {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </p>
+              {todayMeetings.map((meeting) => (
+                <CalendarMeetingRow key={meeting.id} meeting={meeting}
+                  session={findSessionForMeeting(meeting, sessions)} adminWorkspaces={adminWorkspaces} />
+              ))}
+            </>
+          )}
 
-          <section className="space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-widest text-[#6c63ff]">Upcoming</p>
-            {groupedUpcoming.length > 0 ? (
-              <div className="space-y-6">
-                {groupedUpcoming.map((group) => (
-                  <div key={group.date.toISOString()} className="space-y-3">
-                    <p className="text-xs font-semibold text-slate-400">{formatUpcomingLabel(group.date)}</p>
-                    {group.meetings.map((meeting) => (
-                      <CalendarMeetingRow
-                        key={meeting.id}
-                        meeting={meeting}
-                        session={findSessionForMeeting(meeting, sessions)}
-                        adminWorkspaces={adminWorkspaces}
-                      />
-                    ))}
-                  </div>
-                ))}
+          {/* Upcoming meetings */}
+          {(activeTab === "All" || activeTab === "This Week") && groupedUpcoming.length > 0 && (
+            <>
+              {groupedUpcoming.map((group) => (
+                <div key={group.date.toISOString()} className="space-y-2">
+                  <p className="text-[11px] font-bold uppercase tracking-widest text-[#5F6368] px-1 pt-2">
+                    {formatUpcomingLabel(group.date)}
+                  </p>
+                  {group.meetings.map((meeting) => (
+                    <CalendarMeetingRow key={meeting.id} meeting={meeting}
+                      session={findSessionForMeeting(meeting, sessions)} adminWorkspaces={adminWorkspaces} />
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
+
+          {/* Empty state */}
+          {todayMeetings.length === 0 && groupedUpcoming.length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-[#DADCE0] bg-white py-16 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#F1F3F4] mb-3">
+                <CalendarSync className="h-6 w-6 text-[#9AA0A6]" />
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white py-12 text-center">
-                <CalendarDays className="h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-sm font-medium text-slate-600">No upcoming meetings</p>
-                <p className="mt-0.5 text-xs text-slate-400">Future calendar meetings will appear here once scheduled.</p>
-              </div>
-            )}
-          </section>
-        </>
+              <p className="text-sm font-semibold text-[#202124]">No meetings scheduled</p>
+              <p className="mt-1 text-xs text-[#5F6368]">Your calendar meetings will appear here.</p>
+            </div>
+          )}
+
+          {/* Load more */}
+          {(todayMeetings.length > 0 || groupedUpcoming.length > 0) && (
+            <div className="flex justify-center pt-4">
+              <button type="button" onClick={handleSyncCalendar}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-[#5F6368] hover:text-[#6C3FF5] transition-colors">
+                Load more meetings
+                <span className="material-symbols-outlined text-[18px]">expand_more</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
+
+      {/* FAB */}
+      <div className="fixed bottom-8 right-8 z-50">
+        <button type="button"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-[#6C3FF5] text-white shadow-xl hover:bg-[#5B2FE0] hover:scale-105 active:scale-95 transition-all">
+          <Plus className="h-6 w-6" />
+        </button>
+      </div>
     </div>
   );
 }

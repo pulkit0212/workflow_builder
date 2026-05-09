@@ -93,20 +93,21 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
   }
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[#e5e7eb] bg-white">
-      <div className="flex h-16 items-center gap-4 px-4 sm:px-6 lg:px-8">
+    <header className="sticky top-0 z-20 border-b border-[#DADCE0] bg-[#F8F9FA] w-full">
+      <div className="flex h-16 items-center gap-4 px-4 sm:px-6">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[24px] font-bold text-[#111827]">{pageTitle}</p>
+          <p className="truncate font-page-title text-[#202124]">{pageTitle}</p>
+          <p className="text-xs text-[#5F6368]">{new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
         </div>
 
         {/* Search */}
         <div ref={containerRef} className="relative hidden flex-[1.2] justify-center md:flex">
           <div className={cn(
-            "flex w-full max-w-xl items-center gap-3 rounded-xl border bg-[#f9fafb] px-4 py-2 transition-all",
-            isOpen ? "border-[#6c63ff] bg-white shadow-sm ring-2 ring-[#6c63ff]/20" : "border-[#d1d5db]"
+            "flex w-full max-w-xl items-center gap-3 rounded-full border bg-white px-4 py-2 transition-all",
+            isOpen ? "border-[#6C3FF5] shadow-sm ring-2 ring-[#6C3FF5]/20" : "border-[#DADCE0]"
           )}>
             {isSearching
-              ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#6c63ff]" />
+              ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-[#6C3FF5]" />
               : <Search className="h-4 w-4 shrink-0 text-[#9ca3af]" />}
             <input
               ref={inputRef}
@@ -140,7 +141,7 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
                   >
                     <div className={cn(
                       "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
-                      result.type === "run" ? "bg-[#f5f3ff] text-[#6c63ff]" : "bg-slate-100 text-slate-500"
+                      result.type === "run" ? "bg-[#f5f3ff] text-[#6C3FF5]" : "bg-slate-100 text-slate-500"
                     )}>
                       {result.type === "run"
                         ? <FileText className="h-4 w-4" />

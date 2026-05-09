@@ -140,7 +140,7 @@ export function DebugTestsPanel() {
       <Card className="p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#6c63ff]">Debug</p>
+            <p className="text-[12px] font-semibold uppercase tracking-[0.24em] text-[#6C3FF5]">Debug</p>
             <h1 className="mt-2 text-2xl font-bold text-[#111827]">System Test Results</h1>
             <p className="mt-2 text-sm text-[#6b7280]">Development-only checks for bot, AI, database, calendar, and subscription health.</p>
           </div>

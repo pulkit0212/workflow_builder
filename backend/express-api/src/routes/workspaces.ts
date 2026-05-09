@@ -484,3 +484,412 @@ workspacesRouter.get("/:workspaceId/dashboard", async (req: Request, res: Respon
     next(err);
   }
 });
+
+// ─── PATCH /:workspaceId/members/:memberId — change member role ───────────────
+
+workspacesRouter.patch("/:workspaceId/members/:memberId", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId, memberId } = req.params;
+    const userId = req.appUser.id;
+
+    const requester = await requireWorkspaceMember(workspaceId, userId);
+    if (requester.role !== "admin" && requester.role !== "owner") {
+      return next(new ForbiddenError("Only admins can change member roles"));
+    }
+
+    const { role } = req.body as { role?: string };
+    if (!role || !["member", "viewer"].includes(role)) {
+      return next(new BadRequestError("Role must be 'member' or 'viewer'"));
+    }
+
+    const result = await pool.query(
+      `UPDATE workspace_members SET role = $1 WHERE id = $2 AND workspace_id = $3 RETURNING *`,
+      [role, memberId, workspaceId]
+    );
+
+    if (result.rowCount === 0) {
+      return next(new NotFoundError("Member not found"));
+    }
+
+    res.json({ success: true, member: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── DELETE /:workspaceId/members/:memberId — remove member ──────────────────
+
+workspacesRouter.delete("/:workspaceId/members/:memberId", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId, memberId } = req.params;
+    const userId = req.appUser.id;
+
+    const requester = await requireWorkspaceMember(workspaceId, userId);
+    if (requester.role !== "admin" && requester.role !== "owner") {
+      return next(new ForbiddenError("Only admins can remove members"));
+    }
+
+    // Prevent removing yourself
+    const targetResult = await pool.query(
+      `SELECT user_id, role FROM workspace_members WHERE id = $1 AND workspace_id = $2 LIMIT 1`,
+      [memberId, workspaceId]
+    );
+    const target = targetResult.rows[0] ?? null;
+    if (!target) return next(new NotFoundError("Member not found"));
+    if (target.user_id === userId) return next(new BadRequestError("You cannot remove yourself"));
+    if (target.role === "owner") return next(new ForbiddenError("Cannot remove the workspace owner"));
+
+    await pool.query(
+      `DELETE FROM workspace_members WHERE id = $1 AND workspace_id = $2`,
+      [memberId, workspaceId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /:workspaceId/leave — leave workspace ───────────────────────────────
+
+workspacesRouter.post("/:workspaceId/leave", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role === "owner") {
+      return next(new BadRequestError("Workspace owners cannot leave. Transfer ownership first or delete the workspace."));
+    }
+
+    await pool.query(
+      `DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2`,
+      [workspaceId, userId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /:workspaceId/transfer-ownership — transfer admin rights ────────────
+
+workspacesRouter.post("/:workspaceId/transfer-ownership", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.appUser.id;
+
+    const requester = await requireWorkspaceMember(workspaceId, userId);
+    if (requester.role !== "admin" && requester.role !== "owner") {
+      return next(new ForbiddenError("Only admins can transfer ownership"));
+    }
+
+    const { newOwnerMemberId } = req.body as { newOwnerMemberId?: string };
+    if (!newOwnerMemberId) return next(new BadRequestError("newOwnerMemberId is required"));
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Promote new owner to admin
+      const result = await client.query(
+        `UPDATE workspace_members SET role = 'admin' WHERE id = $1 AND workspace_id = $2 RETURNING user_id`,
+        [newOwnerMemberId, workspaceId]
+      );
+      if (result.rowCount === 0) {
+        await client.query("ROLLBACK");
+        return next(new NotFoundError("Target member not found"));
+      }
+
+      // Demote current admin to member
+      await client.query(
+        `UPDATE workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2`,
+        [workspaceId, userId]
+      );
+
+      await client.query("COMMIT");
+      res.json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /:workspaceId/move-requests — list pending move requests ─────────────
+
+workspacesRouter.get("/:workspaceId/move-requests", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role !== "admin" && member.role !== "owner") {
+      return next(new ForbiddenError("Only admins can view move requests"));
+    }
+
+    const result = await pool.query(
+      `SELECT mr.*, ms.title AS meeting_title,
+              u.id AS requester_id, u.full_name AS requester_full_name, u.email AS requester_email
+       FROM workspace_move_requests mr
+       LEFT JOIN meeting_sessions ms ON ms.id = mr.meeting_id
+       LEFT JOIN users u ON u.id = mr.requested_by
+       WHERE mr.workspace_id = $1 AND mr.status = 'pending'
+       ORDER BY mr.created_at DESC`,
+      [workspaceId]
+    );
+
+    const requests = result.rows.map((row) => ({
+      id: row.id,
+      meetingId: row.meeting_id,
+      workspaceId: row.workspace_id,
+      requestedBy: row.requested_by,
+      status: row.status,
+      createdAt: row.created_at,
+      meeting: row.meeting_title ? { id: row.meeting_id, title: row.meeting_title } : undefined,
+      requester: row.requester_id ? {
+        id: row.requester_id,
+        fullName: row.requester_full_name ?? null,
+        email: row.requester_email,
+      } : undefined,
+    }));
+
+    res.json({ success: true, requests });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /:workspaceId/move-requests/:requestId/approve ─────────────────────
+
+workspacesRouter.post("/:workspaceId/move-requests/:requestId/approve", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId, requestId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role !== "admin" && member.role !== "owner") {
+      return next(new ForbiddenError("Only admins can approve move requests"));
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      const reqResult = await client.query(
+        `SELECT * FROM workspace_move_requests WHERE id = $1 AND workspace_id = $2 AND status = 'pending' LIMIT 1`,
+        [requestId, workspaceId]
+      );
+      const moveReq = reqResult.rows[0] ?? null;
+      if (!moveReq) {
+        await client.query("ROLLBACK");
+        return next(new NotFoundError("Move request not found or already handled"));
+      }
+
+      // Move the meeting to this workspace
+      await client.query(
+        `UPDATE meeting_sessions SET workspace_id = $1 WHERE id = $2`,
+        [workspaceId, moveReq.meeting_id]
+      );
+
+      // Mark request as approved
+      await client.query(
+        `UPDATE workspace_move_requests SET status = 'approved', reviewed_at = NOW(), reviewed_by = $1 WHERE id = $2`,
+        [userId, requestId]
+      );
+
+      await client.query("COMMIT");
+      res.json({ success: true });
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /:workspaceId/move-requests/:requestId/reject ──────────────────────
+
+workspacesRouter.post("/:workspaceId/move-requests/:requestId/reject", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId, requestId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role !== "admin" && member.role !== "owner") {
+      return next(new ForbiddenError("Only admins can reject move requests"));
+    }
+
+    const result = await pool.query(
+      `UPDATE workspace_move_requests SET status = 'rejected', reviewed_at = NOW(), reviewed_by = $1
+       WHERE id = $2 AND workspace_id = $3 AND status = 'pending'
+       RETURNING id`,
+      [userId, requestId, workspaceId]
+    );
+
+    if (result.rowCount === 0) {
+      return next(new NotFoundError("Move request not found or already handled"));
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /:workspaceId/invite — list pending invites ─────────────────────────
+
+workspacesRouter.get("/:workspaceId/invite", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role !== "admin" && member.role !== "owner") {
+      return next(new ForbiddenError("Only admins can view invites"));
+    }
+
+    const result = await pool.query(
+      `SELECT id, invited_email, created_at, expires_at
+       FROM workspace_invites
+       WHERE workspace_id = $1 AND status = 'pending' AND expires_at > NOW()
+       ORDER BY created_at DESC`,
+      [workspaceId]
+    );
+
+    res.json({
+      invites: result.rows.map((row) => ({
+        id: row.id,
+        invitedEmail: row.invited_email,
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /:workspaceId/invite — send email invite ───────────────────────────
+
+workspacesRouter.post("/:workspaceId/invite", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role !== "admin" && member.role !== "owner") {
+      return next(new ForbiddenError("Only admins can invite members"));
+    }
+
+    const { email } = req.body as { email?: string };
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ success: false, details: { code: "invalid_email" } });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Check if already a member
+    const existingMember = await pool.query(
+      `SELECT wm.id FROM workspace_members wm
+       JOIN users u ON u.id = wm.user_id
+       WHERE wm.workspace_id = $1 AND LOWER(u.email) = $2 AND wm.status = 'active'
+       LIMIT 1`,
+      [workspaceId, normalizedEmail]
+    );
+    if ((existingMember.rowCount ?? 0) > 0) {
+      return res.status(400).json({ success: false, details: { code: "already_a_member" } });
+    }
+
+    // Check if invite already pending
+    const existingInvite = await pool.query(
+      `SELECT id FROM workspace_invites
+       WHERE workspace_id = $1 AND invited_email = $2 AND status = 'pending' AND expires_at > NOW()
+       LIMIT 1`,
+      [workspaceId, normalizedEmail]
+    );
+    if ((existingInvite.rowCount ?? 0) > 0) {
+      return res.status(400).json({ success: false, details: { code: "invite_already_pending" } });
+    }
+
+    // Generate token and create invite (expires in 7 days)
+    const crypto = await import("crypto");
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `INSERT INTO workspace_invites (workspace_id, invited_email, invited_by, token, status, expires_at)
+       VALUES ($1, $2, $3, $4, 'pending', $5)`,
+      [workspaceId, normalizedEmail, userId, token, expiresAt]
+    );
+
+    // TODO: Send invite email with token
+    // For now, just return success — the invite link would be /invite?token=<token>
+
+    res.status(201).json({ success: true, token });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── DELETE /:workspaceId/invite/:inviteId — revoke invite ───────────────────
+
+workspacesRouter.delete("/:workspaceId/invite/:inviteId", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId, inviteId } = req.params;
+    const userId = req.appUser.id;
+
+    const member = await requireWorkspaceMember(workspaceId, userId);
+    if (member.role !== "admin" && member.role !== "owner") {
+      return next(new ForbiddenError("Only admins can revoke invites"));
+    }
+
+    await pool.query(
+      `UPDATE workspace_invites SET status = 'revoked' WHERE id = $1 AND workspace_id = $2`,
+      [inviteId, workspaceId]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /:workspaceId/invite/suggestions — email autocomplete ────────────────
+
+workspacesRouter.get("/:workspaceId/invite/suggestions", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { workspaceId } = req.params;
+    const userId = req.appUser.id;
+    const q = (req.query.q as string ?? "").trim();
+
+    await requireWorkspaceMember(workspaceId, userId);
+
+    if (!q || q.length < 2) {
+      return res.json({ suggestions: [] });
+    }
+
+    // Suggest users who are not already members
+    const result = await pool.query(
+      `SELECT u.email FROM users u
+       WHERE LOWER(u.email) LIKE $1
+       AND u.id NOT IN (
+         SELECT user_id FROM workspace_members WHERE workspace_id = $2 AND status = 'active'
+       )
+       LIMIT 5`,
+      [`${q.toLowerCase()}%`, workspaceId]
+    );
+
+    res.json({ suggestions: result.rows.map((r) => r.email) });
+  } catch (err) {
+    next(err);
+  }
+});

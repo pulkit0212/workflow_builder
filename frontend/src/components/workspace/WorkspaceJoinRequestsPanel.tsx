@@ -74,7 +74,7 @@ export function WorkspaceJoinRequestsPanel({
   return (
     <div className="space-y-4 rounded-[28px] border border-[#e5e7eb] bg-[#f9fafb] p-5">
       <div className="space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6c63ff]">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#6C3FF5]">
           Join Requests
         </p>
         <h3 className="text-lg font-semibold text-[#111827]">Pending approvals</h3>

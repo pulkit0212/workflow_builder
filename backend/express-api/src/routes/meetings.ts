@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool } from "../db/client";
 import { BadRequestError, NotFoundError } from "../lib/errors";
 import * as botClient from "../lib/bot-client";
+import { triggerAutoShare } from "./meeting-sessions";
 
 export const meetingsRouter = Router();
 
@@ -555,7 +556,7 @@ meetingsRouter.get("/:id/status", async (req: Request, res: Response, next: Next
               transcript, summary, key_points, key_decisions, action_items,
               risks_and_blockers, recording_file_path, recording_url,
               recording_started_at, recording_ended_at, recording_duration,
-              meeting_duration, insights, chapters, auto_share_failures
+              meeting_duration, insights, chapters
        FROM meeting_sessions WHERE id = $1 LIMIT 1`,
       [id]
     );
@@ -588,8 +589,27 @@ meetingsRouter.get("/:id/status", async (req: Request, res: Response, next: Next
       recordingEndedAt: session.recording_ended_at ?? null,
       insights: session.insights ?? null,
       chapters: session.chapters ?? null,
-      autoShareFailures: Array.isArray(session.auto_share_failures) ? session.auto_share_failures : null,
     });
+
+    // Fire auto-share when meeting just completed — triggered by polling
+    // Uses a DB flag to ensure it only fires once
+    if (session.status === "completed") {
+      void pool.query(
+        `UPDATE meeting_sessions SET auto_share_done = true, updated_at = NOW()
+         WHERE id = $1 AND (auto_share_done IS NOT TRUE) AND status = 'completed'
+         RETURNING id`,
+        [id]
+      ).then(async (r) => {
+        if (r.rowCount && r.rowCount > 0) {
+          const fullRow = await pool.query(`SELECT * FROM meeting_sessions WHERE id = $1`, [id]);
+          if (fullRow.rows[0]) {
+            void triggerAutoShare(session.user_id, id, fullRow.rows[0]).catch((err: unknown) => {
+              console.error("[AutoShare] Failed:", err instanceof Error ? err.message : err);
+            });
+          }
+        }
+      }).catch(() => { /* non-fatal — auto_share_done column may not exist yet */ });
+    }
   } catch (err) { next(err); }
 });
 
