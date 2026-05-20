@@ -104,7 +104,28 @@ npm run dev
 
 Runs at: `http://localhost:3001`
 
-### 4. Set up the Bot (optional — for recording meetings)
+### 4. Run the full stack with Docker (optional)
+
+From the repo root, build and run Postgres, the Express API, and the Next.js app:
+
+```bash
+cd deploy
+cp .env.example .env
+# Edit .env with Clerk keys, Razorpay, Gemini, etc. (see frontend/.env.example and backend/express-api/.env.example).
+docker compose up --build
+```
+
+Then apply database migrations and the frontend schema (Postgres is exposed on `localhost:5432`):
+
+```bash
+cd deploy && docker compose run --rm api npm run migrate:sql:prod
+cd ../frontend && DATABASE_URL=postgresql://workflow_user:password123@localhost:5432/workflow_ai npm run db:push
+```
+
+- Web: `http://localhost:3000` — API: `http://localhost:3001`
+- Meeting bot (large image; Playwright + Whisper): `docker compose --profile bot up --build` and set `BOT_BASE_URL=http://bot:8000` in `deploy/.env` for the API.
+
+### 5. Set up the Bot (optional — for recording meetings)
 
 ```bash
 cd backend/python-services/ai-processing-service/legacy-bot

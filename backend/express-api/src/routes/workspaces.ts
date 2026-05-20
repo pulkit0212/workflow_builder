@@ -7,6 +7,17 @@ import { sendWorkspaceInviteEmail } from "../lib/workspace-invite-email";
 
 export const workspacesRouter = Router();
 
+// PostgreSQL returns snake_case columns; frontend expects camelCase.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toCamel(row: Record<string, any>): Record<string, any> {
+  const result: Record<string, unknown> = {};
+  for (const key of Object.keys(row)) {
+    const camel = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    result[camel] = row[key];
+  }
+  return result;
+}
+
 function requireTeamWorkspacePlan(req: Request) {
   const plan = req.appUser.plan ?? "free";
   if (!canUseTeamWorkspace(plan)) {
@@ -406,7 +417,7 @@ workspacesRouter.get("/:workspaceId/meetings", async (req: Request, res: Respons
       [workspaceId]
     );
 
-    res.json(result.rows);
+    res.json(result.rows.map(toCamel));
   } catch (err) {
     next(err);
   }
@@ -465,6 +476,7 @@ workspacesRouter.get("/:workspaceId/dashboard", async (req: Request, res: Respon
       workspaceResult,
       membersResult,
       meetingsResult,
+      meetingsThisMonthResult,
       actionItemsResult,
       recentMeetingsResult,
     ] = await Promise.all([
@@ -478,10 +490,16 @@ workspacesRouter.get("/:workspaceId/dashboard", async (req: Request, res: Respon
         [workspaceId]
       ),
       pool.query(
+        `SELECT COUNT(*)::int AS total FROM meeting_sessions
+         WHERE workspace_id = $1
+           AND DATE_TRUNC('month', COALESCE(scheduled_start_time, created_at)) = DATE_TRUNC('month', NOW())`,
+        [workspaceId]
+      ),
+      pool.query(
         `SELECT
            COUNT(*)::int AS total,
-           COUNT(*) FILTER (WHERE completed = true)::int AS completed,
-           COUNT(*) FILTER (WHERE completed = false)::int AS pending
+           COUNT(*) FILTER (WHERE completed = true OR status = 'done')::int AS completed,
+           COUNT(*) FILTER (WHERE completed = false AND status != 'done')::int AS pending
          FROM action_items WHERE workspace_id = $1`,
         [workspaceId]
       ),
@@ -506,6 +524,7 @@ workspacesRouter.get("/:workspaceId/dashboard", async (req: Request, res: Respon
       stats: {
         totalMembers: membersResult.rows[0]?.total ?? 0,
         totalMeetings: meetingsResult.rows[0]?.total ?? 0,
+        meetingsThisMonth: meetingsThisMonthResult.rows[0]?.total ?? 0,
         actionItems: {
           total: actionItemStats.total,
           completed: actionItemStats.completed,

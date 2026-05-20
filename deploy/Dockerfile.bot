@@ -1,0 +1,19 @@
+# syntax=docker/dockerfile:1
+# Meeting bot: Playwright + ffmpeg + Whisper (large image; first run downloads Whisper weights).
+FROM mcr.microsoft.com/playwright:v1.49.1-jammy
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ffmpeg python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /bot
+COPY backend/python-services/ai-processing-service/legacy-bot/package.json \
+  backend/python-services/ai-processing-service/legacy-bot/package-lock.json ./
+RUN npm ci --omit=dev
+
+COPY backend/python-services/ai-processing-service/legacy-bot/ ./
+RUN pip3 install --no-cache-dir openai-whisper ffmpeg-python
+
+ENV BOT_PORT=8000
+EXPOSE 8000
+CMD ["node", "index.js"]

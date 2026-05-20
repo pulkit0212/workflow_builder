@@ -1,0 +1,90 @@
+# Full stack: Postgres + Express API + Next.js web app.
+# Optional meeting bot (large image): docker compose --profile bot up --build
+#
+# Setup:
+#   cp .env.example .env
+#   Fill deploy/.env (Clerk, keys, etc.). For bot profile add BOT_BASE_URL=http://bot:8000 under api.
+#   docker compose up --build
+# One-time DB migrations (Express SQL):
+#   docker compose run --rm api npm run migrate:sql:prod
+# Frontend Drizzle schema (from host, DB on localhost:5432):
+#   cd ../frontend && DATABASE_URL=postgresql://workflow_user:password123@localhost:5432/workflow_ai npm run db:push
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: workflow_user
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: workflow_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - artivaa_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workflow_user -d workflow_ai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    ports:
+      - "3001:3001"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: "3001"
+      NODE_ENV: production
+      DATABASE_URL: postgresql://workflow_user:password123@postgres:5432/workflow_ai
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      FRONTEND_URL: http://localhost:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/dashboard}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL:-/dashboard}
+    ports:
+      - "3000:3000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    depends_on:
+      - api
+
+  bot:
+    profiles: ["bot"]
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.bot
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      BOT_PORT: "8000"
+      DATABASE_URL: postgresql://workflow_user:password123@postgres:5432/workflow_ai
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  artivaa_pgdata:

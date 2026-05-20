@@ -4,6 +4,6 @@ export type GoogleCalendarMeeting = {
   startTime: string;
   endTime: string;
   meetLink: string | null;
-  provider: "google_meet";
+  provider: "google_meet" | "zoom_web" | "teams_web";
   source: "google_calendar";
 };

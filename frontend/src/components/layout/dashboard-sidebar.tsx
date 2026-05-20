@@ -194,7 +194,7 @@ export function DashboardSidebar({ profile }: DashboardSidebarProps) {
 
         {/* Sign out */}
         <Link
-          href="/sign-out"
+          href={"/sign-out" as Route}
           className="flex items-center gap-3 px-3 py-2 text-sm text-[#EA4335] hover:bg-[#FCE8E6] rounded-sm transition-colors cursor-pointer"
         >
           <span className="material-symbols-outlined text-[20px]">logout</span>

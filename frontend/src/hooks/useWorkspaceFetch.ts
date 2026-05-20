@@ -7,9 +7,6 @@ import { useApiFetch } from '@/hooks/useApiFetch';
  *
  * @deprecated Use `useApiFetch` directly — it handles workspace context automatically.
  */
-export function useWorkspaceFetch(): (
-  input: RequestInfo | URL,
-  init?: RequestInit
-) => Promise<Response> {
+export function useWorkspaceFetch(): ReturnType<typeof useApiFetch> {
   return useApiFetch();
 }

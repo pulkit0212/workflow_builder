@@ -3,8 +3,9 @@ import { apiFetch } from "@/lib/api-client.server";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
+  const params = await ctx.params;
   try {
     const backendRes = await apiFetch(`/api/meetings/${params.id}`);
     const data = await backendRes.json();
@@ -19,8 +20,9 @@ export async function GET(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
+  const params = await ctx.params;
   try {
     const backendRes = await apiFetch(`/api/meetings/${params.id}`, {
       method: "DELETE",
@@ -40,8 +42,9 @@ export async function DELETE(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
+  const params = await ctx.params;
   try {
     const body = await req.json();
     const backendRes = await apiFetch(`/api/meetings/${params.id}`, {

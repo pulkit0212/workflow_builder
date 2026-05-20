@@ -34,7 +34,7 @@ export function WorkspaceMemberPicker({
   label,
   selectedMembers,
   onChange,
-  disallowedRoles = ["owner"],
+  disallowedRoles = ["admin"],
   actionLabel = "Invite member"
 }: WorkspaceMemberPickerProps) {
   const [query, setQuery] = useState("");

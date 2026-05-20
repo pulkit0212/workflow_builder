@@ -90,6 +90,39 @@ async function normalizeAssigneeForWorkspaceCreate(params: {
   throw new ForbiddenError("You cannot create action items in this workspace.");
 }
 
+// GET /stats — total + pending counts for dashboard stat card
+actionItemsRouter.get("/stats", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.appUser.id;
+    const workspaceId = req.headers["x-workspace-id"] as string | undefined;
+
+    let result;
+    if (workspaceId) {
+      result = await pool.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE status != 'done' AND completed = false)::int AS pending
+         FROM action_items
+         WHERE workspace_id = $1`,
+        [workspaceId]
+      );
+    } else {
+      result = await pool.query(
+        `SELECT
+           COUNT(*)::int AS total,
+           COUNT(*) FILTER (WHERE status != 'done' AND completed = false)::int AS pending
+         FROM action_items
+         WHERE (reporter_id = $1 OR assignee_id = $1)
+           AND workspace_id IS NULL`,
+        [userId]
+      );
+    }
+
+    const row = result.rows[0] ?? { total: 0, pending: 0 };
+    res.json({ success: true, total: row.total, pending: row.pending });
+  } catch (err) { next(err); }
+});
+
 // GET / — list with workspace + role filtering, status/priority/member filters
 actionItemsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {

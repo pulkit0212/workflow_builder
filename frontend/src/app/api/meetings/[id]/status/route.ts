@@ -3,8 +3,9 @@ import { apiFetch } from "@/lib/api-client.server";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
+  const params = await ctx.params;
   try {
     const backendRes = await apiFetch(`/api/meetings/${params.id}/status`, {
       cache: "no-store",

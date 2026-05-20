@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const workspaceRoleSchema = z.enum(["admin", "member", "viewer"]);
+/** Role of the current user on a workspace (includes creator). */
+export const workspaceCurrentUserRoleSchema = z.enum(["owner", "admin", "member", "viewer"]);
 export const workspaceMemberStatusSchema = z.enum(["active", "pending", "removed"]);
 export const workspaceJoinRequestStatusSchema = z.enum(["pending", "accepted", "rejected"]);
 export const searchableUserSchema = z.object({
@@ -120,7 +122,7 @@ export const workspaceDetailsSchema = z.object({
   name: z.string(),
   ownerId: z.string().uuid(),
   createdAt: z.string(),
-  currentUserRole: workspaceRoleSchema,
+  currentUserRole: workspaceCurrentUserRoleSchema,
   members: z.array(workspaceMemberRecordSchema),
   meetings: z.array(workspaceMeetingRecordSchema),
   joinRequests: z.array(workspaceJoinRequestRecordSchema).default([])

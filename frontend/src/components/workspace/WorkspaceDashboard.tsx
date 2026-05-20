@@ -412,7 +412,7 @@ export function WorkspaceDashboard({ workspaceId }: WorkspaceDashboardProps) {
                           <ShieldCheck className="h-3.5 w-3.5" />
                           {member.status}
                         </span>
-                        {canManageMembers && member.role !== "owner" ? (
+                        {canManageMembers && member.userId !== workspace.ownerId ? (
                           <select
                             value={member.role}
                             onChange={(event) =>
@@ -429,7 +429,7 @@ export function WorkspaceDashboard({ workspaceId }: WorkspaceDashboardProps) {
                             {member.role}
                           </div>
                         )}
-                        {canManageMembers && member.role !== "owner" ? (
+                        {canManageMembers && member.userId !== workspace.ownerId ? (
                           <Button
                             type="button"
                             variant="ghost"

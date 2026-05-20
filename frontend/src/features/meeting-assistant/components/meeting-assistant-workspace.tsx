@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { useApiFetch } from "@/hooks/useApiFetch";
 import { getUserMediaAudioStream } from "@/lib/media/get-user-media-audio";
 import {
   createMeetingSessionRecord,
@@ -165,6 +166,7 @@ export function MeetingAssistantWorkspace({
   initialContext
 }: MeetingAssistantWorkspaceProps) {
   const { activeWorkspaceId } = useWorkspaceContext();
+  const apiFetch = useApiFetch();
   const [setup, setSetup] = useState<SetupFormState>(() => createSetupState(initialContext));
   const [meetingSession, setMeetingSession] = useState<MeetingSessionRecord | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -329,7 +331,7 @@ export function MeetingAssistantWorkspace({
     const session = await ensureMeetingSession("processing");
 
     setAudioFlowState("transcribing");
-    const transcription = await transcribeMeetingRecording(audio.file, transcriptionProvider);
+    const transcription = await transcribeMeetingRecording(audio.file, transcriptionProvider, apiFetch);
     const transcriptText = transcription.transcript.trim();
 
     if (!transcriptText) {

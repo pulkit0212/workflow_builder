@@ -260,9 +260,10 @@ export function DocumentAnalyzerWorkspace() {
         | { success: true; result: DocumentAnalysisResult }
         | { success?: boolean; message?: string; error?: string };
       if (!response.ok || payload.success !== true || !("result" in payload)) {
+        const fail = payload as { message?: string; error?: string };
         const msg =
-          (typeof payload.error === "string" && payload.error.trim()) ||
-          (typeof payload.message === "string" && payload.message.trim()) ||
+          (typeof fail.error === "string" && fail.error.trim()) ||
+          (typeof fail.message === "string" && fail.message.trim()) ||
           "Failed.";
         throw new Error(msg);
       }

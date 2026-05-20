@@ -103,7 +103,7 @@ function StatCard({ label, value, helper, icon, iconBg, iconColor, trend }: {
           <span className="material-symbols-outlined text-[20px]" style={{ color: iconColor }}>{icon}</span>
         </div>
       </div>
-      <h3 className="text-2xl font-bold text-[#202124]">{value}</h3>
+      <h3 className="text-2xl font-bold text-[#202124]">{value ?? 0}</h3>
       {trend ? (
         <p className="text-xs text-[#34A853] mt-1 flex items-center gap-1">
           <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
@@ -129,6 +129,12 @@ export default function DashboardPage() {
   const [noCalendarConnected, setNoCalendarConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Workspace-level stats fetched from the /dashboard endpoint (accurate counts from DB)
+  const [workspaceStats, setWorkspaceStats] = useState<{
+    totalMeetings: number;
+    meetingsThisMonth: number;
+    actionItems: { total: number; pending: number; completed: number };
+  } | null>(null);
 
   async function fetchJoinedMeetings(): Promise<MeetingSessionRecord[]> {
     const response = await apiFetch("/api/meetings/joined", { cache: "no-store" });
@@ -141,17 +147,32 @@ export default function DashboardPage() {
     setIsLoading(true); setError(null);
     try {
       if (activeWorkspaceId) {
-        const res = await apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`);
-        const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
-        setReports(data.meetings ?? []); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
+        const [meetingsRes, dashRes] = await Promise.all([
+          apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`),
+          apiFetch(`/api/workspace/${activeWorkspaceId}/dashboard`),
+        ]);
+        const data = await meetingsRes.json() as MeetingSessionRecord[] | { success: boolean; meetings: MeetingSessionRecord[] };
+        const meetings = Array.isArray(data) ? data : (data.meetings ?? []);
+        const dash = await dashRes.json() as { stats: { totalMeetings: number; meetingsThisMonth: number; actionItems: { total: number; pending: number; completed: number } } };
+        setReports(meetings);
+        setWorkspaceStats(dash.stats ?? null);
+        setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
       } else {
+        setWorkspaceStats(null);
         const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
         const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
-        const [joined, feedRes] = await Promise.all([
+        const [joined, feedRes, actionStatsRes] = await Promise.all([
           fetchJoinedMeetings(),
           fetchUnifiedCalendarFeed(startOfToday, endOfToday).catch(() => ({ meetings: [], partialFailure: undefined })),
+          apiFetch("/api/action-items/stats"),
         ]);
+        const actionStats = await actionStatsRes.json() as { success: boolean; total: number; pending: number };
         setReports(joined);
+        setWorkspaceStats({
+          totalMeetings: joined.length,
+          meetingsThisMonth: 0, // computed client-side below for personal mode
+          actionItems: { total: actionStats.total ?? 0, pending: actionStats.pending ?? 0, completed: 0 },
+        });
         const sorted = [...feedRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5);
         setTodayMeetings(sorted);
         setCalendarPartialFailure(feedRes.partialFailure?.failedProviders ?? []);
@@ -169,19 +190,33 @@ export default function DashboardPage() {
       setIsLoading(true); setError(null);
       try {
         if (activeWorkspaceId) {
-          const res = await apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`);
-          const data = await res.json() as { success: boolean; meetings: MeetingSessionRecord[] };
+          const [meetingsRes, dashRes] = await Promise.all([
+            apiFetch(`/api/workspace/${activeWorkspaceId}/meetings`),
+            apiFetch(`/api/workspace/${activeWorkspaceId}/dashboard`),
+          ]);
+          const data = await meetingsRes.json() as MeetingSessionRecord[] | { success: boolean; meetings: MeetingSessionRecord[] };
+          const meetings = Array.isArray(data) ? data : (data.meetings ?? []);
+          const dash = await dashRes.json() as { stats: { totalMeetings: number; meetingsThisMonth: number; actionItems: { total: number; pending: number; completed: number } } };
           if (!mounted) return;
-          setReports(data.meetings ?? []); setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
+          setReports(meetings);
+          setWorkspaceStats(dash.stats ?? null);
+          setTodayMeetings([]); setCalendarPartialFailure([]); setNoCalendarConnected(false);
         } else {
           const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0);
           const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
-          const [joined, feedRes] = await Promise.all([
+          const [joined, feedRes, actionStatsRes] = await Promise.all([
             fetchJoinedMeetings(),
             fetchUnifiedCalendarFeed(startOfToday, endOfToday).catch(() => ({ meetings: [], partialFailure: undefined })),
+            apiFetch("/api/action-items/stats"),
           ]);
+          const actionStats = await actionStatsRes.json() as { success: boolean; total: number; pending: number };
           if (!mounted) return;
           setReports(joined);
+          setWorkspaceStats({
+            totalMeetings: joined.length,
+            meetingsThisMonth: 0, // computed client-side for personal mode
+            actionItems: { total: actionStats.total ?? 0, pending: actionStats.pending ?? 0, completed: 0 },
+          });
           const sorted = [...feedRes.meetings].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5);
           setTodayMeetings(sorted);
           setCalendarPartialFailure(feedRes.partialFailure?.failedProviders ?? []);
@@ -197,13 +232,21 @@ export default function DashboardPage() {
 
   const meetingsWithContent = reports.filter(hasContent);
   const completedCount = meetingsWithContent.length;
-  const meetingsThisMonth = reports.filter((m) => {
-    const d = new Date(m.scheduledStartTime ?? m.createdAt);
-    const now = new Date();
-    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
-  }).length;
-  const totalActionItems = reports.reduce((sum, m) => sum + (m.actionItems?.length ?? 0), 0);
-  const pendingActionItems = reports.reduce((sum, m) => sum + (m.actionItems?.filter(a => a.status !== "done").length ?? 0), 0);
+  // When in workspace mode, use server-side stats (accurate counts from separate tables).
+  // In personal mode, meetingsThisMonth is computed client-side; action items come from /stats API.
+  const meetingsThisMonth = workspaceStats?.meetingsThisMonth !== undefined && workspaceStats.meetingsThisMonth > 0
+    ? workspaceStats.meetingsThisMonth
+    : reports.filter((m) => {
+        const d = new Date(m.scheduledStartTime ?? m.createdAt);
+        const now = new Date();
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      }).length;
+  const totalActionItems = workspaceStats
+    ? (workspaceStats.actionItems?.total ?? 0)
+    : reports.reduce((sum, m) => sum + (m.actionItems?.length ?? 0), 0);
+  const pendingActionItems = workspaceStats
+    ? (workspaceStats.actionItems?.pending ?? 0)
+    : reports.reduce((sum, m) => sum + (m.actionItems?.filter((a) => !a.completed).length ?? 0), 0);
   const recentReports = reports.filter(hasContent).slice(0, 5);
 
   const stats = [
@@ -358,7 +401,7 @@ export default function DashboardPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 text-sm text-[#5F6368]">{formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt)}</td>
+                      <td className="px-6 py-4 text-sm text-[#5F6368]">{formatCompactDate(meeting.scheduledStartTime ?? meeting.createdAt ?? null)}</td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 rounded text-[11px] font-bold uppercase tracking-wider"
                           style={{ background: badge.bg, color: badge.color }}>

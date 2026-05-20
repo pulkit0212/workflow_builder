@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import type { Route } from "next";
 import { Bell, FileText, Loader2, Search, Video, X } from "lucide-react";
 import { DashboardAccount, type DashboardProfile } from "@/components/layout/dashboard-account";
 import { DashboardMobileNav } from "@/components/layout/dashboard-mobile-nav";
@@ -82,7 +83,7 @@ export function DashboardHeader({ profile }: DashboardHeaderProps) {
   function handleSelect(href: string) {
     setIsOpen(false);
     setQuery("");
-    router.push(href);
+    router.push(href as Route);
   }
 
   function handleClear() {

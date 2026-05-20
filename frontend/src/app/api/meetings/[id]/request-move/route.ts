@@ -3,8 +3,9 @@ import { apiFetch } from "@/lib/api-client.server";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
+  const params = await ctx.params;
   try {
     const body = await req.json();
     const backendRes = await apiFetch(`/api/meetings/${params.id}/request-move`, {

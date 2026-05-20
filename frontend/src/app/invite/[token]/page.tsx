@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import type { Route } from "next";
 import { useAuth, useUser, useClerk } from "@clerk/nextjs";
 import { Loader2, AlertCircle, CheckCircle } from "lucide-react";
 import { clientApiFetch } from "@/lib/api-client";
@@ -58,7 +59,7 @@ export default function InviteAcceptPage() {
       if (!isSignedIn) {
         // Redirect to sign-in with redirect back to this page
         const redirectUrl = encodeURIComponent(`/invite/${token}`);
-        router.push(`/sign-in?redirect_url=${redirectUrl}`);
+        router.push(`/sign-in?redirect_url=${redirectUrl}` as Route);
         return;
       }
 
@@ -72,7 +73,7 @@ export default function InviteAcceptPage() {
       if (acceptRes.ok) {
         const acceptData = await acceptRes.json() as { workspaceId: string };
         setState({ type: "success" });
-        router.push(`/dashboard?workspace=${acceptData.workspaceId}`);
+        router.push(`/dashboard?workspace=${acceptData.workspaceId}` as Route);
         return;
       }
 
@@ -155,7 +156,7 @@ export default function InviteAcceptPage() {
               onClick={async () => {
                 await signOut();
                 const redirectUrl = encodeURIComponent(`/invite/${token}`);
-                router.push(`/sign-in?redirect_url=${redirectUrl}`);
+                router.push(`/sign-in?redirect_url=${redirectUrl}` as Route);
               }}
               className="w-full rounded-xl bg-[#6c63ff] px-6 py-2.5 text-sm font-semibold text-white hover:bg-[#5b52e0] transition-colors"
             >

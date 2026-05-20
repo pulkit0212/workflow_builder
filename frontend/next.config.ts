@@ -1,5 +1,4 @@
 import type { NextConfig } from "next";
-import type { Configuration as WebpackConfig } from "webpack";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,9 +23,11 @@ function isPlaywrightOrBotRequest(request: string | undefined): boolean {
 }
 
 const nextConfig: NextConfig = {
+  // Production container image (see deploy/Dockerfile.web)
+  output: "standalone",
   // Monorepo: lockfile at repo root + frontend — pin tracing to repo root to silence warnings.
   outputFileTracingRoot: path.join(__dirname, ".."),
-  typedRoutes: true,
+  typedRoutes: false,
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
     return [
@@ -90,8 +91,9 @@ const nextConfig: NextConfig = {
     "playwright-core",
     "chromium-bidi",
   ],
-  webpack: (config: WebpackConfig, { isServer }) => {
+  webpack: (config, { isServer }) => {
     if (!isServer) {
+      config.resolve = config.resolve ?? {};
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
@@ -103,8 +105,8 @@ const nextConfig: NextConfig = {
       };
     } else {
       const prev = config.externals;
-      const handler: NonNullable<WebpackConfig["externals"]> = (
-        data,
+      const handler = (
+        data: { request?: string } | undefined,
         callback: (err?: Error | null, result?: string) => void,
       ) => {
         const request =
