@@ -2,15 +2,18 @@
   "name": "express-api",
   "version": "1.0.0",
   "description": "Standalone Express.js API server for backend migration",
-  "main": "dist/index.js",
+  "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/index.js",
+    "start": "node dist/src/index.js",
     "dev": "ts-node src/index.ts",
     "migrate:sql": "ts-node scripts/run-sql-migrations.ts",
     "migrate:sql:prod": "node dist/scripts/run-sql-migrations.js",
     "test": "vitest --run",
     "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=20 <25"
   },
   "dependencies": {
     "@clerk/backend": "^1.0.0",

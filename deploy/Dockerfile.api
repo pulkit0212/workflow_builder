@@ -18,4 +18,4 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/src/db/migrations ./src/db/migrations
 RUN mkdir -p private/recordings
 EXPOSE 3001
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/src/index.js"]
