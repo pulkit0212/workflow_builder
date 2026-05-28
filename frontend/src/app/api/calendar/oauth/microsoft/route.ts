@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAppBaseUrl } from "@/lib/app-url";
+import { getAppBaseUrl, getMicrosoftOAuthRedirectUri } from "@/lib/app-url";
 
 const MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 
@@ -13,7 +13,7 @@ const SCOPES: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const provider = req.nextUrl.searchParams.get("provider") ?? "microsoft_teams";
   const clientId = process.env.MICROSOFT_CLIENT_ID;
-  const appUrl = getAppBaseUrl();
+  const appUrl = getAppBaseUrl(req);
 
   if (!clientId) {
     return NextResponse.redirect(
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const redirectUri = `${appUrl}/api/calendar/callback/microsoft`;
+  const redirectUri = getMicrosoftOAuthRedirectUri(req);
   const scope = SCOPES[provider] ?? SCOPES.microsoft_teams;
 
   const params = new URLSearchParams({

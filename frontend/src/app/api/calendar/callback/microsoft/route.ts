@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getAppBaseUrl } from "@/lib/app-url";
+import { getAppBaseUrl, getMicrosoftOAuthRedirectUri } from "@/lib/app-url";
 
 const MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 
 export async function GET(req: NextRequest) {
-  const appUrl = getAppBaseUrl();
+  const appUrl = getAppBaseUrl(req);
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
   const failRedirect = `${appUrl}/dashboard/integrations?error=oauth_failed`;
 
@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(failRedirect);
   }
 
-  const redirectUri = `${appUrl}/api/calendar/callback/microsoft`;
+  const redirectUri = getMicrosoftOAuthRedirectUri(req);
 
   // Exchange code for tokens
   const tokenRes = await fetch(MICROSOFT_TOKEN_URL, {
