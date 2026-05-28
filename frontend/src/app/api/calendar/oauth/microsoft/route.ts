@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAppBaseUrl } from "@/lib/app-url";
 
 const MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
 
@@ -12,7 +13,7 @@ const SCOPES: Record<string, string> = {
 export async function GET(req: NextRequest) {
   const provider = req.nextUrl.searchParams.get("provider") ?? "microsoft_teams";
   const clientId = process.env.MICROSOFT_CLIENT_ID;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const appUrl = getAppBaseUrl();
 
   if (!clientId) {
     return NextResponse.redirect(

@@ -1,8 +1,11 @@
 // Server-only API client — only import this in Server Components or Route Handlers.
 import { auth } from "@clerk/nextjs/server";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
-if (!BASE_URL) throw new Error("NEXT_PUBLIC_API_URL is not configured");
+function getBaseUrl(): string {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!baseUrl) throw new Error("NEXT_PUBLIC_API_URL is not configured");
+  return baseUrl;
+}
 
 /**
  * apiFetch — server-side fetch wrapper for the Express API.
@@ -23,5 +26,5 @@ export async function apiFetch(
   if (init?.workspaceId) headers.set("x-workspace-id", init.workspaceId);
 
   const { workspaceId: _w, ...fetchInit } = init ?? {};
-  return fetch(`${BASE_URL}${path}`, { ...fetchInit, headers });
+  return fetch(`${getBaseUrl()}${path}`, { ...fetchInit, headers });
 }

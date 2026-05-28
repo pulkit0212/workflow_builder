@@ -22,11 +22,17 @@ function isPlaywrightOrBotRequest(request: string | undefined): boolean {
   );
 }
 
+// Docker monorepo build only (deploy/Dockerfile.web). Vercel must not use standalone/tracing root.
+const isDockerBuild = process.env.DOCKER_BUILD === "1";
+
 const nextConfig: NextConfig = {
-  // Production container image (see deploy/Dockerfile.web)
-  output: "standalone",
-  // Monorepo: lockfile at repo root + frontend — pin tracing to repo root to silence warnings.
-  outputFileTracingRoot: path.join(__dirname, ".."),
+  ...(isDockerBuild
+    ? {
+        output: "standalone" as const,
+        // Monorepo: trace from repo root when building inside frontend/
+        outputFileTracingRoot: path.join(__dirname, ".."),
+      }
+    : {}),
   typedRoutes: false,
   async rewrites() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
