@@ -81,7 +81,10 @@ export function CalendarMeetingRow({ meeting, session, adminWorkspaces = [] }: C
       const created = await createRes.json() as { id?: string };
       const sessionId = created.id;
       if (!sessionId) { showToast("Failed to create meeting session.", "error"); return; }
-      const startRes = await apiFetch(`/api/meetings/${sessionId}/bot/start`, { method: "POST" });
+      const startRes = await apiFetch(`/api/meetings/${sessionId}/bot/start`, {
+        method: "POST",
+        body: JSON.stringify({ meetingUrl: meeting.meetLink }),
+      });
       if (!startRes.ok) {
         const errData = await startRes.json().catch(() => ({})) as { error?: string };
         showToast(errData.error ?? "Failed to start bot.", "error");

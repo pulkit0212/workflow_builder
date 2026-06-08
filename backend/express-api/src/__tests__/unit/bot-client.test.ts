@@ -26,8 +26,32 @@ describe("bot-client", () => {
 
       expect(fetchSpy).toHaveBeenCalledWith("http://bot-service:8000/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: JSON.stringify({ meetingId: "meeting-123" }),
+      });
+    });
+
+    it("includes meetingUrl when provided", async () => {
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+      } as Response);
+
+      await startBot("meeting-123", "https://meet.google.com/abc-defg-hij");
+
+      expect(fetchSpy).toHaveBeenCalledWith("http://bot-service:8000/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
+        body: JSON.stringify({
+          meetingId: "meeting-123",
+          meetingUrl: "https://meet.google.com/abc-defg-hij",
+        }),
       });
     });
 
@@ -53,7 +77,10 @@ describe("bot-client", () => {
 
       expect(fetchSpy).toHaveBeenCalledWith("http://bot-service:8000/stop", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: JSON.stringify({ meetingId: "meeting-456" }),
       });
     });

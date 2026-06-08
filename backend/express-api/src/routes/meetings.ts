@@ -110,10 +110,10 @@ meetingsRouter.post("/", async (req: Request, res: Response, next: NextFunction)
     }
 
     if (existingRow) {
-      // Reuse existing record — only reset status if it was failed/deleted
+      // Reuse existing record — refresh link/title; reset status if failed/deleted
       const updated = await pool.query(
-        `UPDATE meeting_sessions SET title = $1, status = CASE WHEN status IN ('failed','deleted') THEN $2 ELSE status END, updated_at = NOW() WHERE id = $3 RETURNING *`,
-        [title, status, existingRow.id]
+        `UPDATE meeting_sessions SET title = $1, meeting_link = $2, status = CASE WHEN status IN ('failed','deleted') THEN $3 ELSE status END, updated_at = NOW() WHERE id = $4 RETURNING *`,
+        [title, meetingLink, status, existingRow.id]
       );
       return res.status(200).json(toCamel(updated.rows[0]));
     }
@@ -534,13 +534,28 @@ meetingsRouter.post("/:id/bot/start", async (req: Request, res: Response, next: 
   try {
     const { id } = req.params;
     const userId = req.appUser.id;
-    const result = await pool.query(`SELECT id FROM meeting_sessions WHERE id = $1 AND user_id = $2 LIMIT 1`, [id, userId]);
+    const bodyMeetingUrl = typeof req.body?.meetingUrl === "string" ? req.body.meetingUrl.trim() : "";
+
+    const result = await pool.query(
+      `SELECT id, meeting_link FROM meeting_sessions WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [id, userId]
+    );
     if (!result.rows[0]) return next(new NotFoundError("Meeting not found"));
+
+    const meetingUrl = bodyMeetingUrl || (result.rows[0].meeting_link as string | null) || "";
+    if (!meetingUrl) {
+      return res.status(400).json({ error: "Meeting link is missing. Add a Google Meet / Teams / Zoom URL first." });
+    }
+
     try {
-      await botClient.startBot(id);
+      await botClient.startBot(id, meetingUrl);
     } catch (botErr) {
       const msg = botErr instanceof Error ? botErr.message : "Bot service unavailable";
-      return res.status(503).json({ error: "Bot service unavailable. Make sure the Python bot is running.", details: msg });
+      const status = botErr instanceof botClient.BotClientError ? botErr.status : 503;
+      if (status === 400) {
+        return res.status(400).json({ error: "Could not start bot for this meeting.", details: msg });
+      }
+      return res.status(503).json({ error: "Bot service unavailable. Make sure the bot is running.", details: msg });
     }
     res.status(202).json({ status: "accepted" });
   } catch (err) { next(err); }

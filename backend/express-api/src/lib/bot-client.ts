@@ -10,11 +10,18 @@ export class BotClientError extends Error {
   }
 }
 
-export async function startBot(meetingId: string): Promise<void> {
+export async function startBot(meetingId: string, meetingUrl?: string): Promise<void> {
+  const body: { meetingId: string; meetingUrl?: string } = { meetingId };
+  if (meetingUrl) body.meetingUrl = meetingUrl;
+
   const res = await fetch(`${config.botBaseUrl}/start`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ meetingId }),
+    headers: {
+      "Content-Type": "application/json",
+      // ngrok free tier: allow server-to-server calls from Render
+      "ngrok-skip-browser-warning": "true",
+    },
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
@@ -28,7 +35,10 @@ export async function startBot(meetingId: string): Promise<void> {
 export async function stopBot(meetingId: string): Promise<void> {
   const res = await fetch(`${config.botBaseUrl}/stop`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "ngrok-skip-browser-warning": "true",
+    },
     body: JSON.stringify({ meetingId }),
   });
 
