@@ -20,3 +20,30 @@ services:
         sync: false
       - key: CLERK_WEBHOOK_SECRET
         sync: false
+      - key: BOT_BASE_URL
+        value: http://artivaa-bot:8000
+
+  - type: web
+    name: artivaa-bot
+    runtime: docker
+    dockerfilePath: ./Dockerfile.bot
+    dockerContext: .
+    healthCheckPath: /health
+    plan: standard
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BOT_PORT
+        value: "8000"
+      - key: BOT_HEADLESS
+        value: "true"
+      - key: DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: BOT_NAME
+        value: Artivaa Notetaker
+      - key: MEETING_AUDIO_SOURCE
+        value: default

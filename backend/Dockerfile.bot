@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
-# Monorepo path — from repo root: docker compose -f deploy/docker-compose.yml --profile bot up --build
+# artivaa-backend repo root — Render Docker Web Service (artivaa-bot)
+# Playwright + ffmpeg + Whisper (large image; first run may download Whisper weights).
 FROM mcr.microsoft.com/playwright:v1.49.1-jammy
 
 RUN apt-get update \
@@ -7,18 +7,20 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /bot
-COPY backend/python-services/ai-processing-service/legacy-bot/package.json \
-  backend/python-services/ai-processing-service/legacy-bot/package-lock.json ./
+
+COPY python-services/ai-processing-service/legacy-bot/package.json \
+  python-services/ai-processing-service/legacy-bot/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY backend/python-services/ai-processing-service/legacy-bot/ ./
+COPY python-services/ai-processing-service/legacy-bot/ ./
 RUN pip3 install --no-cache-dir openai-whisper ffmpeg-python
 
-COPY backend/docker-entrypoint-bot.sh /usr/local/bin/docker-entrypoint-bot.sh
+COPY docker-entrypoint-bot.sh /usr/local/bin/docker-entrypoint-bot.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint-bot.sh
 
 ENV NODE_ENV=production
 ENV BOT_PORT=8000
 ENV BOT_HEADLESS=true
 EXPOSE 8000
+
 ENTRYPOINT ["docker-entrypoint-bot.sh"]

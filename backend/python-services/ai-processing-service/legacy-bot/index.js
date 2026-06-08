@@ -20,9 +20,23 @@ try {
   // dotenv optional — DATABASE_URL may already be in environment
 }
 
-const dbPool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
+const dbUrl = process.env.DATABASE_URL ?? "";
+const dbPool = dbUrl
+  ? new Pool({
+      connectionString: dbUrl,
+      min: 0,
+      max: 5,
+      idleTimeoutMillis: 20_000,
+      connectionTimeoutMillis: 10_000,
+      ssl: dbUrl.includes("neon.tech") ? { rejectUnauthorized: false } : undefined,
+    })
   : null;
+
+if (dbPool) {
+  dbPool.on("error", (err) => {
+    console.error("[Bot] Idle pool client error:", err.message);
+  });
+}
 
 const PROJECT_ROOT = process.cwd();
 /** Directory containing this file (survives move to backend/.../legacy-bot). */
@@ -1046,13 +1060,19 @@ async function onStatusUpdate(meetingId, status, extra = {}) {
 }
 
 const server = http.createServer(async (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+
+  if (req.method === "GET" && (req.url === "/health" || req.url === "/")) {
+    res.writeHead(200);
+    res.end(JSON.stringify({ status: "ok", service: "artivaa-bot" }));
+    return;
+  }
+
   const chunks = [];
   req.on("data", c => chunks.push(c));
   req.on("end", async () => {
     let body = {};
     try { body = JSON.parse(Buffer.concat(chunks).toString()); } catch { /* ignore */ }
-
-    res.setHeader("Content-Type", "application/json");
 
     if (req.method === "POST" && req.url === "/start") {
       const { meetingId } = body;
@@ -1104,8 +1124,9 @@ const server = http.createServer(async (req, res) => {
 });
 
 const PORT = process.env.BOT_PORT ?? 8000;
-server.listen(PORT, () => {
-  console.log(`[Bot] HTTP server listening on port ${PORT}`);
+const HOST = process.env.BOT_HOST ?? "0.0.0.0";
+server.listen(Number(PORT), HOST, () => {
+  console.log(`[Bot] HTTP server listening on ${HOST}:${PORT}`);
 });
 
 module.exports = { startBot, stopBot, isProcessRunning, recoverStuckSessions, transcribeAsync, transcribeWithRetry, transcribeQueued };

@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Artivaa AI — Investor Pitch</title>
+  <style>
+    @page {
+      size: A4 landscape;
+      margin: 0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: #0f172a;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    .slide {
+      width: 297mm;
+      height: 210mm;
+      page-break-after: always;
+      break-after: page;
+      overflow: hidden;
+      position: relative;
+      padding: 48px 56px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .slide:last-child {
+      page-break-after: auto;
+    }
+
+    /* Title slide */
+    .slide-title {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #2563eb 100%);
+      color: #fff;
+      justify-content: center;
+    }
+
+    .slide-title .logo {
+      font-size: 52px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      margin-bottom: 12px;
+    }
+
+    .slide-title .tagline {
+      font-size: 26px;
+      font-weight: 400;
+      opacity: 0.92;
+      max-width: 720px;
+      line-height: 1.35;
+    }
+
+    .slide-title .meta {
+      position: absolute;
+      bottom: 48px;
+      left: 56px;
+      font-size: 14px;
+      opacity: 0.75;
+    }
+
+    /* Content slides */
+    .slide-content {
+      background: #fff;
+    }
+
+    .slide-content.dark {
+      background: linear-gradient(160deg, #0f172a 0%, #1e293b 100%);
+      color: #f8fafc;
+    }
+
+    h2 {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 28px;
+      color: #0f172a;
+    }
+
+    .slide-content.dark h2 {
+      color: #fff;
+    }
+
+    h2 .accent {
+      color: #2563eb;
+    }
+
+    .slide-content.dark h2 .accent {
+      color: #60a5fa;
+    }
+
+    ul {
+      list-style: none;
+      font-size: 18px;
+      line-height: 1.55;
+    }
+
+    ul li {
+      margin-bottom: 14px;
+      padding-left: 24px;
+      position: relative;
+    }
+
+    ul li::before {
+      content: "▸";
+      position: absolute;
+      left: 0;
+      color: #2563eb;
+      font-weight: 700;
+    }
+
+    .slide-content.dark ul li::before {
+      color: #60a5fa;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+      flex: 1;
+    }
+
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+      margin-top: 16px;
+    }
+
+    .stat {
+      background: #f1f5f9;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .stat .num {
+      font-size: 36px;
+      font-weight: 800;
+      color: #2563eb;
+    }
+
+    .stat .label {
+      font-size: 14px;
+      color: #64748b;
+      margin-top: 8px;
+    }
+
+    .highlight-box {
+      background: #eff6ff;
+      border-left: 4px solid #2563eb;
+      padding: 20px 24px;
+      border-radius: 0 8px 8px 0;
+      font-size: 17px;
+      line-height: 1.5;
+      margin-top: 20px;
+    }
+
+    .slide-content.dark .highlight-box {
+      background: rgba(37, 99, 235, 0.15);
+      border-color: #60a5fa;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 15px;
+      margin-top: 8px;
+    }
+
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    th {
+      background: #f8fafc;
+      font-weight: 600;
+      color: #475569;
+    }
+
+    .slide-cta {
+      background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+      color: #fff;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .slide-cta h2 {
+      color: #fff;
+      font-size: 40px;
+      margin-bottom: 20px;
+    }
+
+    .slide-cta p {
+      font-size: 20px;
+      opacity: 0.9;
+      max-width: 600px;
+    }
+
+    .slide-cta .contact {
+      margin-top: 32px;
+      font-size: 16px;
+      opacity: 0.85;
+    }
+
+    .footer-num {
+      position: absolute;
+      bottom: 32px;
+      right: 56px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .slide-content.dark .footer-num {
+      color: #64748b;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .pill {
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .slide-content.dark .pill {
+      background: rgba(96, 165, 250, 0.2);
+      color: #bfdbfe;
+    }
+
+    .arch {
+      font-family: ui-monospace, monospace;
+      font-size: 13px;
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 8px;
+      line-height: 1.6;
+      white-space: pre;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 1. Title -->
+  <section class="slide slide-title">
+    <div class="logo">Artivaa AI</div>
+    <p class="tagline">Meeting intelligence that turns conversations into action — automatically.</p>
+    <p class="meta">Investor Pitch · May 2026 · Confidential</p>
+  </section>
+
+  <!-- 2. Problem -->
+  <section class="slide slide-content">
+    <h2>The <span class="accent">Problem</span></h2>
+    <ul>
+      <li>Teams spend <strong>23+ hours/week</strong> in meetings — decisions fade, action items get lost</li>
+      <li>Existing tools produce transcripts, not <strong>outcomes</strong></li>
+      <li>Knowledge is trapped in silos — no workspace-level context or follow-through</li>
+      <li>Manual note-taking ≠ accountability; CRM and project tools stay disconnected</li>
+    </ul>
+    <div class="highlight-box">
+      <strong>Gap:</strong> No platform connects live meeting capture → AI analysis → workspace tasks → team execution in one flow.
+    </div>
+    <span class="footer-num">2</span>
+  </section>
+
+  <!-- 3. Solution -->
+  <section class="slide slide-content">
+    <h2>Our <span class="accent">Solution</span></h2>
+    <ul>
+      <li><strong>AI meeting bot</strong> joins Zoom, Google Meet, and Teams — records and transcribes in real time</li>
+      <li><strong>Instant intelligence:</strong> summaries, decisions, risks, and action items extracted automatically</li>
+      <li><strong>Workspace hub:</strong> meetings, documents, and tasks unified per project or client</li>
+      <li><strong>Collaboration:</strong> invite members, assign owners, track completion — all in one place</li>
+    </ul>
+    <div class="pill-row">
+      <span class="pill">Live transcription</span>
+      <span class="pill">Action items</span>
+      <span class="pill">Document AI</span>
+      <span class="pill">Calendar sync</span>
+      <span class="pill">Team workspaces</span>
+    </div>
+    <span class="footer-num">3</span>
+  </section>
+
+  <!-- 4. Product -->
+  <section class="slide slide-content">
+    <h2>Product <span class="accent">Highlights</span></h2>
+    <div class="two-col">
+      <ul>
+        <li>One-click bot start/stop from meeting dashboard</li>
+        <li>Google &amp; Microsoft calendar integration</li>
+        <li>AI-generated meeting summaries &amp; key points</li>
+        <li>Structured action items with assignees &amp; due dates</li>
+        <li>Move meetings across workspaces with approval flow</li>
+      </ul>
+      <ul>
+        <li>Document analyzer — upload PDFs, get insights &amp; Q&amp;A</li>
+        <li>Role-based workspace access (owner, member, viewer)</li>
+        <li>Secure auth via Clerk + OAuth (Google, Microsoft)</li>
+        <li>Real-time status updates during bot sessions</li>
+        <li>Export-ready outputs for stakeholders</li>
+      </ul>
+    </div>
+    <span class="footer-num">4</span>
+  </section>
+
+  <!-- 5. Market -->
+  <section class="slide slide-content dark">
+    <h2>Market <span class="accent">Opportunity</span></h2>
+    <div class="stat-grid">
+      <div class="stat" style="background: rgba(255,255,255,0.08);">
+        <div class="num" style="color: #60a5fa;">$12B+</div>
+        <div class="label" style="color: #94a3b8;">Meeting software TAM (2026)</div>
+      </div>
+      <div class="stat" style="background: rgba(255,255,255,0.08);">
+        <div class="num" style="color: #60a5fa;">35%</div>
+        <div class="label" style="color: #94a3b8;">YoY growth in AI meeting tools</div>
+      </div>
+      <div class="stat" style="background: rgba(255,255,255,0.08);">
+        <div class="num" style="color: #60a5fa;">SMB → Enterprise</div>
+        <div class="label" style="color: #94a3b8;">Consulting, agencies, product teams</div>
+      </div>
+    </div>
+    <ul style="margin-top: 28px;">
+      <li><strong>Initial ICP:</strong> consulting firms, agencies, and remote-first teams (5–200 people)</li>
+      <li><strong>Expansion:</strong> enterprise sales, vertical templates (legal, healthcare, finance)</li>
+      <li><strong>Trend tailwind:</strong> hybrid work + AI adoption mandates measurable meeting ROI</li>
+    </ul>
+    <span class="footer-num">5</span>
+  </section>
+
+  <!-- 6. Business Model -->
+  <section class="slide slide-content">
+    <h2>Business <span class="accent">Model</span></h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Tier</th>
+          <th>Price</th>
+          <th>Includes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Starter</strong></td>
+          <td>$19/user/mo</td>
+          <td>5 meetings/mo, 1 workspace, basic summaries</td>
+        </tr>
+        <tr>
+          <td><strong>Pro</strong></td>
+          <td>$49/user/mo</td>
+          <td>Unlimited meetings, document AI, calendar sync</td>
+        </tr>
+        <tr>
+          <td><strong>Team</strong></td>
+          <td>$79/user/mo</td>
+          <td>Multi-workspace, admin controls, priority bot</td>
+        </tr>
+        <tr>
+          <td><strong>Enterprise</strong></td>
+          <td>Custom</td>
+          <td>SSO, SLA, on-prem bot option, dedicated support</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="highlight-box">
+      <strong>Unit economics target:</strong> 70%+ gross margin · LTV/CAC &gt; 3× · payback &lt; 12 months
+    </div>
+    <span class="footer-num">6</span>
+  </section>
+
+  <!-- 7. Traction -->
+  <section class="slide slide-content">
+    <h2>Traction &amp; <span class="accent">Status</span></h2>
+    <ul>
+      <li><strong>Live product</strong> deployed on Vercel + Render + Neon PostgreSQL</li>
+      <li>Full stack: Next.js frontend, Express API, Python AI bot service</li>
+      <li>Auth, calendar OAuth (Google + Microsoft), workspace collaboration shipped</li>
+      <li>Meeting bot pipeline: join → transcribe → analyze → persist action items</li>
+      <li>Document analyzer module operational for PDF intelligence</li>
+    </ul>
+    <div class="stat-grid">
+      <div class="stat">
+        <div class="num">✓</div>
+        <div class="label">Production deploy</div>
+      </div>
+      <div class="stat">
+        <div class="num">✓</div>
+        <div class="label">Multi-tenant DB</div>
+      </div>
+      <div class="stat">
+        <div class="num">→</div>
+        <div class="label">Beta customers next</div>
+      </div>
+    </div>
+    <span class="footer-num">7</span>
+  </section>
+
+  <!-- 8. Technology -->
+  <section class="slide slide-content">
+    <h2>Technology <span class="accent">Stack</span></h2>
+    <div class="two-col">
+      <div>
+        <ul>
+          <li><strong>Frontend:</strong> Next.js 15, React, Tailwind, Clerk auth</li>
+          <li><strong>API:</strong> Express.js, Drizzle ORM, PostgreSQL (Neon)</li>
+          <li><strong>AI Bot:</strong> Python, Playwright, Whisper/STT, LLM analysis</li>
+          <li><strong>Infra:</strong> Vercel, Render, Docker — cloud-native, scalable</li>
+        </ul>
+      </div>
+      <div>
+        <div class="arch">Vercel (Web)
+    ↓
+Render API (Express)
+    ↓
+Render Bot (Python)
+    ↓
+Neon PostgreSQL</div>
+      </div>
+    </div>
+    <div class="highlight-box">
+      Modular architecture — bot scales independently; API handles webhooks, workspaces, and orchestration.
+    </div>
+    <span class="footer-num">8</span>
+  </section>
+
+  <!-- 9. Competitive -->
+  <section class="slide slide-content dark">
+    <h2>Competitive <span class="accent">Edge</span></h2>
+    <table style="color: #f8fafc;">
+      <thead>
+        <tr>
+          <th style="background: rgba(255,255,255,0.06); color: #94a3b8;">Capability</th>
+          <th style="background: rgba(255,255,255,0.06); color: #94a3b8;">Otter / Fireflies</th>
+          <th style="background: rgba(255,255,255,0.06); color: #94a3b8;">Artivaa AI</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-color: rgba(255,255,255,0.1);">
+          <td>Transcription</td>
+          <td>✓</td>
+          <td>✓</td>
+        </tr>
+        <tr style="border-color: rgba(255,255,255,0.1);">
+          <td>Workspace + tasks</td>
+          <td>Limited</td>
+          <td><strong>Native, integrated</strong></td>
+        </tr>
+        <tr style="border-color: rgba(255,255,255,0.1);">
+          <td>Document AI</td>
+          <td>✗</td>
+          <td><strong>✓</strong></td>
+        </tr>
+        <tr style="border-color: rgba(255,255,255,0.1);">
+          <td>Multi-workspace org model</td>
+          <td>✗</td>
+          <td><strong>✓</strong></td>
+        </tr>
+        <tr style="border-color: rgba(255,255,255,0.1);">
+          <td>Meeting → execution loop</td>
+          <td>Partial</td>
+          <td><strong>End-to-end</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <span class="footer-num">9</span>
+  </section>
+
+  <!-- 10. Roadmap -->
+  <section class="slide slide-content">
+    <h2>Roadmap <span class="accent">2026</span></h2>
+    <div class="two-col">
+      <div>
+        <p style="font-weight: 600; color: #2563eb; margin-bottom: 12px;">Q2 — Launch</p>
+        <ul>
+          <li>Bot on Render (production scale)</li>
+          <li>10 beta design partners</li>
+          <li>Billing (Stripe) + usage metering</li>
+        </ul>
+        <p style="font-weight: 600; color: #2563eb; margin: 20px 0 12px;">Q3 — Growth</p>
+        <ul>
+          <li>Slack / Notion / Jira integrations</li>
+          <li>Team analytics dashboard</li>
+          <li>Mobile-responsive improvements</li>
+        </ul>
+      </div>
+      <div>
+        <p style="font-weight: 600; color: #2563eb; margin-bottom: 12px;">Q4 — Scale</p>
+        <ul>
+          <li>Enterprise SSO (SAML)</li>
+          <li>Custom bot branding</li>
+          <li>API for third-party apps</li>
+        </ul>
+        <p style="font-weight: 600; color: #2563eb; margin: 20px 0 12px;">2027 — Expand</p>
+        <ul>
+          <li>Vertical AI templates</li>
+          <li>Multi-language support</li>
+          <li>International GTM</li>
+        </ul>
+      </div>
+    </div>
+    <span class="footer-num">10</span>
+  </section>
+
+  <!-- 11. Team -->
+  <section class="slide slide-content">
+    <h2>Team <span class="accent">&amp; Ask</span></h2>
+    <ul>
+      <li><strong>Founder:</strong> [Your Name] — full-stack builder, product &amp; GTM</li>
+      <li>Built entire platform solo: frontend, API, AI bot, deployment pipeline</li>
+      <li>Deep experience in [your background — e.g. SaaS, consulting, AI]</li>
+    </ul>
+    <div class="highlight-box" style="margin-top: 28px;">
+      <strong>Raising:</strong> $[Amount] pre-seed / seed<br />
+      <strong>Use of funds:</strong> 40% engineering · 30% GTM &amp; beta · 20% infra · 10% ops<br />
+      <strong>Milestone:</strong> 50 paying teams within 12 months · $500K ARR path
+    </div>
+    <span class="footer-num">11</span>
+  </section>
+
+  <!-- 12. Vision -->
+  <section class="slide slide-content dark">
+    <h2>Vision</h2>
+    <p style="font-size: 24px; line-height: 1.5; max-width: 800px; margin-top: 20px;">
+      Every meeting should produce clear outcomes — not forgotten notes.
+    </p>
+    <p style="font-size: 20px; line-height: 1.5; max-width: 800px; margin-top: 24px; opacity: 0.85;">
+      Artivaa AI is the operating system for meeting-driven work: capture intelligence, assign accountability, and close the loop — automatically.
+    </p>
+    <div class="pill-row" style="margin-top: 40px;">
+      <span class="pill">Meetings → Insights</span>
+      <span class="pill">Insights → Tasks</span>
+      <span class="pill">Tasks → Results</span>
+    </div>
+    <span class="footer-num">12</span>
+  </section>
+
+  <!-- 13. CTA -->
+  <section class="slide slide-cta">
+    <h2>Let's build the future of meeting intelligence.</h2>
+    <p>We're looking for partners who believe conversations should drive execution.</p>
+    <p class="contact">
+      [Your Name] · [email@artivaa.com] · [LinkedIn]<br />
+      artivaa-frontend.vercel.app
+    </p>
+  </section>
+
+</body>
+</html>

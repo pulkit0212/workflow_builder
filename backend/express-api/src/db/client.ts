@@ -5,10 +5,19 @@ import * as schema from "./schema";
 
 export const pool = new Pool({
   connectionString: config.databaseUrl,
-  min: 2,
-  max: 10,
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
+  // Neon + Render: keep pool small; idle connections get dropped by the host
+  min: 0,
+  max: 5,
+  idleTimeoutMillis: 20_000,
+  connectionTimeoutMillis: 10_000,
+  ssl: config.databaseUrl.includes("neon.tech")
+    ? { rejectUnauthorized: false }
+    : undefined,
+});
+
+// Without this, idle Neon disconnects can crash Node (unhandled 'error' on pool)
+pool.on("error", (err) => {
+  console.error("[db] Idle pool client error:", err.message);
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

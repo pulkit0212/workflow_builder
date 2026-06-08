@@ -14,5 +14,10 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
-  }
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

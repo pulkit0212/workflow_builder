@@ -26,8 +26,13 @@ async function joinMeeting(meetingUrl, meetingId) {
 
   const profilePath = path.join(PROJECT_ROOT, "tmp", "bot-profile");
 
+  const headless =
+    process.env.BOT_HEADLESS === "true" ||
+    process.env.BOT_HEADLESS === "1" ||
+    (process.env.NODE_ENV === "production" && process.env.BOT_HEADLESS !== "false");
+
   const browser = await chromium.launchPersistentContext(profilePath, {
-    headless: false,
+    headless,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
