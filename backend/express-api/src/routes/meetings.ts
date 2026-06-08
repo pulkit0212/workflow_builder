@@ -6,6 +6,7 @@ import * as botClient from "../lib/bot-client";
 import { enforceMeetingQuotaBeforeCreate } from "../lib/meeting-quota";
 import { canUseTeamWorkspace } from "../lib/subscription";
 import { triggerAutoShare } from "./meeting-sessions";
+import { recordingUrlForSession } from "../lib/recording-path";
 
 export const meetingsRouter = Router();
 
@@ -458,7 +459,7 @@ meetingsRouter.get("/:id", async (req: Request, res: Response, next: NextFunctio
       scheduledStartTime: session.scheduled_start_time ?? null,
       scheduledEndTime: session.scheduled_end_time ?? null,
       externalCalendarEventId: session.external_calendar_event_id ?? null,
-      recordingUrl: session.recording_url ?? (session.recording_file_path ? `/api/recordings/${session.id}` : null),
+      recordingUrl: recordingUrlForSession(session),
       recordingSize: session.recording_size ?? null,
       recordingDuration: session.recording_duration ?? session.meeting_duration ?? null,
       recordingStartedAt: session.recording_started_at ?? null,
@@ -632,7 +633,7 @@ meetingsRouter.get("/:id/status", async (req: Request, res: Response, next: Next
       keyDecisions: Array.isArray(session.key_decisions) ? session.key_decisions : [],
       actionItems: Array.isArray(session.action_items) ? session.action_items : [],
       risksAndBlockers: Array.isArray(session.risks_and_blockers) ? session.risks_and_blockers : [],
-      recordingUrl: session.recording_url ?? null,
+      recordingUrl: recordingUrlForSession(session),
       recordingDuration: session.recording_duration ?? session.meeting_duration ?? null,
       recordingStartedAt: session.recording_started_at ?? null,
       recordingEndedAt: session.recording_ended_at ?? null,

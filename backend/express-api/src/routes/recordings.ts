@@ -1,9 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
-import path from "path";
 import fs from "fs";
 import { pool } from "../db/client";
-import { config } from "../config";
 import { ForbiddenError, NotFoundError } from "../lib/errors";
+import { resolveRecordingFilePath } from "../lib/recording-path";
 
 export const recordingsRouter = Router();
 
@@ -42,13 +41,9 @@ recordingsRouter.get("/:meetingId", async (req: Request, res: Response, next: Ne
       return next(new ForbiddenError());
     }
 
-    // Resolve file path: prefer DB value, fall back to convention
-    const filePath = session.recording_file_path
-      ? session.recording_file_path
-      : path.join(config.recordingsDir, meetingId + ".wav");
+    const filePath = resolveRecordingFilePath(meetingId, session.recording_file_path);
 
-    // 404 if file doesn't exist on disk
-    if (!fs.existsSync(filePath)) {
+    if (!filePath) {
       return res.status(404).json({ error: "Recording file not found" });
     }
 

@@ -9,6 +9,7 @@ import { rateLimiter } from "./middleware/rate-limiter";
 import { healthRouter } from "./routes/health";
 import { settingsRouter } from "./routes/settings";
 import { recordingsRouter } from "./routes/recordings";
+import { recordingsUploadRouter } from "./routes/recordings-upload";
 import { actionItemsRouter } from "./routes/action-items";
 import { workspacesRouter } from "./routes/workspaces";
 import { meetingsRouter } from "./routes/meetings";
@@ -66,6 +67,8 @@ export function createApp() {
   app.use("/api/workspace", clerkAuth, rateLimiter, workspacesRouter);
   app.use("/api/action-items", clerkAuth, rateLimiter, actionItemsRouter);
   app.use("/api/settings", clerkAuth, rateLimiter, settingsRouter);
+  // Bot uploads recordings before Clerk-protected GET stream
+  app.use("/api/recordings", recordingsUploadRouter);
   app.use("/api/recordings", clerkAuth, rateLimiter, recordingsRouter);
   app.use("/api/search", clerkAuth, rateLimiter, searchRouter);
   app.use("/api/users", clerkAuth, rateLimiter, usersRouter);

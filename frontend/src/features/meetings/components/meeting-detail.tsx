@@ -181,7 +181,19 @@ function AudioPlayer({ url, duration }: { url: string; duration: number | null |
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [url]);
 
-  if (notFound) return null;
+  if (notFound) {
+    return (
+      <div className="rounded-xl border border-dashed border-[#DADCE0] bg-[#FAFAFA] p-5">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="material-symbols-outlined text-[#9AA0A6] text-[20px]">music_off</span>
+          <p className="text-sm font-semibold text-[#5F6368]">Meeting Recording</p>
+        </div>
+        <p className="text-xs text-[#9AA0A6]">
+          Recording not available. Re-run the meeting with the bot after setting up audio upload on your Mac bot.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-xl border border-[#DADCE0] bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
@@ -745,7 +757,12 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const sessionPlatform = session?.platform || getPlatformFromUrl(meeting.meetingLink);
   const platform = getPlatformConfig(sessionPlatform);
   const platformName = session?.platformName || platform.name;
-  const recordingUrl = session?.recordingUrl ?? meeting.recordingUrl;
+  const recordingUrl =
+    session?.recordingUrl ??
+    meeting.recordingUrl ??
+    (effectiveStatus === "completed" || effectiveStatus === "failed"
+      ? `/api/recordings/${meetingId}`
+      : null);
   const recordingDuration = session?.recordingDuration ?? meeting.recordingDuration;
   const durationLabel = formatMeetingDuration(meeting.meetingDuration);
 

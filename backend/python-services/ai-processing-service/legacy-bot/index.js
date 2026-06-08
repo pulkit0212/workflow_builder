@@ -48,6 +48,40 @@ const activeBrowsers = new Map();
 fs.mkdirSync(AUDIO_DIR, { recursive: true });
 fs.mkdirSync(TMP_DIR, { recursive: true });
 
+/** Upload WAV to Render express-api so the frontend can play it back. */
+async function uploadRecordingToApi(meetingId, filePath) {
+  const apiUrl = (process.env.EXPRESS_API_URL || process.env.API_PUBLIC_URL || "").replace(/\/$/, "");
+  const secret = process.env.BOT_UPLOAD_SECRET;
+  if (!apiUrl || !secret) {
+    console.warn("[Upload] EXPRESS_API_URL and BOT_UPLOAD_SECRET required — skipping cloud upload");
+    return false;
+  }
+  if (!filePath || !fs.existsSync(filePath)) {
+    console.warn("[Upload] Recording file missing:", filePath);
+    return false;
+  }
+  try {
+    const buffer = fs.readFileSync(filePath);
+    const form = new FormData();
+    form.append("recording", new Blob([buffer], { type: "audio/wav" }), "recording.wav");
+    const res = await fetch(`${apiUrl}/api/recordings/${meetingId}/upload`, {
+      method: "POST",
+      headers: { "X-Bot-Upload-Secret": secret },
+      body: form,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error("[Upload] API rejected recording:", res.status, text.slice(0, 200));
+      return false;
+    }
+    console.log("[Upload] Recording uploaded to API for meeting", meetingId);
+    return true;
+  } catch (err) {
+    console.error("[Upload] Failed:", err instanceof Error ? err.message : err);
+    return false;
+  }
+}
+
 logger.info("Bot", "PROJECT_ROOT", { path: process.cwd() });
 logger.info("Bot", "BOT_DIR", { path: BOT_DIR });
 logger.info("Bot", "AUDIO_DIR", { path: AUDIO_DIR });
@@ -854,21 +888,7 @@ async function stopBot(meetingId, onStatusUpdate) {
       }
     }
 
-    await onStatusUpdate(meetingId, "completed", {
-      errorCode: null,
-      failureReason: null,
-      recordingFilePath: session.outputPath,
-      recordingEndedAt,
-      transcript,
-      summary,
-      insights: insights ?? undefined,
-      chapters: chapters ?? undefined,
-      meetingDurationSeconds: meetingDurationSeconds ?? null,
-      outputPath: session.outputPath,
-    });
-    logger.info("Stop", "Meeting completed successfully", { sessionId: meetingId });
-
-    // Copy temp audio to private/recordings/ before cleanup, then update DB path
+    // Copy temp audio locally, upload to Render API, then mark completed
     const RECORDINGS_DIR = path.join(PROJECT_ROOT, "..", "..", "express-api", "private", "recordings");
     let finalRecordingPath = session.outputPath;
     if (session.outputPath && fs.existsSync(session.outputPath)) {
@@ -880,17 +900,27 @@ async function stopBot(meetingId, onStatusUpdate) {
         fs.copyFileSync(session.outputPath, destPath);
         finalRecordingPath = destPath;
         console.log("[Cleanup] Copied audio to:", destPath);
-        // Update DB with the permanent path
-        if (dbPool) {
-          await dbPool.query(
-            `UPDATE meeting_sessions SET recording_file_path = $1 WHERE id = $2`,
-            [destPath, meetingId]
-          );
-        }
       } catch (e) {
         console.warn("[Cleanup] Could not copy to recordings dir:", e instanceof Error ? e.message : e);
       }
     }
+
+    const uploadedToApi = await uploadRecordingToApi(meetingId, finalRecordingPath);
+
+    await onStatusUpdate(meetingId, "completed", {
+      errorCode: null,
+      failureReason: null,
+      recordingFilePath: uploadedToApi ? undefined : finalRecordingPath,
+      recordingUrl: uploadedToApi ? `/api/recordings/${meetingId}` : undefined,
+      recordingEndedAt,
+      transcript,
+      summary,
+      insights: insights ?? undefined,
+      chapters: chapters ?? undefined,
+      meetingDurationSeconds: meetingDurationSeconds ?? null,
+      outputPath: finalRecordingPath,
+    });
+    logger.info("Stop", "Meeting completed successfully", { sessionId: meetingId });
 
     // Cleanup: delete temp audio file after successful copy to private/recordings/
     if (session.outputPath && fs.existsSync(session.outputPath) && finalRecordingPath !== session.outputPath) {
@@ -909,7 +939,7 @@ async function stopBot(meetingId, onStatusUpdate) {
       transcript,
       meetingDurationSeconds: meetingDurationSeconds ?? undefined,
       summary,
-      outputPath: session.outputPath,
+      outputPath: finalRecordingPath,
     };
   } catch (error) {
     logger.error("Bot", "Failed to stop", { sessionId: meetingId, error: formatBotError(error, "Failed to stop bot") });
@@ -1014,6 +1044,7 @@ async function onStatusUpdate(meetingId, status, extra = {}) {
     failedAt: "failed_at",
     recordingStartedAt: "recording_started_at",
     recordingEndedAt: "recording_ended_at",
+    recordingUrl: "recording_url",
     transcript: "transcript",
     meetingDurationSeconds: "meeting_duration",
   };
