@@ -542,7 +542,10 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [transcriptExpanded, setTranscriptExpanded] = useState(false);
 
   const activeStates = new Set(["joining", "waiting_for_join", "waiting_for_admission", "joined", "capturing", "processing", "summarizing"]);
-  const shouldPoll = meeting?.meetingSessionId != null && meeting?.status != null && activeStates.has(meeting.status);
+  const shouldPoll =
+    meeting?.meetingSessionId != null &&
+    meeting?.status != null &&
+    (activeStates.has(meeting.status) || isPending);
   const session = useSessionPolling(shouldPoll ? (meeting?.meetingSessionId ?? null) : null);
 
   useEffect(() => {

@@ -9,6 +9,19 @@ const STARTUP_WAIT_MS = 2_500;
 const STDERR_TAIL_LIMIT = 20;
 const SILENCE_THRESHOLD_DB = -60;
 
+/** Mac avfoundation input — env name/index or default BlackHole for system audio. */
+function getMacAudioInput() {
+  const configured = process.env.MEETING_AUDIO_MAC_DEVICE?.trim();
+  if (configured) {
+    return configured.startsWith(":") ? configured : `:${configured}`;
+  }
+  return ":BlackHole 2ch";
+}
+
+function macInputLabel(input) {
+  return input.startsWith(":") ? input.slice(1) : input;
+}
+
 function ensureAudioDir() {
   if (!fs.existsSync(AUDIO_DIR)) {
     fs.mkdirSync(AUDIO_DIR, { recursive: true });
@@ -91,7 +104,7 @@ async function startRecording(meetingId) {
   if (isLinux || isMac) {
     const audioSourceForCheck = isLinux
       ? (process.env.MEETING_AUDIO_SOURCE || "default")
-      : "BlackHole 2ch";
+      : macInputLabel(getMacAudioInput());
 
     const { level, isSilent } = await checkAudioLevel(audioSourceForCheck);
 
@@ -112,13 +125,14 @@ async function startRecording(meetingId) {
   let ffmpegArgs;
 
   if (isMac) {
-    console.log("[Audio] Starting macOS capture using BlackHole 2ch");
+    const macInput = getMacAudioInput();
+    console.log(`[Audio] Starting macOS capture using ${macInputLabel(macInput)}`);
     ffmpegArgs = [
       "-y",
       "-f",
       "avfoundation",
       "-i",
-      ":BlackHole 2ch",
+      macInput,
       "-acodec",
       "pcm_s16le",
       "-ar",
@@ -221,11 +235,13 @@ async function startRecording(meetingId) {
         }
 
         console.log(`[Audio] Recording started: ${outputPath}`);
+        const startedInfo = getAudioFileInfo(outputPath);
+        console.log(`[Audio] Initial file size: ${startedInfo.size} bytes`);
         resolve({
           success: true,
           ffmpeg,
           outputPath,
-          audioSource: isLinux ? process.env.MEETING_AUDIO_SOURCE || "default" : "BlackHole 2ch",
+          audioSource: isLinux ? process.env.MEETING_AUDIO_SOURCE || "default" : macInputLabel(getMacAudioInput()),
           startupLog: stderrTail.join("\n"),
         });
       }, STARTUP_WAIT_MS);

@@ -420,6 +420,18 @@ async function startBot(meetingId, meetingUrl, onStatusUpdate) {
         errorCode: "host_admission_required",
         failureReason: "Bot is waiting to be admitted by the meeting host.",
       });
+      // Do not start ffmpeg while still in the waiting room
+      if (browser) {
+        activeBrowsers.set(meetingId, { browser, page, ffmpegProcess: null, watchInterval: null, safetyTimeout: null, stopInProgress: false });
+      }
+      return { success: true, waitingForAdmission: true };
+    }
+
+    if (status !== "joined") {
+      await cleanupJoinArtifacts(meetingId, browser);
+      const failureReason = message || "Bot could not join the meeting.";
+      await onStatusUpdate(meetingId, "failed", { errorCode: reason || "join_error", failureReason });
+      return { success: false, error: failureReason, errorCode: reason || "join_error" };
     }
 
     if (status === "joined") {

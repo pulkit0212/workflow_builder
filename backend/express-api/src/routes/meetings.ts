@@ -547,6 +547,12 @@ meetingsRouter.post("/:id/bot/start", async (req: Request, res: Response, next: 
       return res.status(400).json({ error: "Meeting link is missing. Add a Google Meet / Teams / Zoom URL first." });
     }
 
+    // So the UI polls immediately (frontend only polls active bot states, not "scheduled")
+    await pool.query(
+      `UPDATE meeting_sessions SET status = 'waiting_for_join', updated_at = NOW() WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+
     try {
       await botClient.startBot(id, meetingUrl);
     } catch (botErr) {

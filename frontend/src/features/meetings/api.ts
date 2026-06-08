@@ -252,7 +252,18 @@ export async function startMeetingCapture(id: string, meetingUrl: string) {
     if (!meetingRes.ok || !meetingPayload.success) {
       throw new Error("Bot started but failed to fetch updated meeting.");
     }
-    return { success: true as const, meeting: meetingPayload.meeting, status: "bot_starting" as const, message: "Bot is starting." };
+    const meeting = meetingPayload.meeting;
+    const activeBotStates = new Set([
+      "waiting_for_join",
+      "waiting_for_admission",
+      "capturing",
+      "processing",
+      "summarizing",
+    ]);
+    if (!activeBotStates.has(meeting.status)) {
+      meeting.status = "waiting_for_join";
+    }
+    return { success: true as const, meeting, status: "bot_starting" as const, message: "Bot is starting." };
   }
 
   const payload = (await response.json()) as MeetingStartResponse | MeetingSessionErrorResponse;
