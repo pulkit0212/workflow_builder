@@ -44,13 +44,11 @@ async function joinGoogleMeet(page, meetingUrl) {
   }
 
   try {
-    const micBtn = await page.$('[data-is-muted="false"][aria-label*="microphone"]');
-    if (micBtn) await micBtn.click();
-
-    const camBtn = await page.$('[data-is-muted="false"][aria-label*="camera"]');
-    if (camBtn) await camBtn.click();
+    // Camera off — bot doesn't need video; mic is left as-is (user controls mute in Meet)
+    const camOn = await page.$('[data-is-muted="false"][aria-label*="camera" i]');
+    if (camOn) await camOn.click();
   } catch {
-    console.log("[GoogleMeet] Could not mute mic/camera");
+    console.log("[GoogleMeet] Could not turn off camera");
   }
 
   const joinSelectors = [

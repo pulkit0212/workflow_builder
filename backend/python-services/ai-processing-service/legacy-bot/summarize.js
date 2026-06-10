@@ -11,6 +11,18 @@ if (fs.existsSync(botEnv)) {
 }
 
 const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL_FALLBACKS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+
+function isRetryableGeminiError(error) {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    error?.status === 429 ||
+    error?.status === 503 ||
+    /"code":\s*503/.test(msg) ||
+    /"code":\s*429/.test(msg) ||
+    /UNAVAILABLE|RESOURCE_EXHAUSTED|high demand/i.test(msg)
+  );
+}
 
 function buildFallbackSummary(message) {
   return {
@@ -138,7 +150,42 @@ function extractText(payload) {
     .trim();
 }
 
-async function summarizeMeeting(transcript) {
+async function callGemini(prompt, model = GEMINI_MODEL) {
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": process.env.GEMINI_API_KEY,
+      },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const raw = await response.text();
+    const err = new Error(raw || "Gemini request failed");
+    err.status = response.status;
+    throw err;
+  }
+
+  const payload = JSON.parse(await response.text());
+  const rawText = extractText(payload);
+  if (!rawText) {
+    throw new Error("Gemini returned an empty response.");
+  }
+  return rawText;
+}
+
+async function summarizeMeeting(transcript, options = {}) {
+  const model = options.model || GEMINI_MODEL;
+
   if (!transcript || transcript.trim().length < 50) {
     return buildFallbackSummary("Not enough content to summarize.");
   }
@@ -148,76 +195,40 @@ async function summarizeMeeting(transcript) {
     return buildFallbackSummary("Summary unavailable - Gemini API key not configured.");
   }
 
-  try {
-    const prompt = getPrompt(transcript);
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-goog-api-key": process.env.GEMINI_API_KEY,
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt,
-                },
-              ],
-            },
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      const raw = await response.text();
-      throw new Error(raw || "Gemini request failed");
-    }
-
-    const payload = JSON.parse(await response.text());
-    const rawText = extractText(payload);
-
-    if (!rawText) {
-      throw new Error("Gemini returned an empty response.");
-    }
-
-    const structured = JSON.parse(rawText);
-    return normalizeSummaryPayload(structured);
-  } catch (error) {
-    console.error("[Summary] Gemini API error:", error instanceof Error ? error.message : error);
-    return buildFallbackSummary(
-      `Summary generation failed: ${error instanceof Error ? error.message : "Unknown error"}`
-    );
-  }
+  const prompt = getPrompt(transcript);
+  const rawText = await callGemini(prompt, model);
+  const structured = JSON.parse(rawText);
+  return normalizeSummaryPayload(structured);
 }
 
 module.exports = { summarizeMeeting, summarizeWithRetry };
 
-async function summarizeWithRetry(transcript, maxRetries = 3) {
+async function summarizeWithRetry(transcript, maxRetries = 4) {
+  let lastError = null;
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const model = GEMINI_MODEL_FALLBACKS[Math.min(attempt - 1, GEMINI_MODEL_FALLBACKS.length - 1)];
     try {
-      console.log(`[Summary] Attempt ${attempt}/${maxRetries}`);
-      const result = await summarizeMeeting(transcript);
-      if (typeof result === "object" && result.summary) {
+      console.log(`[Summary] Attempt ${attempt}/${maxRetries} (model: ${model})`);
+      const result = await summarizeMeeting(transcript, { model });
+      if (typeof result === "object" && result.summary && !result.summary.startsWith("Summary unavailable")) {
         return result;
       }
       throw new Error("Invalid summary response");
     } catch (e) {
-      console.error(`[Summary] Attempt ${attempt} failed:`, e instanceof Error ? e.message : e);
-      if (attempt === maxRetries) {
-        throw new Error(`Summary failed after ${maxRetries} attempts: ${e instanceof Error ? e.message : e}`);
-      }
-      const delay = Math.pow(2, attempt) * 1000;
+      lastError = e;
+      console.error(`[Summary] Attempt ${attempt} failed:`, e instanceof Error ? e.message.slice(0, 200) : e);
+      if (attempt === maxRetries) break;
+      const delay = isRetryableGeminiError(e) ? attempt * 5000 : Math.pow(2, attempt) * 1000;
       console.log(`[Summary] Retrying in ${delay}ms...`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
+
+  console.error("[Summary] All attempts failed — saving placeholder");
+  return buildFallbackSummary(
+    "Summary could not be generated right now (Gemini API busy). Open this meeting and use Regenerate, or retry in a few minutes."
+  );
 }
 
 // ─── Insights Generation ──────────────────────────────────────────────────────

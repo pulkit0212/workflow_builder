@@ -18,6 +18,20 @@ function getMacAudioInput() {
   return ":BlackHole 2ch";
 }
 
+/** Local mic — captures your voice (BlackHole only gets speaker/remote audio). */
+function getMacMicInput() {
+  const configured = process.env.MEETING_MIC_MAC_DEVICE?.trim();
+  if (configured) {
+    if (configured === "none" || configured === "off") return null;
+    return configured.startsWith(":") ? configured : `:${configured}`;
+  }
+  // Auto-mix mic when capturing Meet via BlackHole
+  if (macInputLabel(getMacAudioInput()).toLowerCase().includes("blackhole")) {
+    return ":MacBook Air Microphone";
+  }
+  return null;
+}
+
 function macInputLabel(input) {
   return input.startsWith(":") ? input.slice(1) : input;
 }
@@ -102,21 +116,33 @@ async function startRecording(meetingId) {
 
   // ── Pre-recording audio level check ──────────────────────────────────────
   if (isLinux || isMac) {
-    const audioSourceForCheck = isLinux
-      ? (process.env.MEETING_AUDIO_SOURCE || "default")
-      : macInputLabel(getMacAudioInput());
+    const sourcesToCheck = [];
+    if (isLinux) {
+      sourcesToCheck.push(process.env.MEETING_AUDIO_SOURCE || "default");
+      if (process.env.MEETING_MIC_SOURCE) sourcesToCheck.push(process.env.MEETING_MIC_SOURCE);
+    } else {
+      sourcesToCheck.push(macInputLabel(getMacAudioInput()));
+      const macMic = getMacMicInput();
+      if (macMic) sourcesToCheck.push(macInputLabel(macMic));
+    }
 
-    const { level, isSilent } = await checkAudioLevel(audioSourceForCheck);
+    let bestLevel = null;
+    let anyAudible = false;
+    for (const source of sourcesToCheck) {
+      const { level, isSilent } = await checkAudioLevel(source);
+      if (level !== null && (bestLevel === null || level > bestLevel)) bestLevel = level;
+      if (!isSilent) anyAudible = true;
+    }
 
-    if (isSilent) {
+    if (!anyAudible) {
       console.warn(
-        `[Audio] Pre-recording check: audio source "${audioSourceForCheck}" appears silent ` +
-        `(RMS level = ${level} dBFS, threshold = ${SILENCE_THRESHOLD_DB} dBFS). Aborting recording.`
+        `[Audio] Pre-recording check: all sources appear silent ` +
+        `(best RMS = ${bestLevel} dBFS, threshold = ${SILENCE_THRESHOLD_DB} dBFS). Aborting recording.`
       );
       return { success: false, error: "silent_audio_source", errorCode: "silent_audio_source" };
     }
 
-    if (level === null) {
+    if (bestLevel === null) {
       console.warn("[Audio] Pre-recording check: could not determine audio level — proceeding anyway (fail open)");
     }
   }
@@ -126,21 +152,32 @@ async function startRecording(meetingId) {
 
   if (isMac) {
     const macInput = getMacAudioInput();
-    console.log(`[Audio] Starting macOS capture using ${macInputLabel(macInput)}`);
-    ffmpegArgs = [
-      "-y",
-      "-f",
-      "avfoundation",
-      "-i",
-      macInput,
-      "-acodec",
-      "pcm_s16le",
-      "-ar",
-      "16000",
-      "-ac",
-      "1",
-      outputPath,
-    ];
+    const macMic = getMacMicInput();
+    if (macMic) {
+      console.log(
+        `[Audio] Starting macOS capture — remote: ${macInputLabel(macInput)}, mic: ${macInputLabel(macMic)}`
+      );
+      ffmpegArgs = [
+        "-y",
+        "-f", "avfoundation", "-i", macInput,
+        "-f", "avfoundation", "-i", macMic,
+        "-filter_complex", "amix=inputs=2:duration=longest:dropout_transition=0",
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        outputPath,
+      ];
+    } else {
+      console.log(`[Audio] Starting macOS capture using ${macInputLabel(macInput)}`);
+      ffmpegArgs = [
+        "-y",
+        "-f", "avfoundation", "-i", macInput,
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
+        outputPath,
+      ];
+    }
   } else if (isLinux) {
     const audioSource = process.env.MEETING_AUDIO_SOURCE || "default";
     const micSource = process.env.MEETING_MIC_SOURCE || null;
