@@ -189,7 +189,8 @@ function AudioPlayer({ url, duration }: { url: string; duration: number | null |
           <p className="text-sm font-semibold text-[#5F6368]">Meeting Recording</p>
         </div>
         <p className="text-xs text-[#9AA0A6]">
-          Recording not available. Re-run the meeting with the bot after setting up audio upload on your Mac bot.
+          Recording not available yet. If the meeting just finished, wait a minute and refresh.
+          Otherwise ensure the bot uploaded the file (BOT_UPLOAD_SECRET + EXPRESS_API_URL on the bot).
         </p>
       </div>
     );

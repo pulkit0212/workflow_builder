@@ -8,7 +8,13 @@ export const actionItemsRouter = Router();
 function requirePaidPlan(req: Request, res: Response): boolean {
   const plan = req.appUser.plan ?? "free";
   if (!canUseActionItems(plan)) {
-    res.status(403).json({ error: "upgrade_required", currentPlan: plan });
+    res.status(403).json({
+      error: "upgrade_required",
+      currentPlan: plan,
+      feature: "action_items",
+      message:
+        "Action items are available on Pro and Elite. Upgrade your plan to create and edit tasks.",
+    });
     return true;
   }
   return false;
@@ -215,6 +221,7 @@ actionItemsRouter.get("/", async (req: Request, res: Response, next: NextFunctio
 // Personal mode: pass "me" → resolves to current user, returns only their items (workspace_id IS NULL)
 // Workspace admin: pass any member's DB user ID + x-workspace-id header → returns that member's workspace items
 actionItemsRouter.get("/by-user/:userId", async (req: Request, res: Response, next: NextFunction) => {
+  if (requirePaidPlan(req, res)) return;
   try {
     const requesterId = req.appUser.id;
     const rawUserId = req.params.userId;

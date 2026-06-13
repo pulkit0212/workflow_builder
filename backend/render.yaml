@@ -1,4 +1,5 @@
 # Render Blueprint — repo root: artivaa-backend
+# Manual services: set sync:false secrets in Render Dashboard before first deploy.
 services:
   - type: web
     name: artivaa-api
@@ -20,8 +21,24 @@ services:
         sync: false
       - key: CLERK_WEBHOOK_SECRET
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
       - key: BOT_BASE_URL
-        value: http://artivaa-bot:8000
+        sync: false
+      - key: BOT_UPLOAD_SECRET
+        sync: false
+      - key: RECORDINGS_DIR
+        value: ./private/recordings
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
 
   - type: web
     name: artivaa-bot
@@ -47,3 +64,7 @@ services:
         value: Artivaa Notetaker
       - key: MEETING_AUDIO_SOURCE
         value: default
+      - key: EXPRESS_API_URL
+        sync: false
+      - key: BOT_UPLOAD_SECRET
+        sync: false

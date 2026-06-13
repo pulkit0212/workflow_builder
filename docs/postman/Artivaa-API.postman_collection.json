@@ -1,0 +1,543 @@
+{
+  "info": {
+    "_postman_id": "artivaa-api-collection",
+    "name": "Artivaa API",
+    "description": "Express API for Artivaa (meeting intelligence platform).\n\n## Auth\nMost routes require Clerk JWT:\n`Authorization: Bearer {{clerkToken}}`\n\nGet token from Clerk Dashboard → Users → Sessions, or from browser DevTools after sign-in on the web app (Network tab → any /api/ request).\n\n## Variables\n- `baseUrl` — http://localhost:3001 or https://artivaa-api.onrender.com\n- `clerkToken` — Clerk session JWT\n- `meetingId`, `workspaceId` — set after create/list calls",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{clerkToken}}", "type": "string" }]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "clerkToken", "value": "" },
+    { "key": "meetingId", "value": "" },
+    { "key": "workspaceId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get My Profile",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/profile/me" }
+        }
+      ]
+    },
+    {
+      "name": "Meetings",
+      "item": [
+        {
+          "name": "List Meetings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings" }
+        },
+        {
+          "name": "Create Meeting",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Test Meeting\",\n  \"meetingLink\": \"https://meet.google.com/xxx-yyyy-zzz\",\n  \"provider\": \"google_meet\"\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings"
+          }
+        },
+        {
+          "name": "Today's Meetings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/today" }
+        },
+        {
+          "name": "Upcoming Meetings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/upcoming" }
+        },
+        {
+          "name": "Joined Meetings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/joined" }
+        },
+        {
+          "name": "Meeting Reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/meetings/reports?page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "meetings", "reports"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Calendar Feed",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/calendar-feed" }
+        },
+        {
+          "name": "Get Meeting by ID",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/{{meetingId}}" }
+        },
+        {
+          "name": "Get Meeting Status (poll)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/meetings/{{meetingId}}/status" }
+        },
+        {
+          "name": "Update Meeting",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Updated title\",\n  \"notes\": \"Some notes\"\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}"
+          }
+        },
+        {
+          "name": "Delete Meeting",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/meetings/{{meetingId}}" }
+        },
+        {
+          "name": "Start Bot",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingUrl\": \"https://meet.google.com/xxx-yyyy-zzz\"\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}/bot/start"
+          }
+        },
+        {
+          "name": "Stop Bot",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/meetings/{{meetingId}}/bot/stop" }
+        },
+        {
+          "name": "Request Move to Workspace",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceId\": \"{{workspaceId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}/request-move"
+          }
+        },
+        {
+          "name": "Move to Workspace",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"workspaceId\": \"{{workspaceId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/api/meetings/{{meetingId}}/move-to-workspace"
+          }
+        },
+        {
+          "name": "Share to Integrations",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/meetings/{{meetingId}}/share/integrations" }
+        }
+      ]
+    },
+    {
+      "name": "Recordings",
+      "item": [
+        {
+          "name": "Stream Recording (auth)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/recordings/{{meetingId}}" }
+        },
+        {
+          "name": "Upload Recording (bot only)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "X-Bot-Upload-Secret", "value": "{{botUploadSecret}}" }],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "recording", "type": "file", "src": "" }
+              ]
+            },
+            "url": "{{baseUrl}}/api/recordings/{{meetingId}}/upload"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workspaces",
+      "item": [
+        {
+          "name": "List Workspaces",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/workspaces" }
+        },
+        {
+          "name": "Create Workspace",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"My Team\",\n  \"description\": \"Team workspace\"\n}"
+            },
+            "url": "{{baseUrl}}/api/workspaces"
+          }
+        },
+        {
+          "name": "Get Workspace",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}" }
+        },
+        {
+          "name": "Update Workspace",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Renamed Team\"\n}" },
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}"
+          }
+        },
+        {
+          "name": "Delete Workspace",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}" }
+        },
+        {
+          "name": "Workspace Dashboard",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/dashboard" }
+        },
+        {
+          "name": "Workspace Meetings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/meetings" }
+        },
+        {
+          "name": "Workspace Action Items",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/action-items" }
+        },
+        {
+          "name": "Invite Member",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"teammate@example.com\",\n  \"role\": \"member\"\n}"
+            },
+            "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/invite"
+          }
+        },
+        {
+          "name": "List Invites",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/invite" }
+        },
+        {
+          "name": "Leave Workspace",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/workspaces/{{workspaceId}}/leave" }
+        }
+      ]
+    },
+    {
+      "name": "Action Items",
+      "item": [
+        {
+          "name": "List Action Items",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/action-items" }
+        },
+        {
+          "name": "Action Item Stats",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/action-items/stats" }
+        },
+        {
+          "name": "Create Action Item",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task\": \"Follow up with client\",\n  \"priority\": \"High\",\n  \"assignee\": \"Pulkit\"\n}"
+            },
+            "url": "{{baseUrl}}/api/action-items"
+          }
+        },
+        {
+          "name": "Update Action Item",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"completed\": true,\n  \"status\": \"done\"\n}" },
+            "url": "{{baseUrl}}/api/action-items/{{actionItemId}}"
+          }
+        },
+        {
+          "name": "Delete Action Item",
+          "request": { "method": "DELETE", "url": "{{baseUrl}}/api/action-items/{{actionItemId}}" }
+        },
+        {
+          "name": "Bulk Save",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"items\": []\n}" },
+            "url": "{{baseUrl}}/api/action-items/bulk-save"
+          }
+        },
+        {
+          "name": "Export CSV",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/action-items/export" }
+        }
+      ]
+    },
+    {
+      "name": "Calendar & Integrations",
+      "item": [
+        {
+          "name": "Calendar Status",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/calendar/status" }
+        },
+        {
+          "name": "Connect Calendar (browser redirect)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/api/calendar/connect/google"
+          }
+        },
+        {
+          "name": "Disconnect Calendar",
+          "request": { "method": "POST", "url": "{{baseUrl}}/api/calendar/disconnect/google" }
+        },
+        {
+          "name": "Integrations Catalog",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/integrations/catalog" }
+        },
+        {
+          "name": "List Integrations",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/integrations" }
+        },
+        {
+          "name": "Google Integration Status",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/google/integration" }
+        },
+        {
+          "name": "Google Calendar Events",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/google/calendar" }
+        }
+      ]
+    },
+    {
+      "name": "Meeting Extras",
+      "item": [
+        {
+          "name": "Send Follow-up",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"meetingId\": \"{{meetingId}}\"\n}" },
+            "url": "{{baseUrl}}/api/meeting/followup"
+          }
+        },
+        {
+          "name": "Send Summary Email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"meetingId\": \"{{meetingId}}\",\n  \"recipients\": [\"user@example.com\"]\n}" },
+            "url": "{{baseUrl}}/api/meeting/send-email"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tools (AI)",
+      "item": [
+        {
+          "name": "Tools Catalog",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/tools/catalog" }
+        },
+        {
+          "name": "List Tool Runs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/tools" }
+        },
+        {
+          "name": "Meeting Summarizer Run",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"transcript\": \"Meeting transcript text...\"\n}" },
+            "url": "{{baseUrl}}/api/tools/meeting-summarizer/run"
+          }
+        },
+        {
+          "name": "Task Generator",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"Notes from meeting...\"\n}" },
+            "url": "{{baseUrl}}/api/tools/task-generator"
+          }
+        },
+        {
+          "name": "Email Generator",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"context\": \"Follow up after sprint review\"\n}" },
+            "url": "{{baseUrl}}/api/tools/email-generator"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Subscription & Billing",
+      "item": [
+        {
+          "name": "Get Subscription",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/subscription" }
+        },
+        {
+          "name": "List Plans",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/subscription/plans" }
+        },
+        {
+          "name": "Create Payment Order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"planId\": \"pro_monthly\"\n}" },
+            "url": "{{baseUrl}}/api/payment/create-order"
+          }
+        },
+        {
+          "name": "Verify Payment",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"razorpay_order_id\": \"\",\n  \"razorpay_payment_id\": \"\",\n  \"razorpay_signature\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/api/payment/verify"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settings",
+      "item": [
+        {
+          "name": "Get Account Settings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/settings/account" }
+        },
+        {
+          "name": "Get Bot Settings",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/settings/bot" }
+        },
+        {
+          "name": "Get Preferences",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/settings/preferences" }
+        },
+        {
+          "name": "Usage Stats",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/settings/usage" }
+        }
+      ]
+    },
+    {
+      "name": "Search & Users",
+      "item": [
+        {
+          "name": "Global Search",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/search?q=meeting",
+              "query": [{ "key": "q", "value": "meeting" }]
+            }
+          }
+        },
+        {
+          "name": "Search Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/users/search?q=pulkit",
+              "query": [{ "key": "q", "value": "pulkit" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Invite (public + auth)",
+      "item": [
+        {
+          "name": "Validate Invite Token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/invite/validate?token={{inviteToken}}",
+              "query": [{ "key": "token", "value": "{{inviteToken}}" }]
+            }
+          }
+        },
+        {
+          "name": "Accept Invite",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{inviteToken}}\"\n}" },
+            "url": "{{baseUrl}}/api/invite/accept"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Bot",
+      "item": [
+        {
+          "name": "Bot Profile Status",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/bot/profile-status" }
+        }
+      ]
+    },
+    {
+      "name": "AI Runs",
+      "item": [
+        {
+          "name": "List AI Runs",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/ai-runs" }
+        },
+        {
+          "name": "Get AI Run",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/ai-runs/:id" }
+        }
+      ]
+    },
+    {
+      "name": "Usage",
+      "item": [
+        {
+          "name": "Usage Stats",
+          "request": { "method": "GET", "url": "{{baseUrl}}/api/usage/stats" }
+        }
+      ]
+    }
+  ]
+}

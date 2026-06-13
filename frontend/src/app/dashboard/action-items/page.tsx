@@ -14,6 +14,11 @@ import { useApiFetch } from "@/hooks/useApiFetch";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { cn } from "@/lib/utils";
 import { AssigneeCell } from "@/features/action-items/components/AssigneeCell";
+import {
+  getPlanGateUserMessage,
+  handlePlanGatedApiResponse,
+  isUpgradeRequired,
+} from "@/lib/plan-gate-errors";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -1543,6 +1548,22 @@ function ActionItemsContent() {
     setTimeout(() => setToast(null), 3000);
   }
 
+  /** Friendly message when API returns upgrade_required / limit_reached (not a generic failure). */
+  async function handleFailedMutation(res: Response, fallbackMessage: string) {
+    const result = await handlePlanGatedApiResponse(res, {
+      feature: "action_items",
+      fallbackMessage,
+    });
+    if (result.ok) return;
+    if (result.upgradeRequired) {
+      setUpgradeRequired(true);
+      showToast(result.message, "error");
+      return;
+    }
+    showToast(result.message, "error");
+    void loadItems();
+  }
+
   // Fetch DB user ID from profile
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return;
@@ -1600,7 +1621,7 @@ function ActionItemsContent() {
 
   async function loadItems(tab = activeTab, mid = memberFilter) {
     if (!isLoaded || !isSignedIn) { setIsLoading(false); return; }
-    setIsLoading(true); setLoadError(null); setUpgradeRequired(false);
+    setIsLoading(true); setLoadError(null);
     try {
       const targetUser = (activeWorkspaceId && isElevated && mid !== "all") ? mid : "me";
       // Fetch ALL items — client handles filtering, pagination, and stats
@@ -1615,14 +1636,22 @@ function ActionItemsContent() {
         message?: string; error?: string;
       };
       if (!res.ok) {
-        if (payload.error === "upgrade_required") { setUpgradeRequired(true); return; }
-        throw new Error(payload.message || "Failed to load action items.");
+        if (isUpgradeRequired(payload)) {
+          setUpgradeRequired(true);
+          return;
+        }
+        throw new Error(
+          payload.message ||
+            getPlanGateUserMessage(payload, "action_items") ||
+            "Failed to load action items."
+        );
       }
       setItems(payload.items ?? []);
       if (!activeWorkspaceId) setRole("personal");
       else if (activeWorkspace?.role) setRole(activeWorkspace.role as WorkspaceRole);
       setCurrentPage(1);
       setSelected(new Set());
+      setUpgradeRequired(false);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : "Failed to load action items.");
     } finally { setIsLoading(false); }
@@ -1668,9 +1697,11 @@ function ActionItemsContent() {
       if (res.ok) {
         const updated = await res.json() as ActionItemRow;
         setItems((prev) => prev.map((item) => item.id === id ? { ...item, ...updated } : item));
-      } else { void loadItems(); }
+      } else {
+        await handleFailedMutation(res, "Failed to update status.");
+      }
     }
-    catch { void loadItems(); }
+    catch { void loadItems(); showToast("Failed to update status.", "error"); }
   }
 
   async function handlePriorityUpdate(id: string, priority: string) {
@@ -1681,17 +1712,22 @@ function ActionItemsContent() {
       if (res.ok) {
         const updated = await res.json() as ActionItemRow;
         setItems((prev) => prev.map((item) => item.id === id ? { ...item, ...updated } : item));
-      } else { void loadItems(); }
+      } else {
+        await handleFailedMutation(res, "Failed to update priority.");
+      }
     }
-    catch { void loadItems(); }
+    catch { void loadItems(); showToast("Failed to update priority.", "error"); }
   }
 
   async function handleDueDateUpdate(id: string, dueDate: string) {
     if (isViewer) return;
     setItems((prev) => prev.map((item) => item.id === id ? { ...item, due_date: dueDate } : item));
     setEditingDueDate(null);
-    try { await apiFetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dueDate }) }); }
-    catch { void loadItems(); }
+    try {
+      const res = await apiFetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dueDate }) });
+      if (!res.ok) await handleFailedMutation(res, "Failed to update due date.");
+    }
+    catch { void loadItems(); showToast("Failed to update due date.", "error"); }
   }
 
   async function handleAssigneeUpdate(id: string, assigneeId: string | null, assigneeName: string | null = null) {
@@ -1713,8 +1749,7 @@ function ActionItemsContent() {
         body: JSON.stringify({ assigneeId, assignee: assigneeId === null ? "Unassigned" : (assigneeName ?? undefined) }),
       });
       if (!res.ok) {
-        void loadItems();
-        showToast("Failed to update assignee.", "error");
+        await handleFailedMutation(res, "Failed to update assignee.");
       } else {
         // Update just this item from the response — no page reset
         const updated = await res.json() as ActionItemRow;
@@ -1734,9 +1769,15 @@ function ActionItemsContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ assigneeId, dueDate }),
       });
-      if (!res.ok) { void loadItems(); showToast("Failed to save changes.", "error"); }
-      else showToast("Changes saved.", "success");
-    } catch { void loadItems(); showToast("Failed to save changes.", "error"); }
+      if (!res.ok) {
+        await handleFailedMutation(res, "Failed to save changes.");
+      } else {
+        showToast("Changes saved.", "success");
+      }
+    } catch {
+      void loadItems();
+      showToast("Failed to save changes.", "error");
+    }
   }
 
   async function handleDeleteSingle(id: string) {
@@ -1746,9 +1787,11 @@ function ActionItemsContent() {
         setItems((prev) => prev.filter((i) => i.id !== id));
         showToast("Item deleted.", "success");
       } else {
-        showToast("Failed to delete item.", "error");
+        await handleFailedMutation(res, "Failed to delete item.");
       }
-    } catch { showToast("Failed to delete item.", "error"); }
+    } catch {
+      showToast("Failed to delete item.", "error");
+    }
     setDeletingItemId(null);
   }
 
@@ -1757,12 +1800,34 @@ function ActionItemsContent() {
     setIsDeleting(true);
     const ids = Array.from(selected);
     let failed = 0;
+    let upgradeMessage: string | null = null;
     await Promise.all(ids.map(async (id) => {
-      try { const res = await apiFetch(`/api/action-items/${id}`, { method: "DELETE" }); if (!res.ok) failed++; }
-      catch { failed++; }
+      try {
+        const res = await apiFetch(`/api/action-items/${id}`, { method: "DELETE" });
+        if (!res.ok) {
+          failed++;
+          if (!upgradeMessage) {
+            const result = await handlePlanGatedApiResponse(res, {
+              feature: "action_items",
+              fallbackMessage: "Failed to delete item.",
+            });
+            if (!result.ok && result.upgradeRequired) {
+              upgradeMessage = result.message;
+              setUpgradeRequired(true);
+            }
+          }
+        }
+      } catch { failed++; }
     }));
     setIsDeleting(false); setDeleteModal(false);
-    showToast(failed === 0 ? `${ids.length} item${ids.length !== 1 ? "s" : ""} deleted.` : `${ids.length - failed} deleted, ${failed} failed.`, failed === 0 ? "success" : "error");
+    if (upgradeMessage) {
+      showToast(upgradeMessage, "error");
+    } else {
+      showToast(
+        failed === 0 ? `${ids.length} item${ids.length !== 1 ? "s" : ""} deleted.` : `${ids.length - failed} deleted, ${failed} failed.`,
+        failed === 0 ? "success" : "error"
+      );
+    }
     void loadItems();
   }
 
@@ -1772,13 +1837,30 @@ function ActionItemsContent() {
     // Optimistic update
     setItems((prev) => prev.map((item) => selected.has(item.id) ? { ...item, status } : item));
     let failed = 0;
+    let upgradeMessage: string | null = null;
     await Promise.all(ids.map(async (id) => {
       try {
         const res = await apiFetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-        if (!res.ok) failed++;
+        if (!res.ok) {
+          failed++;
+          if (!upgradeMessage) {
+            const result = await handlePlanGatedApiResponse(res, {
+              feature: "action_items",
+              fallbackMessage: "Failed to update status.",
+            });
+            if (!result.ok && result.upgradeRequired) {
+              upgradeMessage = result.message;
+              setUpgradeRequired(true);
+            }
+          }
+        }
       } catch { failed++; }
     }));
-    showToast(failed === 0 ? `Status updated for ${ids.length} items.` : `${ids.length - failed} updated, ${failed} failed.`, failed === 0 ? "success" : "error");
+    if (upgradeMessage) {
+      showToast(upgradeMessage, "error");
+    } else {
+      showToast(failed === 0 ? `Status updated for ${ids.length} items.` : `${ids.length - failed} updated, ${failed} failed.`, failed === 0 ? "success" : "error");
+    }
     if (failed > 0) void loadItems();
   }
 
@@ -1788,13 +1870,30 @@ function ActionItemsContent() {
     // Optimistic update
     setItems((prev) => prev.map((item) => selected.has(item.id) ? { ...item, priority } : item));
     let failed = 0;
+    let upgradeMessage: string | null = null;
     await Promise.all(ids.map(async (id) => {
       try {
         const res = await apiFetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority }) });
-        if (!res.ok) failed++;
+        if (!res.ok) {
+          failed++;
+          if (!upgradeMessage) {
+            const result = await handlePlanGatedApiResponse(res, {
+              feature: "action_items",
+              fallbackMessage: "Failed to update priority.",
+            });
+            if (!result.ok && result.upgradeRequired) {
+              upgradeMessage = result.message;
+              setUpgradeRequired(true);
+            }
+          }
+        }
       } catch { failed++; }
     }));
-    showToast(failed === 0 ? `Priority updated for ${ids.length} items.` : `${ids.length - failed} updated, ${failed} failed.`, failed === 0 ? "success" : "error");
+    if (upgradeMessage) {
+      showToast(upgradeMessage, "error");
+    } else {
+      showToast(failed === 0 ? `Priority updated for ${ids.length} items.` : `${ids.length - failed} updated, ${failed} failed.`, failed === 0 ? "success" : "error");
+    }
     if (failed > 0) void loadItems();
   }
 
@@ -1812,9 +1911,13 @@ function ActionItemsContent() {
         source: "manual",
       }),
     });
-    const payload = await res.json().catch(() => ({})) as { error?: string; message?: string };
     if (!res.ok) {
-      throw new Error(typeof payload.error === "string" ? payload.error : payload.message ?? "Failed to create task");
+      const result = await handlePlanGatedApiResponse(res, {
+        feature: "action_items",
+        fallbackMessage: "Failed to create task.",
+      });
+      if (!result.ok && result.upgradeRequired) setUpgradeRequired(true);
+      throw new Error(!result.ok ? result.message : "Failed to create task.");
     }
     showToast("Task created.", "success");
     void loadItems();

@@ -86,8 +86,9 @@ export function EmailGeneratorWorkspace() {
     }
   }
 
-  useEffect(() => { void loadMeetings(); }, []);
-  useEffect(() => { void loadMeetings(deferredSearchTerm); }, [deferredSearchTerm]);
+  useEffect(() => {
+    void loadMeetings(deferredSearchTerm);
+  }, [deferredSearchTerm]);
 
   async function handleGenerate() {
     if (!context.trim()) { setError("Meeting context is required."); return; }
