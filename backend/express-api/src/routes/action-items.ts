@@ -1,19 +1,50 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { pool } from "../db/client";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../lib/errors";
-import { canUseActionItems, canUseTeamWorkspace } from "../lib/subscription";
+import { canUseActionItems, canUseTeamWorkspace, canManageActionItems, canExportShareDownload } from "../lib/subscription";
 
 export const actionItemsRouter = Router();
 
-function requirePaidPlan(req: Request, res: Response): boolean {
+function requireViewActionItems(req: Request, res: Response): boolean {
   const plan = req.appUser.plan ?? "free";
   if (!canUseActionItems(plan)) {
     res.status(403).json({
       error: "upgrade_required",
       currentPlan: plan,
-      feature: "action_items",
+      feature: "action_items_view",
       message:
-        "Action items are available on Pro and Elite. Upgrade your plan to create and edit tasks.",
+        "Task Backlog is available on Pro and Elite. Upgrade to Pro to view your action items.",
+    });
+    return true;
+  }
+  return false;
+}
+
+function requireManageActionItems(req: Request, res: Response): boolean {
+  const plan = req.appUser.plan ?? "free";
+  if (requireViewActionItems(req, res)) return true;
+  if (!canManageActionItems(plan)) {
+    res.status(403).json({
+      error: "elite_required",
+      currentPlan: plan,
+      feature: "action_items_manage",
+      message:
+        "Editing action items requires Elite. Upgrade to create, update, or delete tasks.",
+    });
+    return true;
+  }
+  return false;
+}
+
+function requireExportShareDownload(req: Request, res: Response): boolean {
+  const plan = req.appUser.plan ?? "free";
+  if (!canExportShareDownload(plan)) {
+    res.status(403).json({
+      error: "elite_required",
+      currentPlan: plan,
+      feature: "export_share_download",
+      message:
+        "Export and share requires Elite. Upgrade to download or share this content.",
     });
     return true;
   }
@@ -98,6 +129,7 @@ async function normalizeAssigneeForWorkspaceCreate(params: {
 
 // GET /stats — total + pending counts for dashboard stat card
 actionItemsRouter.get("/stats", async (req: Request, res: Response, next: NextFunction) => {
+  if (requireViewActionItems(req, res)) return;
   try {
     const userId = req.appUser.id;
     const workspaceId = req.headers["x-workspace-id"] as string | undefined;
@@ -131,6 +163,7 @@ actionItemsRouter.get("/stats", async (req: Request, res: Response, next: NextFu
 
 // GET / — list with workspace + role filtering, status/priority/member filters
 actionItemsRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
+  if (requireViewActionItems(req, res)) return;
   try {
     const userId = req.appUser.id;
     const workspaceId = req.headers["x-workspace-id"] as string | undefined;
@@ -221,7 +254,7 @@ actionItemsRouter.get("/", async (req: Request, res: Response, next: NextFunctio
 // Personal mode: pass "me" → resolves to current user, returns only their items (workspace_id IS NULL)
 // Workspace admin: pass any member's DB user ID + x-workspace-id header → returns that member's workspace items
 actionItemsRouter.get("/by-user/:userId", async (req: Request, res: Response, next: NextFunction) => {
-  if (requirePaidPlan(req, res)) return;
+  if (requireViewActionItems(req, res)) return;
   try {
     const requesterId = req.appUser.id;
     const rawUserId = req.params.userId;
@@ -308,6 +341,7 @@ actionItemsRouter.get("/by-user/:userId", async (req: Request, res: Response, ne
 
 // GET /export — personal scope only (workspace-scoped rows stay under workspace views)
 actionItemsRouter.get("/export", async (req: Request, res: Response, next: NextFunction) => {
+  if (requireExportShareDownload(req, res)) return;
   try {
     const userId = req.appUser.id;
     const result = await pool.query(
@@ -333,7 +367,7 @@ actionItemsRouter.get("/export", async (req: Request, res: Response, next: NextF
 
 // POST /bulk-save
 actionItemsRouter.post("/bulk-save", async (req: Request, res: Response, next: NextFunction) => {
-  if (requirePaidPlan(req, res)) return;
+  if (requireManageActionItems(req, res)) return;
   try {
     const userId = req.appUser.id;
     const items: Array<Record<string, unknown>> = Array.isArray(req.body) ? req.body : req.body.items ?? [];
@@ -387,7 +421,7 @@ actionItemsRouter.post("/bulk-save", async (req: Request, res: Response, next: N
 
 // POST / — create
 actionItemsRouter.post("/", async (req: Request, res: Response, next: NextFunction) => {
-  if (requirePaidPlan(req, res)) return;
+  if (requireManageActionItems(req, res)) return;
   try {
     const userId = req.appUser.id;
     // Strip any client-supplied reporter_id; always use authenticated user's ID
@@ -418,7 +452,7 @@ actionItemsRouter.post("/", async (req: Request, res: Response, next: NextFuncti
 
 // PATCH /:id — role-based update
 actionItemsRouter.patch("/:id", async (req: Request, res: Response, next: NextFunction) => {
-  if (requirePaidPlan(req, res)) return;
+  if (requireManageActionItems(req, res)) return;
   try {
     const { id } = req.params;
     const userId = req.appUser.id;
@@ -534,7 +568,7 @@ actionItemsRouter.patch("/:id", async (req: Request, res: Response, next: NextFu
 
 // DELETE /:id — admin or personal owner only
 actionItemsRouter.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
-  if (requirePaidPlan(req, res)) return;
+  if (requireManageActionItems(req, res)) return;
   try {
     const { id } = req.params;
     const userId = req.appUser.id;

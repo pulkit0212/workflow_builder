@@ -13,15 +13,17 @@ const fallbackPlanLimits: Record<PlanId, {
   transcription: boolean;
   summary: boolean;
   actionItems: boolean;
+  actionItemsManage: boolean;
   history: boolean;
+  exportShareDownload: boolean;
   meetingsPerMonth: number;
   unlimited: boolean;
   teamWorkspace: boolean;
 }> = {
-  free:  { meetingBot: false, transcription: false, summary: false, actionItems: false, history: false, meetingsPerMonth: 7,      unlimited: false, teamWorkspace: false },
-  pro:   { meetingBot: true,  transcription: true,  summary: true,  actionItems: true,  history: true,  meetingsPerMonth: 20,     unlimited: false, teamWorkspace: false },
-  elite: { meetingBot: true,  transcription: true,  summary: true,  actionItems: true,  history: true,  meetingsPerMonth: 999999, unlimited: true,  teamWorkspace: true  },
-  trial: { meetingBot: true,  transcription: true,  summary: true,  actionItems: true,  history: true,  meetingsPerMonth: 999999, unlimited: true,  teamWorkspace: true  },
+  free:  { meetingBot: true,  transcription: true,  summary: true,  actionItems: false, actionItemsManage: false, history: false, exportShareDownload: false, meetingsPerMonth: 7,      unlimited: false, teamWorkspace: false },
+  pro:   { meetingBot: true,  transcription: true,  summary: true,  actionItems: true,  actionItemsManage: false, history: true,  exportShareDownload: false, meetingsPerMonth: 20,     unlimited: false, teamWorkspace: false },
+  elite: { meetingBot: true,  transcription: true,  summary: true,  actionItems: true,  actionItemsManage: true,  history: true,  exportShareDownload: true,  meetingsPerMonth: 999999, unlimited: true,  teamWorkspace: true  },
+  trial: { meetingBot: true,  transcription: true,  summary: true,  actionItems: true,  actionItemsManage: true,  history: true,  exportShareDownload: true,  meetingsPerMonth: 999999, unlimited: true,  teamWorkspace: true  },
 };
 
 const fallbackPlanDefinitions: Record<PlanId, any> = {

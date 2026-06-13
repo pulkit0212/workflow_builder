@@ -34,6 +34,8 @@ import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { MeetingShareModal } from "@/features/meetings/components/meeting-share-modal";
 import { clientApiFetch } from "@/lib/api-client";
 import { generateMeetingPdf } from "@/features/meetings/utils/generate-meeting-pdf";
+import { EliteRequiredDialog } from "@/components/shared/elite-required-dialog";
+import { useSubscriptionLimits } from "@/hooks/useSubscriptionLimits";
 
 type MeetingDetailProps = { meetingId: string };
 type DetailTab = "notes" | "transcript" | "insights";
@@ -263,14 +265,14 @@ type MeetingProcessedContentProps = {
   meeting: MeetingDetailRecord;
   speakerStats: Array<{ speaker: string; words: number; percentage: number }>;
   shareOpen: boolean;
-  setShareOpen: (open: boolean) => void;
+  onShareSummaryClick: () => void;
   copyFeedback: string | null;
   handleCopyActionItemsAsMarkdown: () => void;
   handleCopyActionItemsAsText: () => void;
 };
 
 function MeetingProcessedContent({
-  meeting, speakerStats, shareOpen, setShareOpen, copyFeedback,
+  meeting, speakerStats, shareOpen, onShareSummaryClick, copyFeedback,
   handleCopyActionItemsAsMarkdown, handleCopyActionItemsAsText,
 }: MeetingProcessedContentProps) {
   return (
@@ -283,7 +285,7 @@ function MeetingProcessedContent({
             <p className="text-sm font-semibold text-[#202124]">AI Meeting Summary</p>
           </div>
           {meeting.summary && (
-            <button type="button" onClick={() => setShareOpen(true)}
+            <button type="button" onClick={onShareSummaryClick}
               className="inline-flex items-center gap-1.5 rounded-lg bg-[#6C3FF5] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#5B2FE0] transition-colors">
               <Send className="h-3 w-3" /> Share Summary
             </button>
@@ -536,6 +538,7 @@ export function CalendarEventDetail({ encodedId }: { encodedId: string }) {
 export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const router = useRouter();
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
+  const { limits } = useSubscriptionLimits();
   const [meeting, setMeeting] = useState<MeetingDetailRecord | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [isMoveLoading, startMoveTransition] = useTransition();
@@ -548,6 +551,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
   const [upgradeBlocked, setUpgradeBlocked] = useState<{ reason: "upgrade_required" | "limit_reached" } | null>(null);
   const [isPending, startTransition] = useTransition();
   const [shareOpen, setShareOpen] = useState(false);
+  const [eliteDialogOpen, setEliteDialogOpen] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -733,9 +737,21 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
     } catch { setDeleteError("Failed to delete meeting. Please try again."); setIsDeleting(false); }
   }
 
+  function requireExportShare(action: () => void) {
+    if (!limits.exportShareDownload) {
+      setEliteDialogOpen(true);
+      return;
+    }
+    action();
+  }
+
   function handleDownloadPdf() {
     if (!meeting) return;
-    generateMeetingPdf(meeting);
+    requireExportShare(() => generateMeetingPdf(meeting));
+  }
+
+  function handleShareSummaryClick() {
+    requireExportShare(() => setShareOpen(true));
   }
 
   if (isLoading) return <MeetingDetailSkeleton />;
@@ -949,7 +965,9 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
                 <p className="text-xs font-bold uppercase tracking-widest text-[#B06000]">Locked Feature</p>
                 <p className="mt-1 font-semibold text-[#202124]">Meeting recording requires Pro or Elite</p>
                 <p className="mt-1 text-sm text-[#92400e]">
-                  {upgradeBlocked.reason === "limit_reached" ? "You have reached your monthly meeting limit." : "Free plan users can keep using the three core generators, but meeting capture is locked."}
+                  {upgradeBlocked.reason === "limit_reached"
+                    ? "You have reached your monthly meeting limit."
+                    : "Upgrade to Pro or Elite for more meetings and full history access."}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -966,7 +984,7 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
         <>
           {showProcessedResults ? (
             <MeetingProcessedContent meeting={meeting} speakerStats={speakerStats}
-              shareOpen={shareOpen} setShareOpen={setShareOpen} copyFeedback={copyFeedback}
+              shareOpen={shareOpen} onShareSummaryClick={handleShareSummaryClick} copyFeedback={copyFeedback}
               handleCopyActionItemsAsMarkdown={handleCopyActionItemsAsMarkdown}
               handleCopyActionItemsAsText={handleCopyActionItemsAsText} />
           ) : meeting.status !== "failed" ? (
@@ -1222,6 +1240,11 @@ export function MeetingDetail({ meetingId }: MeetingDetailProps) {
           </div>
         </div>
       )}
+      <EliteRequiredDialog
+        open={eliteDialogOpen}
+        onClose={() => setEliteDialogOpen(false)}
+        feature="export_share_download"
+      />
     </div>
   );
 }

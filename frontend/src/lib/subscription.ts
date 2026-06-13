@@ -4,8 +4,14 @@ export type SubscriptionLimits = {
   meetingBot: boolean;
   transcription: boolean;
   summary: boolean;
+  /** View action items hub (Pro+). Data always saved in DB for all plans. */
   actionItems: boolean;
+  /** Edit / create / delete action items (Elite+). */
+  actionItemsManage: boolean;
+  /** View history page (Pro+). */
   history: boolean;
+  /** Download PDF, export CSV, share to integrations (Elite+). */
+  exportShareDownload: boolean;
   meetingsPerMonth: number;
   unlimited: boolean;
   /** Team workspace — Elite only */
@@ -48,23 +54,27 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
     price: 0,
     badge: "Current",
     badgeTone: "neutral",
-    description: "Unlimited generation tools with seven meeting previews per month.",
+    description: "AI tools plus 7 meetings/month with full bot capture — data saved for when you upgrade.",
     features: [
       "Email Generator (unlimited)",
       "Task Generator (unlimited)",
       "Document Analyzer (unlimited)",
-      "7 meeting recordings/month (preview only)"
+      "Meeting Bot — 7 meetings/month (record, transcript, summary saved)",
+      "View meeting results in meeting detail",
+      "Task Backlog & History — upgrade to Pro to open",
     ],
     limits: {
-      meetingBot: false,
-      transcription: false,
-      summary: false,
+      meetingBot: true,
+      transcription: true,
+      summary: true,
       actionItems: false,
+      actionItemsManage: false,
       history: false,
+      exportShareDownload: false,
       meetingsPerMonth: 7,
       unlimited: false,
-      teamWorkspace: false
-    }
+      teamWorkspace: false,
+    },
   },
   pro: {
     id: "pro",
@@ -72,26 +82,26 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
     price: 99,
     badge: "Most Popular",
     badgeTone: "pending",
-    description: "Meeting bot, transcription, summaries, and history for active individual users.",
+    description: "View meetings, action items, and history — export, share, and edit on Elite.",
     features: [
       "Everything in Free",
-      "Meeting Bot (AI Notetaker)",
-      "Auto Transcription",
-      "Auto Summary",
-      "Action Items extraction",
-      "Meeting History",
-      "20 meetings/month"
+      "20 meetings/month",
+      "View Task Backlog (read-only)",
+      "View Meeting & tool History",
+      "Edit, export, share — Elite",
     ],
     limits: {
       meetingBot: true,
       transcription: true,
       summary: true,
       actionItems: true,
+      actionItemsManage: false,
       history: true,
+      exportShareDownload: false,
       meetingsPerMonth: 20,
       unlimited: false,
-      teamWorkspace: false
-    }
+      teamWorkspace: false,
+    },
   },
   elite: {
     id: "elite",
@@ -99,24 +109,27 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
     price: 199,
     badge: "Best Value",
     badgeTone: "accent",
-    description: "Unlimited meetings plus priority support and future feature access.",
+    description: "Unlimited meetings, full edit/export/share, and team workspaces.",
     features: [
       "Everything in Pro",
       "Unlimited meetings",
-      "Priority support",
+      "Edit, export & share action items",
+      "Download & share meetings & history",
       "Team workspace (shared meetings & invites)",
-      "All future features"
+      "Priority support",
     ],
     limits: {
       meetingBot: true,
       transcription: true,
       summary: true,
       actionItems: true,
+      actionItemsManage: true,
       history: true,
+      exportShareDownload: true,
       meetingsPerMonth: 999999,
       unlimited: true,
-      teamWorkspace: true
-    }
+      teamWorkspace: true,
+    },
   },
   trial: {
     id: "trial",
@@ -124,7 +137,7 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
     price: 0,
     badge: "30 Days",
     badgeTone: "pending",
-    description: "Full Elite-level access during your trial — team workspaces, unlimited meetings, every feature.",
+    description: "Full Elite-level access during your trial.",
     features: [
       "Everything in Elite",
       "Team workspace & invites",
@@ -136,7 +149,9 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
       transcription: true,
       summary: true,
       actionItems: true,
+      actionItemsManage: true,
       history: true,
+      exportShareDownload: true,
       meetingsPerMonth: 999999,
       unlimited: true,
       teamWorkspace: true,
@@ -144,9 +159,17 @@ export const planDefinitions: Record<PlanId, PlanDefinition> = {
   },
 };
 
-export function getPlanLimits(plan: string): SubscriptionLimits {
+/** Merge API/DB limits with plan defaults (new fields may be missing in older rows). */
+export function normalizeSubscriptionLimits(
+  plan: string,
+  partial?: Partial<SubscriptionLimits> | null
+): SubscriptionLimits {
   const key = plan in planDefinitions ? (plan as PlanId) : "free";
-  return planDefinitions[key].limits;
+  return { ...planDefinitions[key].limits, ...partial };
+}
+
+export function getPlanLimits(plan: string): SubscriptionLimits {
+  return planDefinitions[plan in planDefinitions ? (plan as PlanId) : "free"].limits;
 }
 
 export function getPlanDefinition(plan: string): PlanDefinition {
@@ -157,12 +180,31 @@ export function canUseMeetingBot(plan: string) {
   return getPlanLimits(plan).meetingBot;
 }
 
-export function canUseHistory(plan: string) {
+/** View action items hub (Pro+). */
+export function canViewActionItems(plan: string) {
+  return getPlanLimits(plan).actionItems;
+}
+
+/** @deprecated Use canViewActionItems */
+export function canUseActionItems(plan: string) {
+  return canViewActionItems(plan);
+}
+
+export function canManageActionItems(plan: string) {
+  return getPlanLimits(plan).actionItemsManage;
+}
+
+export function canViewHistory(plan: string) {
   return getPlanLimits(plan).history;
 }
 
-export function canUseActionItems(plan: string) {
-  return getPlanLimits(plan).actionItems;
+/** @deprecated Use canViewHistory */
+export function canUseHistory(plan: string) {
+  return canViewHistory(plan);
+}
+
+export function canExportShareDownload(plan: string) {
+  return getPlanLimits(plan).exportShareDownload;
 }
 
 export function canUseTeamWorkspace(plan: string) {

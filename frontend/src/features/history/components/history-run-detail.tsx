@@ -15,6 +15,8 @@ import { formatHistoryDateTime } from "@/features/history/helpers";
 import { generateHistoryRunPdf } from "@/features/history/utils/generate-history-run-pdf";
 import { cn } from "@/lib/utils";
 import { useApiFetch, useIsAuthReady } from "@/hooks/useApiFetch";
+import { EliteRequiredDialog } from "@/components/shared/elite-required-dialog";
+import { useSubscriptionLimits } from "@/hooks/useSubscriptionLimits";
 import type { AiRunDetailResponse, AiRunErrorResponse } from "@/features/history/types";
 
 type RunDetail = AiRunDetailResponse["run"];
@@ -425,12 +427,22 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
 export function HistoryRunDetail({ runId }: { runId: string }) {
   const apiFetch = useApiFetch();
   const isAuthReady = useIsAuthReady();
+  const { limits } = useSubscriptionLimits();
   const [run, setRun] = useState<RunDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [eliteDialogOpen, setEliteDialogOpen] = useState(false);
+
+  function requireExportShare(action: () => void) {
+    if (!limits.exportShareDownload) {
+      setEliteDialogOpen(true);
+      return;
+    }
+    action();
+  }
 
   useEffect(() => {
     if (!isAuthReady) return;
@@ -535,12 +547,14 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
                   <button
                     type="button"
                     onClick={() =>
-                      generateHistoryRunPdf({
-                        title: run.title,
-                        createdAt: run.createdAt,
-                        tool: run.tool,
-                        outputJson: run.outputJson,
-                      })
+                      requireExportShare(() =>
+                        generateHistoryRunPdf({
+                          title: run.title,
+                          createdAt: run.createdAt,
+                          tool: run.tool,
+                          outputJson: run.outputJson,
+                        })
+                      )
                     }
                     className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                   >
@@ -548,7 +562,7 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShareOpen(true)}
+                    onClick={() => requireExportShare(() => setShareOpen(true))}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-[#6C3FF5] px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-[#5b52e0]"
                   >
                     <Send className="h-3.5 w-3.5" /> Share
@@ -576,6 +590,11 @@ export function HistoryRunDetail({ runId }: { runId: string }) {
           onClose={() => setShareOpen(false)}
         />
       )}
+      <EliteRequiredDialog
+        open={eliteDialogOpen}
+        onClose={() => setEliteDialogOpen(false)}
+        feature="export_share_download"
+      />
     </div>
   );
 }

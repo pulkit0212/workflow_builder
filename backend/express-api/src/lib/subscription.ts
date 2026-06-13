@@ -8,21 +8,24 @@ export type SubscriptionLimits = {
   transcription: boolean;
   summary: boolean;
   actionItems: boolean;
+  actionItemsManage: boolean;
   history: boolean;
+  exportShareDownload: boolean;
   meetingsPerMonth: number;
   unlimited: boolean;
-  /** Team / shared workspace (invite members, workspace-scoped meetings) — Elite only */
   teamWorkspace: boolean;
 };
 
 export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
   free: {
     limits: {
-      meetingBot: false,
-      transcription: false,
-      summary: false,
+      meetingBot: true,
+      transcription: true,
+      summary: true,
       actionItems: false,
+      actionItemsManage: false,
       history: false,
+      exportShareDownload: false,
       meetingsPerMonth: 7,
       unlimited: false,
       teamWorkspace: false,
@@ -34,7 +37,9 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       transcription: true,
       summary: true,
       actionItems: true,
+      actionItemsManage: false,
       history: true,
+      exportShareDownload: false,
       meetingsPerMonth: 20,
       unlimited: false,
       teamWorkspace: false,
@@ -46,7 +51,9 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       transcription: true,
       summary: true,
       actionItems: true,
+      actionItemsManage: true,
       history: true,
+      exportShareDownload: true,
       meetingsPerMonth: 999999,
       unlimited: true,
       teamWorkspace: true,
@@ -58,13 +65,23 @@ export const planDefinitions: Record<PlanId, { limits: SubscriptionLimits }> = {
       transcription: true,
       summary: true,
       actionItems: true,
+      actionItemsManage: true,
       history: true,
+      exportShareDownload: true,
       meetingsPerMonth: 999999,
       unlimited: true,
       teamWorkspace: true,
     },
   },
 };
+
+export function normalizeSubscriptionLimits(
+  plan: string,
+  partial?: Partial<SubscriptionLimits> | null
+): SubscriptionLimits {
+  const key = plan in planDefinitions ? (plan as PlanId) : "free";
+  return { ...planDefinitions[key].limits, ...partial };
+}
 
 export function getPlanLimits(plan: string): SubscriptionLimits {
   const key = plan in planDefinitions ? (plan as PlanId) : "free";
@@ -75,12 +92,28 @@ export function canUseMeetingBot(plan: string) {
   return getPlanLimits(plan).meetingBot;
 }
 
-export function canUseHistory(plan: string) {
-  return getPlanLimits(plan).history;
+export function canViewActionItems(plan: string) {
+  return getPlanLimits(plan).actionItems;
 }
 
 export function canUseActionItems(plan: string) {
-  return getPlanLimits(plan).actionItems;
+  return canViewActionItems(plan);
+}
+
+export function canManageActionItems(plan: string) {
+  return getPlanLimits(plan).actionItemsManage;
+}
+
+export function canViewHistory(plan: string) {
+  return getPlanLimits(plan).history;
+}
+
+export function canUseHistory(plan: string) {
+  return canViewHistory(plan);
+}
+
+export function canExportShareDownload(plan: string) {
+  return getPlanLimits(plan).exportShareDownload;
 }
 
 export function canUseTeamWorkspace(plan: string) {

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWorkspaceContext } from "@/contexts/workspace-context";
+import {
+  EliteRequiredDialog,
+} from "@/components/shared/elite-required-dialog";
 
 export function WorkspaceSwitcher(): React.ReactElement {
   const router = useRouter();
@@ -17,6 +20,7 @@ export function WorkspaceSwitcher(): React.ReactElement {
     canUseTeamWorkspace,
   } = useWorkspaceContext();
   const [open, setOpen] = useState(false);
+  const [eliteDialogOpen, setEliteDialogOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -30,6 +34,11 @@ export function WorkspaceSwitcher(): React.ReactElement {
   }, []);
 
   function handleSelectWorkspace(id: string) {
+    if (!canUseTeamWorkspace) {
+      setOpen(false);
+      setEliteDialogOpen(true);
+      return;
+    }
     switchToWorkspace(id);
     setOpen(false);
   }
@@ -135,6 +144,11 @@ export function WorkspaceSwitcher(): React.ReactElement {
           )}
         </div>
       )}
+      <EliteRequiredDialog
+        open={eliteDialogOpen}
+        onClose={() => setEliteDialogOpen(false)}
+        feature="team_workspace"
+      />
     </div>
   );
 }

@@ -12,6 +12,8 @@ type AssigneeCellProps = {
   role: WorkspaceRole;
   activeWorkspaceId: string | null;
   onUpdate: (id: string, assigneeId: string | null, assigneeName: string | null) => Promise<void>;
+  /** Subscription allows editing (Elite+). Defaults to true. */
+  manageAllowed?: boolean;
 };
 
 type UserResult = { id: string; full_name: string | null; email: string };
@@ -20,7 +22,7 @@ function getInitials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase() ?? "").join("") || "U";
 }
 
-export function AssigneeCell({ item, currentUserId, currentUserName, role, activeWorkspaceId, onUpdate }: AssigneeCellProps) {
+export function AssigneeCell({ item, currentUserId, currentUserName, role, activeWorkspaceId, onUpdate, manageAllowed = true }: AssigneeCellProps) {
   const apiFetch = useApiFetch();
 
   // Display: assignee_name (from JOIN) if assignee_id is set, else item.assignee text (AI-extracted or "Unassigned")
@@ -28,7 +30,7 @@ export function AssigneeCell({ item, currentUserId, currentUserName, role, activ
   const displayName = item.assignee_id
     ? (item.assignee_name ?? item.assignee ?? "Unassigned")
     : (item.assignee || "Unassigned");
-  const canEdit = role === "admin" || item.reporter_id === currentUserId;
+  const canEdit = manageAllowed && (role === "admin" || item.reporter_id === currentUserId);
 
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");

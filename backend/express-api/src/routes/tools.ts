@@ -364,8 +364,6 @@ async function persistMeetingSummarizerActionItems(params: {
   reporterUserId: string;
   items: Array<{ task?: string; owner?: string; deadline?: string; priority?: string }>;
 }): Promise<void> {
-  if (!canUseActionItems(params.plan)) return;
-
   const rows = params.items
     .map((item) => ({
       task: (item.task ?? "").trim(),

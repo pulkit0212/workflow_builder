@@ -15,6 +15,11 @@ import { useWorkspaceContext } from "@/contexts/workspace-context";
 import { cn } from "@/lib/utils";
 import { AssigneeCell } from "@/features/action-items/components/AssigneeCell";
 import {
+  EliteRequiredDialog,
+  type EliteFeatureKey,
+} from "@/components/shared/elite-required-dialog";
+import { useSubscriptionLimits } from "@/hooks/useSubscriptionLimits";
+import {
   getPlanGateUserMessage,
   handlePlanGatedApiResponse,
   isUpgradeRequired,
@@ -1502,6 +1507,7 @@ function ActionItemsContent() {
   const { isLoaded, isSignedIn } = useAuth();
   const { activeWorkspaceId, activeWorkspace } = useWorkspaceContext();
   const apiFetch = useApiFetch();
+  const { limits } = useSubscriptionLimits();
 
   const [items, setItems] = useState<ActionItemRow[]>([]);
   const [role, setRole] = useState<WorkspaceRole>("personal");
@@ -1513,6 +1519,9 @@ function ActionItemsContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [upgradeRequired, setUpgradeRequired] = useState(false);
+  const [eliteDialogOpen, setEliteDialogOpen] = useState(false);
+  const [eliteDialogFeature, setEliteDialogFeature] =
+    useState<EliteFeatureKey>("generic");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const [deleteModal, setDeleteModal] = useState(false);
@@ -1540,24 +1549,52 @@ function ActionItemsContent() {
   const isElevated = role === "admin" || role === "owner";
   const isViewer = role === "viewer";
   const isPersonal = role === "personal";
-  const canDelete = isElevated || isPersonal;
-  const canCreate = true;
+  const canManage = limits.actionItemsManage && !isViewer;
+  const canExport = limits.exportShareDownload;
+  const canDelete = canManage && (isElevated || isPersonal);
+  const canCreate = canManage;
+
+  function openEliteDialog(feature: EliteFeatureKey) {
+    setEliteDialogFeature(feature);
+    setEliteDialogOpen(true);
+  }
+
+  function requireEliteExport(action: () => void) {
+    if (!canExport) {
+      openEliteDialog("export_share_download");
+      return;
+    }
+    action();
+  }
+
+  function requireEliteManage(action: () => void) {
+    if (!canManage) {
+      openEliteDialog("action_items_manage");
+      return;
+    }
+    action();
+  }
 
   function showToast(msg: string, type: "success" | "error") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3000);
   }
 
-  /** Friendly message when API returns upgrade_required / limit_reached (not a generic failure). */
   async function handleFailedMutation(res: Response, fallbackMessage: string) {
     const result = await handlePlanGatedApiResponse(res, {
-      feature: "action_items",
+      feature: "action_items_manage",
       fallbackMessage,
     });
     if (result.ok) return;
     if (result.upgradeRequired) {
       setUpgradeRequired(true);
       showToast(result.message, "error");
+      return;
+    }
+    if (result.eliteRequired) {
+      openEliteDialog("action_items_manage");
+      showToast(result.message, "error");
+      void loadItems();
       return;
     }
     showToast(result.message, "error");
@@ -1690,7 +1727,10 @@ function ActionItemsContent() {
   }
 
   async function handleStatusUpdate(id: string, status: string) {
-    if (isViewer) return;
+    if (!canManage || isViewer) {
+      openEliteDialog("action_items_manage");
+      return;
+    }
     setItems((prev) => prev.map((item) => item.id === id ? { ...item, status } : item));
     try {
       const res = await apiFetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
@@ -1705,7 +1745,10 @@ function ActionItemsContent() {
   }
 
   async function handlePriorityUpdate(id: string, priority: string) {
-    if (isViewer) return;
+    if (!canManage || isViewer) {
+      openEliteDialog("action_items_manage");
+      return;
+    }
     setItems((prev) => prev.map((item) => item.id === id ? { ...item, priority } : item));
     try {
       const res = await apiFetch(`/api/action-items/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priority }) });
@@ -1720,7 +1763,10 @@ function ActionItemsContent() {
   }
 
   async function handleDueDateUpdate(id: string, dueDate: string) {
-    if (isViewer) return;
+    if (!canManage || isViewer) {
+      openEliteDialog("action_items_manage");
+      return;
+    }
     setItems((prev) => prev.map((item) => item.id === id ? { ...item, due_date: dueDate } : item));
     setEditingDueDate(null);
     try {
@@ -1731,6 +1777,10 @@ function ActionItemsContent() {
   }
 
   async function handleAssigneeUpdate(id: string, assigneeId: string | null, assigneeName: string | null = null) {
+    if (!canManage || isViewer) {
+      openEliteDialog("action_items_manage");
+      return;
+    }
     // Optimistic update immediately
     setItems((prev) => prev.map((item) =>
       item.id === id
@@ -1917,6 +1967,7 @@ function ActionItemsContent() {
         fallbackMessage: "Failed to create task.",
       });
       if (!result.ok && result.upgradeRequired) setUpgradeRequired(true);
+      if (!result.ok && result.eliteRequired) openEliteDialog("action_items_manage");
       throw new Error(!result.ok ? result.message : "Failed to create task.");
     }
     showToast("Task created.", "success");
@@ -1924,7 +1975,7 @@ function ActionItemsContent() {
   }
 
   function exportToCSV() {
-    setShowExportModal(true);
+    requireEliteExport(() => setShowExportModal(true));
   }
 
   async function shareToIntegration(target: string) {
@@ -2024,7 +2075,7 @@ function ActionItemsContent() {
         </div>
         <div className="flex items-center gap-2">
           {!isViewer && (
-            <button type="button" onClick={() => setBulkShareModal(true)}
+            <button type="button" onClick={() => requireEliteExport(() => setBulkShareModal(true))}
               className="inline-flex items-center gap-2 rounded-lg border border-[#DADCE0] bg-white px-4 py-2 text-sm font-medium text-[#5F6368] hover:bg-[#F8F9FA] transition-colors">
               <span className="material-symbols-outlined text-[16px]">share</span>
               Share
@@ -2035,15 +2086,20 @@ function ActionItemsContent() {
             <Download className="h-4 w-4" />
             Export to CSV
           </button>
-          {canCreate && (
-            <button type="button" onClick={() => setNewTaskModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition-colors shadow-sm">
-              <Plus className="h-4 w-4" />
-              Create Task
-            </button>
-          )}
+          <button type="button" onClick={() => requireEliteManage(() => setNewTaskModal(true))}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#6C3FF5] px-4 py-2 text-sm font-semibold text-white hover:bg-[#5B2FE0] transition-colors shadow-sm">
+            <Plus className="h-4 w-4" />
+            Create Task
+          </button>
         </div>
       </div>
+
+      {!upgradeRequired && limits.actionItems && !limits.actionItemsManage && (
+        <div className="rounded-xl border border-[#EDE9FE] bg-[#FAF9FF] px-4 py-3 text-sm text-[#5F6368]">
+          <span className="font-semibold text-[#6C3FF5]">View-only on Pro.</span>{" "}
+          Your action items are saved automatically. Upgrade to Elite to edit, export, and share.
+        </div>
+      )}
 
       {/* Tabs + search + filter row */}
       <div className="flex items-center justify-between gap-4 border-b border-[#DADCE0]">
@@ -2132,7 +2188,7 @@ function ActionItemsContent() {
       </div>
 
       {/* Bulk action bar */}
-      {selected.size > 0 && (
+      {canManage && selected.size > 0 && (
         <div className="flex items-center gap-3 rounded-lg bg-[#6C3FF5] px-5 py-3 text-white">
           <span className="text-sm font-semibold shrink-0">{selected.size} selected</span>
           <div className="flex items-center gap-2 flex-wrap">
@@ -2268,7 +2324,7 @@ function ActionItemsContent() {
                   )}>
                   {/* Checkbox */}
                   <div className="flex items-center px-4 py-3">
-                    {!isViewer && (
+                    {canManage && !isViewer && (
                       <input type="checkbox" checked={selected.has(row.id)} onChange={() => toggleSelect(row.id)}
                         className="h-4 w-4 rounded border-[#DADCE0] accent-[#6C3FF5]" />
                     )}
@@ -2307,12 +2363,13 @@ function ActionItemsContent() {
                       role={role}
                       activeWorkspaceId={activeWorkspaceId}
                       onUpdate={handleAssigneeUpdate}
+                      manageAllowed={canManage}
                     />
                   </div>
 
                   {/* PRIORITY cell */}
                   <div className="px-3 py-3">
-                    {!isViewer
+                    {!isViewer && canManage
                       ? <PriorityDropdown itemId={row.id} current={row.priority || "Medium"} onUpdate={handlePriorityUpdate} />
                       : (
                         <div className="flex items-center gap-1.5">
@@ -2331,7 +2388,7 @@ function ActionItemsContent() {
 
                   {/* STATUS cell */}
                   <div className="px-3 py-3">
-                    {!isViewer
+                    {!isViewer && canManage
                       ? <StatusDropdown itemId={row.id} current={row.status || "pending"} onUpdate={handleStatusUpdate} />
                       : <span className="inline-flex items-center rounded px-2 py-1 text-[11px] font-bold uppercase tracking-wider"
                           style={{ background: getStatusStyle(row.status).bg, color: getStatusStyle(row.status).color }}>
@@ -2342,7 +2399,7 @@ function ActionItemsContent() {
 
                   {/* DUE DATE cell — click to edit inline */}
                   <div className="px-3 py-3">
-                    {!isViewer && editingDueDate === row.id ? (
+                    {!isViewer && canManage && editingDueDate === row.id ? (
                       <input autoFocus type="date"
                         defaultValue={row.due_date && !["Not specified", "ASAP", "Tomorrow", "Today", "After the call", "Tomorrow evening"].includes(row.due_date) ? row.due_date : ""}
                         onBlur={(e) => void handleDueDateUpdate(row.id, e.target.value || "Not specified")}
@@ -2352,12 +2409,12 @@ function ActionItemsContent() {
                         }}
                         className="w-full rounded border border-[#6C3FF5]/40 px-1.5 py-1 text-xs focus:outline-none" />
                     ) : (
-                      <button type="button" onClick={() => { if (!isViewer) setEditingDueDate(row.id); }}
+                      <button type="button" onClick={() => { if (canManage && !isViewer) setEditingDueDate(row.id); else if (!canManage) openEliteDialog("action_items_manage"); }}
                         className={cn("text-xs text-left w-full",
                           row.due_date && row.due_date !== "Not specified" && new Date(row.due_date) < new Date() && row.status !== "done"
                             ? "font-semibold text-[#C5221F]"
                             : "text-[#5F6368]",
-                          !isViewer && "hover:text-[#6C3FF5] cursor-pointer"
+                          canManage && !isViewer && "hover:text-[#6C3FF5] cursor-pointer"
                         )}>
                         {formatDate(row.due_date)}
                       </button>
@@ -2386,10 +2443,10 @@ function ActionItemsContent() {
         </>
       )}
 
-      {/* FAB — hidden for viewers */}
-      {canCreate && (
+      {/* FAB — show for all Pro+ viewers; Elite required to create */}
+      {!upgradeRequired && (
         <div className="fixed bottom-8 right-8 z-50">
-          <button type="button" onClick={() => setNewTaskModal(true)}
+          <button type="button" onClick={() => requireEliteManage(() => setNewTaskModal(true))}
             className="flex h-14 w-14 items-center justify-center rounded-full bg-[#6C3FF5] text-white shadow-xl hover:bg-[#5B2FE0] hover:scale-105 active:scale-95 transition-all">
             <Plus className="h-6 w-6" />
           </button>
@@ -2430,6 +2487,11 @@ function ActionItemsContent() {
       {showExportModal && (
         <ExportModal items={items} currentDbUserId={currentDbUserId} apiFetch={apiFetch} activeWorkspaceId={activeWorkspaceId} onClose={() => setShowExportModal(false)} />
       )}
+      <EliteRequiredDialog
+        open={eliteDialogOpen}
+        onClose={() => setEliteDialogOpen(false)}
+        feature={eliteDialogFeature}
+      />
     </div>
   );
 }

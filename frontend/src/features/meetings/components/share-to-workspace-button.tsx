@@ -5,6 +5,8 @@ import { ArrowRight, CheckCircle, Clock, Loader2, Share2, X } from "lucide-react
 import type { WorkspaceRecord } from "@/features/workspaces/types";
 import { isCalendarMeetingId } from "@/features/meetings/ids";
 import { useApiFetch } from "@/hooks/useApiFetch";
+import { useWorkspaceContext } from "@/contexts/workspace-context";
+import { EliteRequiredDialog } from "@/components/shared/elite-required-dialog";
 
 type ShareToWorkspaceButtonProps = {
   meetingId: string;
@@ -46,6 +48,8 @@ export function ShareToWorkspaceButton({
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [isPending, startTransition] = useTransition();
   const apiFetch = useApiFetch();
+  const { canUseTeamWorkspace } = useWorkspaceContext();
+  const [eliteDialogOpen, setEliteDialogOpen] = useState(false);
 
   const isWorkspaceAdmin = currentUserWorkspaceRole === "admin";
 
@@ -85,6 +89,10 @@ export function ShareToWorkspaceButton({
   }, [toast]);
 
   function handleShare() {
+    if (!canUseTeamWorkspace) {
+      setEliteDialogOpen(true);
+      return;
+    }
     if (allWorkspaces && allWorkspaces.length > 0) {
       setSelectedWorkspaceId(allWorkspaces[0].id);
     }
@@ -319,6 +327,11 @@ export function ShareToWorkspaceButton({
           </div>
         </div>
       )}
+      <EliteRequiredDialog
+        open={eliteDialogOpen}
+        onClose={() => setEliteDialogOpen(false)}
+        feature="team_workspace"
+      />
     </>
   );
 }
