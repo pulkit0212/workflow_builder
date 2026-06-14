@@ -194,10 +194,13 @@ meetingsRouter.get("/calendar-feed", async (req: Request, res: Response, next: N
       meetLink: string | null; provider: string; source: string;
     }> = [];
     const failedProviders: Array<{ provider: string; error: string }> = [];
+    let providersAttempted = 0;
+    let providersSucceeded = 0;
 
     // ── 2. Fetch Google Calendar events ─────────────────────────────────────
     const googleToken = tokenMap.get("google");
     if (googleToken) {
+      providersAttempted++;
       try {
         const timeMin = start ? start.toISOString() : new Date().toISOString();
         const timeMax = end ? end.toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -245,6 +248,7 @@ meetingsRouter.get("/calendar-feed", async (req: Request, res: Response, next: N
         });
 
         if (gcalRes.ok) {
+          providersSucceeded++;
           const gcalData = await gcalRes.json() as { items?: Array<{
             id?: string; summary?: string;
             start?: { dateTime?: string; date?: string };
@@ -288,6 +292,7 @@ meetingsRouter.get("/calendar-feed", async (req: Request, res: Response, next: N
       const msToken = tokenMap.get(msProvider);
       if (!msToken || msFetched) continue;
       msFetched = true; // both providers use same MS Graph token — fetch once
+      providersAttempted++;
       try {
         const timeMin = start ? start.toISOString() : new Date().toISOString();
         const timeMax = end ? end.toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -295,11 +300,47 @@ meetingsRouter.get("/calendar-feed", async (req: Request, res: Response, next: N
           `?startDateTime=${encodeURIComponent(timeMin)}&endDateTime=${encodeURIComponent(timeMax)}` +
           `&$top=50&$select=id,subject,start,end,onlineMeeting,webLink`;
 
+        let accessToken = msToken.accessToken;
+
+        const isExpired = !msToken.expiry || msToken.expiry.getTime() < Date.now() + 5 * 60 * 1000;
+        if (isExpired && msToken.refreshToken) {
+          try {
+            const clientId = process.env.MICROSOFT_CLIENT_ID ?? process.env.AZURE_CLIENT_ID ?? "";
+            const clientSecret = process.env.MICROSOFT_CLIENT_SECRET ?? process.env.AZURE_CLIENT_SECRET ?? "";
+            const refreshRes = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams({
+                client_id: clientId,
+                client_secret: clientSecret,
+                grant_type: "refresh_token",
+                refresh_token: msToken.refreshToken,
+              }),
+            });
+            if (refreshRes.ok) {
+              const refreshed = await refreshRes.json() as { access_token?: string; expires_in?: number; refresh_token?: string };
+              if (refreshed.access_token) {
+                accessToken = refreshed.access_token;
+                const newExpiry = refreshed.expires_in
+                  ? new Date(Date.now() + refreshed.expires_in * 1000)
+                  : null;
+                const newRefreshToken = refreshed.refresh_token ?? msToken.refreshToken;
+                await pool.query(
+                  `UPDATE user_integrations SET access_token = $1, refresh_token = $2, expiry = $3, updated_at = NOW()
+                   WHERE user_id = $4 AND provider IN ('microsoft_teams', 'microsoft_outlook')`,
+                  [accessToken, newRefreshToken, newExpiry, userId]
+                );
+              }
+            }
+          } catch { /* use existing token */ }
+        }
+
         const msRes = await fetch(url, {
-          headers: { Authorization: `Bearer ${msToken.accessToken}` },
+          headers: { Authorization: `Bearer ${accessToken}` },
         });
 
         if (msRes.ok) {
+          providersSucceeded++;
           const msData = await msRes.json() as { value?: Array<{
             id?: string; subject?: string;
             start?: { dateTime?: string };
@@ -321,10 +362,12 @@ meetingsRouter.get("/calendar-feed", async (req: Request, res: Response, next: N
             });
           }
         } else if (msRes.status === 401 || msRes.status === 403) {
-          for (const p of msProviders) {
-            await pool.query(`DELETE FROM user_integrations WHERE user_id = $1 AND provider = $2`, [userId, p]);
+          if (!msToken.refreshToken) {
+            for (const p of msProviders) {
+              await pool.query(`DELETE FROM user_integrations WHERE user_id = $1 AND provider = $2`, [userId, p]);
+            }
           }
-          failedProviders.push({ provider: msProvider, error: "Token expired. Please reconnect Microsoft Calendar." });
+          failedProviders.push({ provider: msProvider, error: "Microsoft token expired. Please reconnect Microsoft Calendar." });
         } else {
           failedProviders.push({ provider: msProvider, error: "Failed to fetch Microsoft Calendar events." });
         }
@@ -336,9 +379,11 @@ meetingsRouter.get("/calendar-feed", async (req: Request, res: Response, next: N
     // ── 4. Sort by startTime ─────────────────────────────────────────────────
     meetings.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
+    const allProvidersFailed = providersAttempted > 0 && providersSucceeded === 0 && failedProviders.length > 0;
+
     return res.json({
       meetings,
-      ...(failedProviders.length > 0 ? { partialFailure: { failedProviders } } : {}),
+      ...(allProvidersFailed ? { partialFailure: { failedProviders } } : {}),
     });
   } catch (err) { next(err); }
 });

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import type { Route } from "next";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { fetchUnifiedCalendarFeed } from "@/features/meetings/api";
 import { encodeCalendarMeetingId } from "@/features/meetings/ids";
 import { getMeetingDisplayStatus, findSessionForMeeting } from "@/features/meetings/meeting-status";
@@ -164,9 +164,11 @@ export default function DashboardPage() {
         const [joined, feedRes, actionStatsRes] = await Promise.all([
           fetchJoinedMeetings(),
           fetchUnifiedCalendarFeed(startOfToday, endOfToday).catch(() => ({ meetings: [], partialFailure: undefined })),
-          apiFetch("/api/action-items/stats"),
+          apiFetch("/api/action-items/stats").catch(() => null),
         ]);
-        const actionStats = await actionStatsRes.json() as { success: boolean; total: number; pending: number };
+        const actionStats = actionStatsRes?.ok
+          ? await actionStatsRes.json() as { success: boolean; total: number; pending: number }
+          : { success: false, total: 0, pending: 0 };
         setReports(joined);
         setWorkspaceStats({
           totalMeetings: joined.length,
@@ -207,9 +209,11 @@ export default function DashboardPage() {
           const [joined, feedRes, actionStatsRes] = await Promise.all([
             fetchJoinedMeetings(),
             fetchUnifiedCalendarFeed(startOfToday, endOfToday).catch(() => ({ meetings: [], partialFailure: undefined })),
-            apiFetch("/api/action-items/stats"),
+            apiFetch("/api/action-items/stats").catch(() => null),
           ]);
-          const actionStats = await actionStatsRes.json() as { success: boolean; total: number; pending: number };
+          const actionStats = actionStatsRes?.ok
+            ? await actionStatsRes.json() as { success: boolean; total: number; pending: number }
+            : { success: false, total: 0, pending: 0 };
           if (!mounted) return;
           setReports(joined);
           setWorkspaceStats({
@@ -232,6 +236,9 @@ export default function DashboardPage() {
 
   const meetingsWithContent = reports.filter(hasContent);
   const completedCount = meetingsWithContent.length;
+  const meetingSummaryRate = reports.length > 0
+    ? Math.round((completedCount / reports.length) * 100)
+    : 0;
   // When in workspace mode, use server-side stats (accurate counts from separate tables).
   // In personal mode, meetingsThisMonth is computed client-side; action items come from /stats API.
   const meetingsThisMonth = workspaceStats?.meetingsThisMonth !== undefined && workspaceStats.meetingsThisMonth > 0
@@ -338,6 +345,19 @@ export default function DashboardPage() {
                   </a>
                 );
               })}
+            </div>
+          ) : !activeWorkspaceId && calendarPartialFailure.length > 0 ? (
+            <div className="bg-white border border-dashed border-[#DADCE0] rounded-xl p-12 flex flex-col items-center text-center">
+              <div className="w-12 h-12 bg-[#FEF7E0] rounded-full flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-[#B06000] text-2xl">event_busy</span>
+              </div>
+              <h5 className="font-semibold text-[#202124] mb-1">Calendar needs reconnecting</h5>
+              <p className="text-sm text-[#5F6368] max-w-xs mb-4">
+                {calendarPartialFailure[0]?.error ?? "We couldn't load your calendar events."}
+              </p>
+              <Link href="/dashboard/integrations" className="bg-[#6C3FF5] text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-[#5B2FE0] transition-colors">
+                Reconnect Calendar
+              </Link>
             </div>
           ) : !activeWorkspaceId && noCalendarConnected ? (
             <div className="bg-white border border-dashed border-[#DADCE0] rounded-xl p-12 flex flex-col items-center text-center">
@@ -454,16 +474,16 @@ export default function DashboardPage() {
             <div className="absolute top-0 right-0 opacity-10">
               <span className="material-symbols-outlined text-[80px]">bolt</span>
             </div>
-            <h4 className="font-semibold text-lg mb-2">Weekly Efficiency</h4>
+            <h4 className="font-semibold text-lg mb-2">Meeting Progress</h4>
             <div className="flex items-end gap-2 mb-4">
-              <span className="text-4xl font-bold">{completedCount > 0 ? Math.round((completedCount / Math.max(reports.length, 1)) * 100) : 0}%</span>
-              <span className="text-xs mb-1.5 opacity-80">completion rate</span>
+              <span className="text-4xl font-bold">{meetingSummaryRate}%</span>
+              <span className="text-xs mb-1.5 opacity-80">with AI summaries</span>
             </div>
             <div className="w-full bg-white/20 rounded-full h-2 mb-4">
-              <div className="bg-white h-full rounded-full transition-all" style={{ width: `${completedCount > 0 ? Math.round((completedCount / Math.max(reports.length, 1)) * 100) : 0}%` }} />
+              <div className="bg-white h-full rounded-full transition-all" style={{ width: `${meetingSummaryRate}%` }} />
             </div>
             <p className="text-xs opacity-90">
-              {totalActionItems} action items extracted from {reports.length} meeting{reports.length !== 1 ? "s" : ""}.
+              {completedCount} of {reports.length} meeting{reports.length !== 1 ? "s" : ""} processed with summaries or transcripts.
             </p>
           </div>
 
@@ -491,14 +511,6 @@ export default function DashboardPage() {
               </Link>
             </div>
           </div>
-
-          {/* Calendar partial failure warning */}
-          {calendarPartialFailure.length > 0 && (
-            <div className="flex items-center gap-2 rounded-xl border border-[#FEF7E0] bg-[#FEF7E0] px-4 py-3">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-[#B06000]" />
-              <p className="text-xs text-[#B06000]">Some calendars couldn&apos;t be loaded</p>
-            </div>
-          )}
         </div>
       </div>
     </div>
